@@ -1,12 +1,12 @@
-const CACHE = "template-offline-v1";
+const CACHE = "gftvlinktree-v1";
 
 const ASSETS = [
   "/",
   "/index.html",
   "/style.css",
   "/script.js",
-  "/templateicon1-192.png",
-  "/templateicon1-512.png",
+  "/OLG-192.png",
+  "/OLG-512.png",
   "/favicon.ico",
   "/manifest.json"
 ];
