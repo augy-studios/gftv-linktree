@@ -248,6 +248,14 @@ test('recovery needs Telegram and the second factor, never one alone', async () 
     const page = fake.table('gftvonelink_pages')[0];
     assert.equal(fake.table('gftvonelink_recovery_codes').filter((c) => c.page_id === page.id && c.used).length, 0, 'a wrong Telegram code spends no backup code');
 
+    const optionsNoTelegram = await r.call(recover, { method: 'POST', body: { action: 'passkey-options', challenge: start.json.challenge, telegramCode: '000000' } });
+    assert.equal(optionsNoTelegram.status, 401, 'no passkey options without the Telegram code');
+    assert.equal(optionsNoTelegram.json.options, undefined);
+    const optionsNoKeys = await r.call(recover, { method: 'POST', body: { action: 'passkey-options', challenge: start.json.challenge, telegramCode: code } });
+    assert.equal(optionsNoKeys.json.error, 'no_passkeys');
+    const badPasskey = await r.call(recover, { method: 'POST', body: { action: 'finish', challenge: start.json.challenge, telegramCode: code, factor: 'passkey', response: { id: 'nope' }, newPassword: 'brand new phrase here' } });
+    assert.equal(badPasskey.status, 401, 'a passkey response with no challenge behind it fails');
+
     const done = await r.call(recover, { method: 'POST', body: { action: 'finish', challenge: start.json.challenge, telegramCode: code, factor: 'totp', code: totpAt(secret), newPassword: 'brand new phrase here' } });
     assert.equal(done.status, 200, done.body);
     assert.equal((await a.call(mePage)).status, 401, 'old sessions ended');

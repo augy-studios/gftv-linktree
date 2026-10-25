@@ -164,13 +164,14 @@
 
   "reset.meta-title": "Reset your password | OneLink GFTV",
   "reset.title": "Reset your password",
-  "reset.lede": "There is no email on OneLink, so resetting a password needs two things: a code from Telegram, and your authenticator app or a backup code.",
+  "reset.lede": "There is no email on OneLink, so resetting a password needs two things: a code from Telegram, and your authenticator app, a passkey or a backup code.",
   "reset.lost-factor": "Lost your authenticator but know your password?",
   "reset.use-backup": "Sign in with a backup code",
   "reset.none-title": "This page cannot be reset",
   "reset.none-body": "This page has no Telegram account linked, so its password cannot be reset. If you still have your password, sign in and link Telegram from Security so this is possible next time.",
   "reset.step-telegram": "1. Get a code in Telegram.",
-  "reset.step-factor": "2. Confirm with your authenticator app or a backup code.",
+  "reset.step-factor": "2. Confirm with your authenticator app, a passkey or a backup code.",
+  "reset.passkey-hint": "Your browser asks for your passkey when you press the button below.",
   "reset.step-password": "3. Choose a new password.",
   "reset.submit": "Reset password and sign in",
 

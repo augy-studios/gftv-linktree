@@ -5,10 +5,13 @@ import { t, onChange } from '../../assets/i18n/i18n.js';
 import { post } from '../api.js';
 import { withBusy, toast } from '../ui.js';
 import { normaliseSlugInput } from '../slug-check.js';
+import { passkeysSupported, usePasskey, passkeyErrorCode } from '../passkeys.js';
 
 const $ = (id) => document.getElementById(id);
 let challenge = null;
 let factor = 'totp';
+
+$('stepReset').querySelector('[data-factor="passkey"]').hidden = !passkeysSupported();
 
 function show(id) {
   ['stepFind', 'stepNoTelegram', 'stepReset'].forEach((s) => { $(s).hidden = s !== id; });
@@ -45,6 +48,19 @@ function pickFactor(name) {
   input.inputMode = name === 'totp' ? 'numeric' : 'text';
   input.maxLength = name === 'totp' ? 6 : 16;
   $('factorLabel').textContent = t(name === 'totp' ? 'field.code' : 'field.backup-code');
+  $('factorField').hidden = name === 'passkey';
+  $('passkeyHint').hidden = name !== 'passkey';
+}
+
+// The passkey prompt comes up between the two calls. passkey-options checks
+// the Telegram code first, so a wrong one is reported before the prompt.
+async function passkeyResponse(telegramCode) {
+  const { options } = await post('/api/auth/recover', { action: 'passkey-options', challenge, telegramCode });
+  try {
+    return await usePasskey(options);
+  } catch (cause) {
+    throw Object.assign(new Error('passkey'), { code: passkeyErrorCode(cause) });
+  }
 }
 document.querySelectorAll('#stepReset [data-factor]').forEach((b) => b.addEventListener('click', () => pickFactor(b.dataset.factor)));
 onChange(() => pickFactor(factor));
@@ -63,14 +79,9 @@ $('resetForm').addEventListener('submit', (e) => {
   }
   withBusy($('resetSubmit'), error, async () => {
     try {
-      await post('/api/auth/recover', {
-        action: 'finish',
-        challenge,
-        telegramCode: $('telegramCode').value,
-        factor,
-        code: $('factorCode').value,
-        newPassword,
-      });
+      const telegramCode = $('telegramCode').value;
+      const proof = factor === 'passkey' ? { response: await passkeyResponse(telegramCode) } : { code: $('factorCode').value };
+      await post('/api/auth/recover', { action: 'finish', challenge, telegramCode, factor, ...proof, newPassword });
       window.location.replace('/edit');
     } catch (err) {
       if (err.code === 'challenge_expired') {

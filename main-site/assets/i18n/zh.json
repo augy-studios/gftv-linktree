@@ -164,13 +164,14 @@
 
   "reset.meta-title": "重设密码 | OneLink GFTV",
   "reset.title": "重设密码",
-  "reset.lede": "OneLink 不使用电邮，所以重设密码需要两样东西：Telegram 收到的验证码，以及你的身份验证器应用或一个备用码。",
+  "reset.lede": "OneLink 不使用电邮，所以重设密码需要两样东西：Telegram 收到的验证码，以及你的身份验证器应用、通行密钥或一个备用码。",
   "reset.lost-factor": "身份验证器不见了，但还记得密码？",
   "reset.use-backup": "用备用码登录",
   "reset.none-title": "这个页面无法重设密码",
   "reset.none-body": "这个页面没有连接 Telegram 账户，所以无法重设密码。如果你还记得密码，请登录并在“安全”里连接 Telegram，下次就可以重设了。",
   "reset.step-telegram": "1. 在 Telegram 收取验证码。",
-  "reset.step-factor": "2. 用身份验证器应用或备用码确认。",
+  "reset.step-factor": "2. 用身份验证器应用、通行密钥或备用码确认。",
+  "reset.passkey-hint": "按下面的按钮后，浏览器会请你使用通行密钥。",
   "reset.step-password": "3. 设置新密码。",
   "reset.submit": "重设密码并登录",
 

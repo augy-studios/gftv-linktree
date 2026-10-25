@@ -4,16 +4,21 @@
 // three things an owner can have, and the password is the one missing:
 //
 //   1. a Telegram code, sent to the chat linked in settings, and
-//   2. the second factor: an authenticator code or a backup code.
+//   2. the second factor: an authenticator code, a passkey or a backup code.
 //
 // Without a linked Telegram account a forgotten password cannot be reset,
 // and the page says so rather than offering a path that does not exist.
 // A lost second factor is not this route: sign in with the password and a
 // backup code instead.
 //
-//   start   { slug }  -> { telegram, challenge? }
-//   send    { challenge }
-//   finish  { challenge, telegramCode, factor: "totp" | "backup", code, newPassword }
+//   start            { slug }  -> { telegram, challenge? }
+//   send             { challenge }
+//   passkey-options  { challenge, telegramCode }  -> { options }
+//   finish           { challenge, telegramCode, factor: "totp" | "backup", code, newPassword }
+//                    { challenge, telegramCode, factor: "passkey", response, newPassword }
+//
+// passkey-options wants the Telegram code too, so the page's credential ids
+// are never handed to somebody who knows only its name.
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
@@ -21,6 +26,7 @@ import { normaliseSlug, checkPassword } from '../_lib/validate.js';
 import { hashPassword, sha256 } from '../_lib/crypto.js';
 import { limited, audit } from '../_lib/guards.js';
 import { telegramConfigured, sendTelegram } from '../_lib/telegram.js';
+import { authenticationOptions, finishAuthentication } from '../_lib/webauthn.js';
 import { ownerTotpOk, spendBackupCode, sendTelegramCode, telegramCodeOk } from '../_lib/factors.js';
 import {
   createChallenge,
@@ -70,17 +76,31 @@ export default route('auth/recover', async (req, res) => {
     return ok(res, { sent: true });
   }
 
+  if (body.action === 'passkey-options') {
+    if (await limited(req, res, 'secondFactor', [`challenge:${challenge.id}`])) return;
+    if (!(await telegramCodeOk(challenge, body.telegramCode))) {
+      await failChallengeAttempt(challenge);
+      await audit(req, { action: 'recover.failed', actorType: 'visitor', pageId: page.id });
+      return fail(res, 401, 'code_wrong');
+    }
+    const options = await authenticationOptions('owner', page.id);
+    if (!options) return fail(res, 400, 'no_passkeys');
+    return ok(res, { options });
+  }
+
   if (body.action !== 'finish') return fail(res, 400, 'bad_request');
   if (await limited(req, res, 'secondFactor', [`challenge:${challenge.id}`])) return;
 
   const passwordCheck = checkPassword(body.newPassword);
   if (!passwordCheck.ok) return fail(res, 400, passwordCheck.error);
 
-  // Telegram first, so a wrong Telegram code never spends a backup code.
+  // Telegram first, so a wrong Telegram code never spends a backup code or a
+  // passkey challenge.
   let passed = await telegramCodeOk(challenge, body.telegramCode);
   if (passed) {
     if (body.factor === 'totp') passed = ownerTotpOk(page, body.code);
     else if (body.factor === 'backup') passed = await spendBackupCode(page.id, body.code);
+    else if (body.factor === 'passkey') passed = await finishAuthentication('owner', page.id, body.response);
     else passed = false;
   }
   if (!passed) {
