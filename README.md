@@ -13,6 +13,7 @@ GFTV staff moderate pages from a dashboard at `/admin`.
 | `tools/make-icons.py` | Rebuilds the `OLG-*.png` app icons and `favicon.ico`. |
 | `tools/make-icon-data.mjs` | Rebuilds `main-site/js/icon-data.js`, the link icons, from pinned Simple Icons (CC0) and Feather (MIT). Run `npm install && npm run icons` in `tools/`. |
 | `SETUP.md` | Step-by-step setup, including the Telegram bot. |
+| `TURNSTILE-SETUP.md` | Setting up Cloudflare Turnstile on sign-up and reports. |
 | `gftv-theme.md`, `gftv-official.md`, `update-bar-spec.md`, `i18n-retrofit-spec.md`, `telethon-richmessage-retrofit.md`, `gftv-retrofit-*.md` | The GFTV specifications this site follows. |
 | `gftv-flag.png`, `PROXIMA NOVA FONT.woff2` | Source assets. The site uses a 72 by 48 copy of the flag and a renamed copy of the font. |
 

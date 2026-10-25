@@ -73,10 +73,15 @@
                     <span data-i18n="field.password-confirm">Type it again</span>
                     <input id="passwordConfirm" type="password" autocomplete="new-password" required>
                 </label>
+                <div class="human-check" id="humanCheck"></div>
                 <div class="callout danger" id="accountError" role="alert"></div>
                 <div class="actions">
                     <button class="btn btn-primary" type="submit" id="accountSubmit"><span data-i18n="common.continue">Continue</span></button>
                 </div>
+                <p class="muted small u-center">
+                    <a class="text-link" href="/privacy" data-i18n="footer.privacy">Privacy</a> ·
+                    <a class="text-link" href="https://policy.globalfurry.tv/legal/terms" target="_blank" rel="noopener" data-i18n="privacy.gftv-terms">GFTV Terms of Use</a>
+                </p>
             </form>
             <p class="muted small u-mt-1 u-center"><span data-i18n="register.have-page">Already have a page?</span> <a class="text-link" href="/login" data-i18n="home.sign-in">Sign in</a></p>
         </section>
@@ -141,6 +146,10 @@
     </main>
 
     <footer class="site-footer">
+        <nav>
+            <a href="/privacy" data-i18n="footer.privacy">Privacy</a>
+            <a href="https://policy.globalfurry.tv/legal/terms" target="_blank" rel="noopener" data-i18n="footer.terms">Terms of Use</a>
+        </nav>
         <span data-i18n="footer.made">Made with</span> <span data-icon="heart"></span> <span data-i18n="footer.in">in</span>
         <a href="https://www.google.com/maps/place/Singapore" target="_blank" rel="noopener" data-i18n="footer.singapore">Singapore</a>
         <span data-i18n="footer.by">by Global Furry Television</span> &copy; 2014-<span id="currentYear"></span>.
@@ -168,6 +177,7 @@
     </div>
 
     <script src="/js/vendor/qrcode.js"></script>
+    <script src="/js/vendor/fingerprintjs.js"></script>
     <script type="module" src="/js/pages/register.js"></script>
 </body>
 

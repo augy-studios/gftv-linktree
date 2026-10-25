@@ -19,7 +19,7 @@
 // visitor's saved pages. A page that has been taken down or deleted is
 // dropped from the saved copies the next time it is fetched.
 
-const VERSION = '2026-10-26.4';
+const VERSION = '2026-10-26.5';
 const PREFIX = 'gftv-onelink-';
 const CACHE = PREFIX + VERSION;
 const SAVED_PAGES = 'onelink-saved-pages-v1';
@@ -37,6 +37,7 @@ const PRECACHE = [
   '/reset',
   '/edit',
   '/admin',
+  '/privacy',
   '/404.html',
   '/shell/profile',
   '/style.css',
@@ -84,6 +85,9 @@ const PRECACHE = [
   '/js/bg-removal-worker.js',
   '/js/password-toggle.js',
   '/js/vendor/qrcode.js',
+  '/js/vendor/fingerprintjs.js',
+  '/js/visitor.js',
+  '/js/turnstile.js',
   '/js/pages/home.js',
   '/js/pages/register.js',
   '/js/pages/login.js',
@@ -92,10 +96,11 @@ const PRECACHE = [
   '/js/pages/admin.js',
   '/js/pages/profile.js',
   '/js/pages/notfound.js',
+  '/js/pages/privacy.js',
 ];
 
 // The pages that are part of the shell, by their clean path.
-const SHELL_PAGES = new Set(['/', '/register', '/login', '/reset', '/edit', '/admin']);
+const SHELL_PAGES = new Set(['/', '/register', '/login', '/reset', '/edit', '/admin', '/privacy']);
 const SLUG_PATH = /^\/[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){1,31}$/;
 
 // A redirected response cannot be served to a navigation, so store a clean copy.

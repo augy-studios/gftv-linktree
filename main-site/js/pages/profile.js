@@ -16,11 +16,15 @@ import { openModal, closeModal, withBusy, toast, copyText, el } from '../ui.js';
 import { iconNode, hydrateIcons } from '../icons.js';
 import { qrSvg, downloadQr } from '../qr.js';
 import { fillAvatar } from '../avatar.js';
+import { humanCheck } from '../turnstile.js';
 
 const $ = (id) => document.getElementById(id);
 const root = $('profile');
 let data = null;
 let reportTarget = null;
+// Turnstile, loaded the first time the report form opens and not before:
+// nothing from Cloudflare loads for someone who only reads the page.
+let reportCheck = null;
 const REDIRECT_SECONDS = 5;
 
 function slugFromPath() {
@@ -260,17 +264,24 @@ function openReport(link) {
   // A redirect waits while the visitor is reporting it.
   countdown?.hold('report', true);
   openModal('reportModal', { initialFocus: $('reportReason'), onClose: () => countdown?.hold('report', false) });
+  reportCheck ??= humanCheck($('reportCheck'), 'report');
 }
 
 $('reportForm').addEventListener('submit', (e) => {
   e.preventDefault();
   withBusy($('reportSubmit'), $('reportError'), async () => {
-    await post('/api/public/report', {
-      slug: data.page.slug,
-      linkId: reportTarget ? reportTarget.id : null,
-      reason: $('reportReason').value,
-      details: $('reportDetails').value,
-    });
+    const turnstile = await reportCheck.token();
+    try {
+      await post('/api/public/report', {
+        slug: data.page.slug,
+        linkId: reportTarget ? reportTarget.id : null,
+        reason: $('reportReason').value,
+        details: $('reportDetails').value,
+        turnstile,
+      });
+    } finally {
+      reportCheck.reset();
+    }
     closeModal('reportModal');
     toast(t('report.thanks'));
   });

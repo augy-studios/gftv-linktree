@@ -1,6 +1,6 @@
 // An in-memory stand-in for the supabase-js client, covering the query
 // builder calls the API makes, with the schema's unique constraints, foreign
-// key cascades and RPC functions from migrations/001 to 010. Enough to drive every
+// key cascades and RPC functions from migrations/001 to 012. Enough to drive every
 // route end to end in tests; not a general PostgREST.
 
 import { randomUUID } from 'node:crypto';
@@ -17,13 +17,14 @@ const DEFAULTS = {
   gftvonelink_auth_challenges: () => ({ attempts: 0, pending_totp_secret: null, telegram_code_hash: null, telegram_code_expires_at: null }),
   gftvonelink_telegram_links: () => ({ used_at: null }),
   gftvonelink_reports: () => ({ link_id: null, details: '', status: 'open', resolved_by: null, resolved_at: null, resolution_note: null }),
-  gftvonelink_audit_logs: () => ({ details: {}, actor_type: 'system', actor_id: null, page_id: null, ip_hash: null }),
+  gftvonelink_audit_logs: () => ({ details: {}, actor_type: 'system', actor_id: null, page_id: null, ip_hash: null, visitor_hash: null }),
   gftvonelink_blocked_patterns: () => ({ applies_to: 'links', reason: null }),
   gftvonelink_review_patterns: () => ({ reason: null }),
   gftvonelink_testimonials: () => ({ page_slug: null, is_visible: true, order_index: 0, updated_at: now(), page_id: null, status: 'approved', consented_at: null, reviewed_by: null, reviewed_at: null }),
 };
 
-const PRIMARY = { gftvonelink_blocked_slugs: 'slug', gftvonelink_blocked_domains: 'domain', gftvonelink_rate_limits: 'bucket', gftvonelink_ip_bans: 'ip_hash' };
+// A list for a primary key over several columns.
+const PRIMARY = { gftvonelink_blocked_slugs: 'slug', gftvonelink_blocked_domains: 'domain', gftvonelink_rate_limits: 'bucket', gftvonelink_ip_bans: 'ip_hash', gftvonelink_visitor_bans: ['visitor_hash', 'ip_hash'] };
 const UNIQUE = {
   gftvonelink_pages: ['slug'],
   gftvonelink_passkeys: ['credential_id'],
@@ -216,7 +217,7 @@ export function createFakeDb() {
         for (const values of list) {
           const pk = PRIMARY[name] || 'id';
           if (this.op === 'upsert') {
-            const existing = table(name).find((r) => r[pk] === values[pk]);
+            const existing = table(name).find((r) => [].concat(pk).every((c) => r[c] === values[c]));
             if (existing) { Object.assign(existing, values); made.push(existing); continue; }
           }
           const row = { ...(DEFAULTS[name]?.() ?? {}), created_at: now(), ...values };

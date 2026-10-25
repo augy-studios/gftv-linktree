@@ -21,7 +21,7 @@ export default route('me/page', async (req, res) => {
     const body = await readJson(req, res);
     if (!body) return;
     if (await limited(req, res, 'ownerWrite', [`page:${owner.page.id}`])) return;
-    if (await refusedForBan(req, res)) return;
+    if (await refusedForBan(req, res, { pageId: owner.page.id })) return;
     const fields = {};
     if (body.displayName !== undefined) fields.display_name = cleanText(body.displayName, LIMITS.displayName);
     if (body.bio !== undefined) fields.bio = cleanText(body.bio, LIMITS.bio, { multiline: true });

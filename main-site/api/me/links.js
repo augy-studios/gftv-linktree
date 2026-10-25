@@ -30,7 +30,7 @@ export default route('me/links', async (req, res) => {
   const body = await readJson(req, res);
   if (!body) return;
   if (await limited(req, res, 'ownerWrite', [`page:${owner.page.id}`])) return;
-  if (await refusedForBan(req, res)) return;
+  if (await refusedForBan(req, res, { pageId: owner.page.id })) return;
   const pageId = owner.page.id;
   // A refused address also counts towards quarantine (guards.js).
   const refuse = async (url, input) => {
