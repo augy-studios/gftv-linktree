@@ -32,6 +32,12 @@ export function openModal(id, { initialFocus = null, onClose = null } = {}) {
   if (!backdrop || !backdrop.classList.contains('hidden')) return;
   open.forEach((entry) => entry.backdrop.setAttribute('inert', ''));
   open.push({ id, backdrop, returnTo: document.activeElement, onClose });
+  // Every backdrop is z-index 50 in style.css, so a dialog opened from inside
+  // another one would paint under it whenever it comes earlier in the markup,
+  // and sit there unseen while the one on top is inert. Each newly opened
+  // dialog goes one above the stack instead (still under the toast, at 60).
+  // Not reset on close, so a closing dialog keeps its place while it fades.
+  backdrop.style.zIndex = String(50 + open.length);
   backdrop.removeAttribute('inert');
   backdrop.classList.remove('hidden');
   setBackgroundInert(true);
