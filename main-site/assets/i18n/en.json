@@ -687,7 +687,7 @@
   "edit.tab-stats": "Stats",
   "edit.review-notice": "The GFTV team checks pages with names like yours before they go live. Set your page up now; it appears as soon as it is approved.",
   "edit.quarantine-notice": "Your page is paused while the GFTV team checks it, because several addresses you tried to add are on lists of harmful sites. Visitors see that it is being checked. If this is a mistake, it will be released soon.",
-  "redirect.title": "Send visitors straight to one link",
+  "redirect.title": "Redirect viewers somewhere else",
   "redirect.help": "Instead of your links, visitors see where they are going for five seconds, then go there. Your links are kept for when you turn this off.",
   "redirect.url": "Send visitors to",
   "redirect.save": "Turn on redirect",

@@ -682,7 +682,7 @@
   "edit.tab-stats": "统计",
   "edit.review-notice": "GFTV 团队会在这类名称的页面上线前进行审核。你现在就可以设置页面，审核通过后会马上显示。",
   "edit.quarantine-notice": "由于你尝试添加的几个网址都在有害网站名单上，你的页面已暂停，等待 GFTV 团队检查。访客会看到页面正在接受检查。如果这是误会，页面很快就会恢复。",
-  "redirect.title": "让访客直接前往一个链接",
+  "redirect.title": "把访客转到其他地方",
   "redirect.help": "访客不会看到你的链接，而是先看到将要前往的网址五秒，然后自动前往。关闭后你的链接仍然保留。",
   "redirect.url": "让访客前往",
   "redirect.save": "开启跳转",
