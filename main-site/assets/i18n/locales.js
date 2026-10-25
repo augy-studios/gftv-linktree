@@ -19,6 +19,6 @@ export const registry = [
   { code: 'zh', name: '华文', dir: 'ltr', flag: 'cn' },
   { code: 'ms', name: 'Bahasa Melayu', dir: 'ltr', flag: 'my' },
   { code: 'ta', name: 'தமிழ்', dir: 'ltr', flag: 'in' },
-  { code: 'tl', name: 'Filipino', dir: 'ltr', flag: 'ph' },
+  { code: 'tl', name: 'Tagalog', dir: 'ltr', flag: 'ph' },
   { code: 'id', name: 'Bahasa Indonesia', dir: 'ltr', flag: 'id' },
 ];
