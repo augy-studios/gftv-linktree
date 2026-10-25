@@ -2,7 +2,7 @@ import './harness.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { checkSlug, sanitizeUrl, hostIsBlocked, normaliseDomain, cleanText, checkPassword } from '../api/_lib/validate.js';
-import { generateBackupCodes, hashCode, findMatchingCode, encryptSecret, decryptSecret, verifyPassword, hashPassword } from '../api/_lib/crypto.js';
+import { generateBackupCodes, hashCode, findMatchingCode, encryptSecret, decryptSecret, verifyPassword, hashPassword, parseEncryptionKey } from '../api/_lib/crypto.js';
 import { generateTotpSecret, verifyTotp, totpAt } from '../api/_lib/totp.js';
 import { inlineJson } from '../api/render.js';
 
@@ -72,6 +72,15 @@ test('TOTP secrets round-trip through encryption', () => {
   assert.notEqual(sealed, secret);
   assert.equal(decryptSecret(sealed), secret);
   assert.equal(decryptSecret(sealed.slice(0, -2) + 'AA'), null);
+});
+
+test('encryption key: 44-char base64 or 64-char hex, nothing shorter', () => {
+  const bytes = Buffer.alloc(32, 7);
+  assert.equal(parseEncryptionKey(bytes.toString('base64')).length, 32);
+  assert.equal(parseEncryptionKey(bytes.toString('hex')).length, 32);
+  assert.equal(parseEncryptionKey(`"${bytes.toString('base64')}"`).length, 32, 'pasted with quotes');
+  assert.throws(() => parseEncryptionKey(Buffer.alloc(24).toString('base64')), /32 characters \(24 bytes\)/);
+  assert.throws(() => parseEncryptionKey(Buffer.alloc(16).toString('hex')), /32 characters/);
 });
 
 test('TOTP accepts one step either side and nothing further', () => {

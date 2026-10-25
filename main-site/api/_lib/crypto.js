@@ -93,10 +93,24 @@ export async function findMatchingCode(typed, rows) {
   return matched;
 }
 
-function secretKey() {
-  const key = Buffer.from(requiredEnv('TOTP_ENCRYPTION_KEY'), 'base64');
-  if (key.length !== 32) throw new Error('TOTP_ENCRYPTION_KEY must be 32 bytes, base64 encoded');
+// TOTP_ENCRYPTION_KEY is 32 random bytes, written either as base64 (44
+// characters, from `openssl rand -base64 32`) or as hex (64 characters, from
+// `openssl rand -hex 32`). Anything that does not come to exactly 32 bytes is
+// refused rather than stretched, and the error says what it got.
+export function parseEncryptionKey(raw) {
+  const value = String(raw ?? '').trim().replace(/^(['"])(.*)\1$/, '$2');
+  const key = /^[0-9a-f]{64}$/i.test(value) ? Buffer.from(value, 'hex') : Buffer.from(value, 'base64');
+  if (key.length !== 32) {
+    throw new Error(
+      `TOTP_ENCRYPTION_KEY must be 32 bytes: 44 characters of base64 or 64 of hex. ` +
+        `The value set is ${value.length} characters (${key.length} bytes). Make one with: openssl rand -base64 32`
+    );
+  }
   return key;
+}
+
+function secretKey() {
+  return parseEncryptionKey(requiredEnv('TOTP_ENCRYPTION_KEY'));
 }
 
 export function encryptSecret(plain) {

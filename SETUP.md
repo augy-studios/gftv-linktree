@@ -32,11 +32,17 @@ Without Node, for example on a plain Debian server, `openssl` makes the same
 values:
 
 ```sh
-echo "TOTP_ENCRYPTION_KEY=$(openssl rand -base64 32)"
-echo "IP_HASH_SALT=$(openssl rand -hex 24)"
-echo "CRON_SECRET=$(openssl rand -hex 24)"
-echo "TELEGRAM_WEBHOOK_SECRET=$(openssl rand -hex 24)"
+echo "TOTP_ENCRYPTION_KEY=$(openssl rand -hex 32)"
+echo "IP_HASH_SALT=$(openssl rand -hex 32)"
+echo "CRON_SECRET=$(openssl rand -hex 32)"
+echo "TELEGRAM_WEBHOOK_SECRET=$(openssl rand -hex 32)"
 ```
+
+`TOTP_ENCRYPTION_KEY` must be exactly 32 bytes: 64 characters of hex, as
+above, or 44 of base64 (`openssl rand -base64 32`). Anything else is refused
+with an error naming the length it got. The other three take any long random
+string; hex is safest for the webhook secret, which Telegram limits to
+letters, digits, `_` and `-`.
 
 Nothing in this guide runs on a server of your own: the site, its API and the
 Telegram webhook all run on Vercel. Any terminal will do for these commands
@@ -101,10 +107,12 @@ In Telegram, open [@BotFather](https://t.me/BotFather):
    - `/setabouttext`: `Codes for links.gftv.asia`
    - `/setuserpic`: upload `main-site/OLG-512.png`
    - `/setcommands`, then send:
-     ```
+
+     ```text
      start - Link a page from your page editor
      unlink - Stop receiving codes in this chat
      ```
+
    - `/setjoingroups` > **Disable**. Codes must only ever go to private chats,
      and the bot ignores groups anyway.
 
@@ -154,9 +162,11 @@ Seeing that line means the rich path needs a look; nobody misses a code.
 
 - **Turn Telegram off:** clear the three `TELEGRAM_` variables and redeploy,
   then remove the webhook:
+
   ```sh
   curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/deleteWebhook"
   ```
+
   Linked chats stay on record and work again if it is switched back on.
 - **Token leaked:** in BotFather send `/revoke`, pick the bot, put the new
   token in `TELEGRAM_BOT_TOKEN`, redeploy, and run 4.2 again. Also pick a new
