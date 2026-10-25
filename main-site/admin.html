@@ -189,6 +189,11 @@
                     </div>
                 </div>
                 <div class="panel-section">
+                    <h2 data-i18n="admin.flagged-title">Flagged connections</h2>
+                    <p class="muted small" data-i18n="admin.flagged-body">Connections that tried five harmful addresses today, and cannot save links until the day is up. Only a one-way hash of each address is kept, so each is shown by the start of it. Unflag one that was caught by mistake; to free its page as well, release the page under Pages.</p>
+                    <ul class="data-list u-mt-075" id="flaggedList"></ul>
+                </div>
+                <div class="panel-section">
                     <h2 data-i18n="admin.blocked-patterns">Blocked patterns</h2>
                     <p class="muted small" data-i18n="admin.blocked-patterns-body">Regular expressions, matched without regard to case. For links, any address that matches is refused and stops showing within a minute; for page names, matching names cannot be registered.</p>
                     <form class="toolbar u-mt-075" id="patternBlockForm">

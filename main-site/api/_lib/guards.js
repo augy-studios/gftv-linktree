@@ -235,6 +235,55 @@ export async function refusedForAttempts(req, res) {
   return false;
 }
 
+// Connections flagged today, newest first, for staff to look at and lift:
+// [{ id, attempts, since, slug }]. id is the start of the stored hash of the
+// address (the address itself is never kept), enough to tell them apart.
+export async function flaggedConnections() {
+  const since = new Date(Date.now() - SUSPICION_WINDOW * 1000).toISOString();
+  const { data, error } = await db()
+    .from('gftvonelink_rate_limits')
+    .select('bucket, hits, window_start')
+    .like('bucket', 'badlink:ip:%')
+    .gte('hits', IP_FLAG_AFTER)
+    .gte('window_start', since);
+  if (error) throw error;
+  const rows = [];
+  for (const row of data ?? []) {
+    const hash = row.bucket.slice('badlink:ip:'.length);
+    const { data: last, error: auditError } = await db()
+      .from(T.audit)
+      .select('page_id, created_at')
+      .eq('action', 'security.link_refused')
+      .eq('ip_hash', hash)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (auditError) throw auditError;
+    let slug = null;
+    if (last?.[0]?.page_id) {
+      const { data: page } = await db().from(T.pages).select('slug').eq('id', last[0].page_id).maybeSingle();
+      slug = page?.slug ?? null;
+    }
+    rows.push({ id: hash.slice(0, 16), attempts: row.hits, since: row.window_start, slug });
+  }
+  return rows.sort((a, b) => (a.since < b.since ? 1 : -1));
+}
+
+// Lift a flag by the start of its hash, as flaggedConnections shows it.
+// True when one was lifted.
+export async function unflagConnection(id) {
+  if (!/^[0-9a-f]{16}$/.test(String(id))) return false;
+  const { data, error } = await db().from('gftvonelink_rate_limits').delete().like('bucket', `badlink:ip:${id}%`).select('bucket');
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}
+
+// Forget a page's refused addresses for the day, so a page staff have
+// released is not quarantined again by the next mistake.
+export async function resetRefusedLinks(pageId) {
+  const { error } = await db().from('gftvonelink_rate_limits').delete().eq('bucket', `badlink:page:${pageId}`);
+  if (error) throw error;
+}
+
 // Count a refused address. Returns { quarantined } so the route can say so.
 export async function noteRefusedLink(req, page, error, url) {
   if (!SUSPICIOUS_LINK_ERRORS.has(error)) return { quarantined: false };

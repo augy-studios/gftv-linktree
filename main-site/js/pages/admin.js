@@ -589,7 +589,29 @@ function renderThreatList(info) {
     : t('admin.threat-none');
 }
 
+function flaggedRows(items) {
+  return items.map((item) => el('li', { class: 'data-row' }, [
+    el('div', {}, [
+      el('div', { class: 'primary mono', text: item.id }),
+      el('div', { class: 'secondary', text: [
+        t('admin.flagged-attempts', { count: item.attempts, n: formatNumber(item.attempts) }),
+        t('admin.flagged-since', { when: formatDate(item.since) }),
+        item.slug ? t('admin.flagged-page', { slug: item.slug }) : null,
+      ].filter(Boolean).join(' · ') }),
+    ]),
+    el('div', { class: 'row-actions' }, [actionButton('admin.unflag', 'check', async () => {
+      try {
+        renderBlocks(await post('/api/admin/blocklist', { action: 'unflag-connection', id: item.id }));
+        toast(t('admin.unflagged'));
+      } catch (error) {
+        toast(errorText(error));
+      }
+    })]),
+  ]));
+}
+
 function renderBlocks(data) {
+  fill($('flaggedList'), flaggedRows(data.flagged ?? []), 'admin.empty-flagged');
   fill($('slugBlockList'), blockRows(data.slugs, 'slug'), 'admin.empty-blocks');
   fill($('domainBlockList'), blockRows(data.domains, 'domain'), 'admin.empty-blocks');
   fill($('patternBlockList'), blockRows(data.patterns, 'pattern'), 'admin.empty-blocks');
@@ -599,7 +621,7 @@ function renderBlocks(data) {
 
 loaders.blocks = async () => {
   if (!isAdmin()) return;
-  for (const id of ['slugBlockList', 'domainBlockList', 'patternBlockList', 'reviewBlockList']) loading($(id));
+  for (const id of ['slugBlockList', 'domainBlockList', 'patternBlockList', 'reviewBlockList', 'flaggedList']) loading($(id));
   try {
     renderBlocks(await api('/api/admin/blocklist'));
   } catch (error) {

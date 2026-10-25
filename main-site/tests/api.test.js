@@ -879,6 +879,27 @@ test('repeated harmful addresses quarantine the page and flag the connection', a
   assert.equal(listed[0].quarantineReason, page.quarantine_reason);
   assert.equal((await editor.call(adminPages, { method: 'POST', body: { action: 'release', id: page.id } })).status, 200);
   assert.equal((await browser().call(publicPage, { query: { slug: 'augy' } })).status, 200);
+
+  // A release starts the page's count again, so one more mistake does not
+  // quarantine it straight back.
+  await add('https://evil.example/again', '198.51.100.50');
+  assert.equal(page.quarantined_at, null);
+
+  // Admins see the flagged connection by the start of its hash and can lift it.
+  const { secret: bossSecret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const boss = browser();
+  await staffSignIn(boss, 'boss', bossSecret);
+  assert.equal((await editor.call(adminBlocklist)).json.error, 'admin_only');
+  const flagged = (await boss.call(adminBlocklist)).json.flagged;
+  assert.equal(flagged.length, 1);
+  assert.match(flagged[0].id, /^[0-9a-f]{16}$/);
+  assert.equal(flagged[0].attempts, 5);
+  assert.equal(flagged[0].slug, 'augy');
+  const lifted = await boss.call(adminBlocklist, { method: 'POST', body: { action: 'unflag-connection', id: flagged[0].id } });
+  assert.deepEqual(lifted.json.flagged, []);
+  assert.equal((await add('https://fine.example/2')).status, 200, 'the connection can save links again');
+  assert.equal((await boss.call(adminBlocklist, { method: 'POST', body: { action: 'unflag-connection', id: flagged[0].id } })).json.error, 'not_flagged');
+  assert.ok(fake.table('gftvonelink_audit_logs').some((r) => r.action === 'mod.connection_unflagged'));
 });
 
 test('the home page totals are real, and borrow the GFTV short links log', async () => {

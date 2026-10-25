@@ -21,7 +21,7 @@
 import { route, guard, readJson, ok, fail, query } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
 import { cleanText, isUuid, LIMITS, DORMANT_AFTER_DAYS } from '../_lib/validate.js';
-import { limited, audit } from '../_lib/guards.js';
+import { limited, audit, resetRefusedLinks } from '../_lib/guards.js';
 import { requireStaff } from '../_lib/staff.js';
 import { endAllOwnerSessions } from '../_lib/session.js';
 import { adminPageRow, adminLinkRow, adminReportRow } from '../_lib/serialize.js';
@@ -139,6 +139,7 @@ export default route('admin/pages', async (req, res) => {
     await audit(req, { action: 'mod.page_released', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug } });
     const { error: updateError } = await db().from(T.pages).update({ quarantined_at: null, quarantine_reason: null }).eq('id', page.id);
     if (updateError) throw updateError;
+    await resetRefusedLinks(page.id);
   } else if (body.action === 'remove-avatar') {
     if (!page.avatar_path) return fail(res, 409, 'no_avatar');
     const reason = cleanText(body.reason, LIMITS.reason, { multiline: true });
