@@ -140,11 +140,22 @@ function wireFooterYear() {
   if (el) el.textContent = String(new Date().getFullYear());
 }
 
+// A hidden way in for staff: triple-clicking "Global Furry Television" in the
+// footer opens /admin. event.detail is the browser's own click count.
+function wireFooterAdminLink() {
+  const el = document.querySelector('.site-footer [data-i18n="footer.by"]');
+  if (!el) return;
+  el.addEventListener('click', (e) => {
+    if (e.detail === 3 && location.pathname !== '/admin') location.assign('/admin');
+  });
+}
+
 initTheme();
 hydrateIcons();
 wireModals();
 wireTheme();
 wireStickyHeader();
 wireFooterYear();
+wireFooterAdminLink();
 initPasswordToggles();
 initUpdateBar();
