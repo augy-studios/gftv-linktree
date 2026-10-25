@@ -3,6 +3,8 @@
 // GET ?status=open|resolved|dismissed&offset=
 // POST { action: "resolve" | "dismiss", id, note?, removeLink? }
 //   removeLink soft-deletes the reported link in the same step.
+// POST { action: "delete", id }   admin only; removes the report for good,
+//   after recording what it was in the audit log.
 
 import { route, guard, readJson, ok, fail, query } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
@@ -37,11 +39,26 @@ export default route('admin/reports', async (req, res) => {
   const body = await readJson(req, res);
   if (!body) return;
   if (await limited(req, res, 'staffWrite', [`staff:${staff.user.id}`])) return;
-  if (!isUuid(body.id) || !['resolve', 'dismiss'].includes(body.action)) return fail(res, 400, 'bad_request');
+  if (!isUuid(body.id) || !['resolve', 'dismiss', 'delete'].includes(body.action)) return fail(res, 400, 'bad_request');
+  if (body.action === 'delete' && staff.user.is_admin !== true) return fail(res, 403, 'admin_only');
 
-  const { data: report, error } = await db().from(T.reports).select('id, page_id, link_id, status').eq('id', body.id).maybeSingle();
+  const { data: report, error } = await db().from(T.reports).select('id, page_id, link_id, status, reason, details, page:gftvonelink_pages ( slug )').eq('id', body.id).maybeSingle();
   if (error) throw error;
   if (!report) return fail(res, 404, 'report_not_found');
+
+  if (body.action === 'delete') {
+    // Written first, so the log keeps what the report said once it is gone.
+    await audit(req, {
+      action: 'mod.report_deleted',
+      actorType: 'staff',
+      actorId: staff.user.id,
+      pageId: report.page_id,
+      details: { reportId: report.id, slug: report.page?.slug ?? null, reason: report.reason, status: report.status, details: String(report.details || '').slice(0, 200) },
+    });
+    const { error: deleteError } = await db().from(T.reports).delete().eq('id', report.id);
+    if (deleteError) throw deleteError;
+    return ok(res, { deleted: true });
+  }
 
   const note = cleanText(body.note, LIMITS.reason, { multiline: true }) || null;
   const status = body.action === 'resolve' ? 'resolved' : 'dismissed';

@@ -359,7 +359,25 @@ function reportRow(r) {
     );
   }
   actions.append(actionButton('admin.view-page', 'eye', () => openPage(r.pageId)));
+  const remove = deleteReportAction(r, () => loaders.reports());
+  if (remove) actions.append(remove);
   return el('li', { class: 'data-row' }, [info, actions]);
+}
+
+// Admins can delete a report outright, after a confirmation; the audit log
+// keeps what it said.
+function deleteReportAction(r, after) {
+  if (!isAdmin()) return null;
+  return actionButton('admin.delete-report', 'trash', async () => {
+    if (!window.confirm(t('admin.delete-report-confirm'))) return;
+    try {
+      await post('/api/admin/reports', { action: 'delete', id: r.id });
+      toast(t('admin.report-deleted'));
+      after();
+    } catch (error) {
+      if (!guardSession(error)) toast(errorText(error));
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -487,7 +505,7 @@ async function openPage(id) {
         el('div', { class: 'primary', text: `${t(`report.reason-${r.reason}`)} · ${t(`admin.report-${r.status}`)}` }),
         el('div', { class: 'secondary', text: formatDate(r.createdAt) }),
         r.details ? el('pre', { text: r.details }) : null,
-      ])])) : [el('li', { class: 'empty-state', text: t('admin.empty-reports') })]),
+      ]), el('div', { class: 'row-actions' }, [deleteReportAction(r, () => { refresh(); loaders.reports?.(); })].filter(Boolean))])) : [el('li', { class: 'empty-state', text: t('admin.empty-reports') })]),
     ].filter(Boolean));
   } catch (error) {
     if (guardSession(error)) closeModal('pageModal');

@@ -931,6 +931,28 @@ test('the home page totals are real, and borrow the GFTV short links log', async
   assert.deepEqual(leaks(data), []);
 });
 
+test('admins can delete a report, and the audit log keeps what it said', async () => {
+  const owner = browser();
+  await makePage(owner);
+  await browser().call(report, { method: 'POST', body: { slug: 'augy', reason: 'spam', details: 'Mistaken report' } });
+  const reportId = fake.table('gftvonelink_reports')[0].id;
+
+  const { secret: adminSecret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const { secret: editorSecret } = await makeStaff({ username: 'ed', role: 'editor' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', adminSecret);
+  const editor = browser();
+  await staffSignIn(editor, 'ed', editorSecret);
+
+  assert.equal((await editor.call(adminReports, { method: 'POST', body: { action: 'delete', id: reportId } })).json.error, 'admin_only');
+  const done = await admin.call(adminReports, { method: 'POST', body: { action: 'delete', id: reportId } });
+  assert.equal(done.json.deleted, true);
+  assert.equal(fake.table('gftvonelink_reports').length, 0);
+  const logged = fake.table('gftvonelink_audit_logs').find((r) => r.action === 'mod.report_deleted');
+  assert.deepEqual(logged.details, { reportId, slug: 'augy', reason: 'spam', status: 'open', details: 'Mistaken report' });
+  assert.equal((await admin.call(adminReports, { method: 'POST', body: { action: 'delete', id: reportId } })).json.error, 'report_not_found');
+});
+
 test('a bio holds up to 512 characters', async () => {
   const owner = browser();
   await makePage(owner);
