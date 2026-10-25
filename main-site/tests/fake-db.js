@@ -1,6 +1,6 @@
 // An in-memory stand-in for the supabase-js client, covering the query
 // builder calls the API makes, with the schema's unique constraints, foreign
-// key cascades and RPC functions from migrations/001 to 006. Enough to drive every
+// key cascades and RPC functions from migrations/001 to 008. Enough to drive every
 // route end to end in tests; not a general PostgREST.
 
 import { randomUUID } from 'node:crypto';
@@ -294,6 +294,37 @@ export function createFakeDb() {
       statHit(page.id, 'device', p_device ?? 'desktop');
       statHit(page.id, 'referrer', p_referrer ?? '');
       return true;
+    },
+    // Migration 008. gftvlinks_linkvisits counts only when a test has put rows
+    // in it, standing in for "the table exists".
+    gftvonelink_site_insights() {
+      const stats = table('gftvonelink_page_stats');
+      const sgDay = (iso) => new Date(new Date(iso).getTime() + 8 * 3600_000).toISOString().slice(0, 10);
+      const sum = (kind, key) => stats.filter((r) => r.kind === kind && (key === undefined || r.key === key)).reduce((n, r) => n + r.hits, 0);
+      const visits = table('gftvlinks_linkvisits');
+      const today = sgDay(new Date().toISOString());
+      const daily = Array.from({ length: 30 }, (_, i) => {
+        const day = sgDay(new Date(Date.parse(`${today}T12:00:00Z`) - (29 - i) * 86400_000).toISOString());
+        return { day, clicks: stats.filter((r) => r.kind === 'clicks' && r.day === day).reduce((n, r) => n + r.hits, 0) + visits.filter((v) => sgDay(v.visited_at) === day).length };
+      });
+      const devices = {};
+      for (const r of stats.filter((s) => s.kind === 'device')) devices[r.key] = (devices[r.key] || 0) + r.hits;
+      for (const v of visits) devices[v.device_type.toLowerCase()] = (devices[v.device_type.toLowerCase()] || 0) + 1;
+      const top = (kind, skip) => {
+        const totals = new Map();
+        for (const r of stats.filter((s) => s.kind === kind && s.key !== skip)) totals.set(r.key, (totals.get(r.key) || 0) + r.hits);
+        const [key, hits] = [...totals].sort((a, b) => b[1] - a[1])[0] ?? [];
+        return key === undefined ? null : { key, hits };
+      };
+      return {
+        visits: sum('visits'),
+        clicks: sum('clicks') + visits.length,
+        pages: table('gftvonelink_pages').filter((p) => p.status === 'active').length,
+        daily,
+        devices,
+        country: top('country', 'XX'),
+        referrer: top('referrer', ''),
+      };
     },
     gftvonelink_reorder_links({ p_page_id, p_ids }) {
       p_ids.forEach((id, i) => {

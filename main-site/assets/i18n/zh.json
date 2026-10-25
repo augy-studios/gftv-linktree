@@ -810,10 +810,11 @@
   "home.insights-title": "看看谁来访 让他们一再回来",
   "home.insights-body": "你的页面每天都会统计访问和点击，并显示访客在哪里、从哪个网站过来、用什么设备浏览。只保存每日总数，从不记录访客是谁。",
   "home.tile-clicks": "点击",
-  "home.tile-source": "来自 Instagram",
+  "home.tile-source": "的访问来自 {site}",
   "home.tile-devices": "用手机浏览",
-  "home.tile-place": "新加坡",
   "home.tile-visits": "访问",
+  "home.tiles-note": "来自 OneLink 和 GFTV 链接的实时总数，每十分钟更新一次。",
+  "home.tile-pages.other": "个页面已上线",
   "home.loved-title": "社区好评",
   "home.faq-title": "常见问题",
   "home.cta-title": "你在网上的小角落 只差一个链接",
@@ -833,5 +834,5 @@
   "faq.links-q": "哪些链接可以添加？",
   "faq.links-a": "任何以 http 或 https 开头的网址都可以，但短链接（会隐藏去向）和我们检查的威胁名单上的网站除外。任何人都可以举报页面或链接，GFTV 团队会审核每一份举报。",
   "faq.who-q": "OneLink 由谁运营？",
-  "faq.who-a": "来自新加坡的国际兽视（Global Furry Television）。可以查看页面顶部的横条，了解如何辨认 GFTV 官方网站。"
+  "faq.who-a": "由国际兽视（Global Furry Television）的技术与基础设施开发小组委员会（TIDSC）在新加坡运营。可以查看页面顶部的横条，了解如何辨认 GFTV 官方网站。"
 }

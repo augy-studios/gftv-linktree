@@ -815,10 +815,12 @@
   "home.insights-title": "See who's visiting and keep them coming back",
   "home.insights-body": "Your page counts its visits and clicks every day, and shows where visitors are, which sites sent them and what they read it on. Only daily totals are kept, never who someone is.",
   "home.tile-clicks": "Clicks",
-  "home.tile-source": "from Instagram",
+  "home.tile-source": "of visits from {site}",
   "home.tile-devices": "on phones",
-  "home.tile-place": "Singapore",
   "home.tile-visits": "Visits",
+  "home.tiles-note": "Live totals from OneLink and GFTV links, updated every ten minutes.",
+  "home.tile-pages.other": "pages live",
+  "home.tile-pages.one": "page live",
   "home.loved-title": "Loved by the community",
   "home.faq-title": "Questions? Answered",
   "home.cta-title": "Your corner of the internet, one link away",
@@ -838,5 +840,5 @@
   "faq.links-q": "Which links are allowed?",
   "faq.links-a": "Any web address starting with http or https, except shortened links (they hide where they go) and sites on the threat lists we check against. Anyone can report a page or link, and the GFTV team reviews every report.",
   "faq.who-q": "Who runs OneLink?",
-  "faq.who-a": "Global Furry Television, from Singapore. Check the bar at the top of the page to see how to recognise an official GFTV site."
+  "faq.who-a": "Global Furry Television's Technology and Infrastructure Development Sub-Committee (TIDSC), from Singapore. Check the bar at the top of the page to see how to recognise an official GFTV site."
 }

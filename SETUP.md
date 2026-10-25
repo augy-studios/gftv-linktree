@@ -19,6 +19,8 @@ In the Supabase project that already holds the `gftvhello_` tables, open
   bucket that holds the compact copy of the domain blocklists
 - `006_quarantine.sql`: pausing pages that keep trying harmful addresses
 - `007_longer_bio.sql`: lets a bio be up to 512 characters
+- `008_site_insights.sql`: the live totals on the home page, including the
+  GFTV short links' visit log (`gftvlinks_linkvisits`) while it exists
 
 **Check:** in **Table Editor** you see the `gftvonelink_` tables, each marked
 **RLS enabled**.

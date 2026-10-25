@@ -113,29 +113,32 @@
 
         <section class="band band-insights" aria-labelledby="insightsTitle">
             <div class="band-inner split reverse">
-                <div class="tile-grid" id="insightTiles" aria-hidden="true">
-                    <div class="pop-tile t-clicks">
-                        <svg class="spark" viewBox="0 0 120 70" preserveAspectRatio="none"><path d="M2 60 C 16 60, 18 18, 32 22 S 48 58, 62 46 S 82 30, 92 34 S 110 8, 118 6"/></svg>
-                        <div><span class="count" data-count="43500">0</span><span class="tile-label" data-i18n="home.tile-clicks">Clicks</span></div>
-                    </div>
-                    <div class="pop-tile t-sources">
-                        <span data-icon="instagram"></span>
-                        <span class="count" data-count="64" data-suffix="%">0</span>
-                        <span class="tile-label" data-i18n="home.tile-source">from Instagram</span>
-                    </div>
-                    <div class="pop-tile t-devices">
-                        <div class="device-split"><span class="mobile"></span><span class="desktop"></span></div>
-                        <span class="count" data-count="78" data-suffix="%">0</span>
-                        <span class="tile-label" data-i18n="home.tile-devices">on phones</span>
-                    </div>
-                    <div class="pop-tile t-visits">
-                        <div class="globe"><span class="pin"></span></div>
-                        <div>
-                            <span class="tile-place" data-i18n="home.tile-place">Singapore</span>
-                            <span class="count" data-count="960">0</span>
-                            <span class="tile-label" data-i18n="home.tile-visits">Visits</span>
+                <div class="tile-insights">
+                    <div class="tile-grid" id="insightTiles">
+                        <div class="pop-tile t-clicks">
+                            <svg class="spark" viewBox="0 0 120 70" preserveAspectRatio="none" aria-hidden="true"><path id="tileSpark" pathLength="100" d="M2 64 L118 64"/></svg>
+                            <div><span class="count" id="tileClicks">–</span><span class="tile-label" data-i18n="home.tile-clicks">Clicks</span></div>
+                        </div>
+                        <div class="pop-tile t-sources">
+                            <span id="tileSourceIcon" data-icon="users"></span>
+                            <span class="count" id="tileSource">–</span>
+                            <span class="tile-label" id="tileSourceLabel"></span>
+                        </div>
+                        <div class="pop-tile t-devices">
+                            <div class="device-split" aria-hidden="true"><span class="mobile" id="tileMobileBar"></span><span class="desktop"></span></div>
+                            <span class="count" id="tileMobile">–</span>
+                            <span class="tile-label" data-i18n="home.tile-devices">on phones</span>
+                        </div>
+                        <div class="pop-tile t-visits">
+                            <div class="globe" aria-hidden="true"><span class="pin"></span></div>
+                            <div>
+                                <span class="tile-place" id="tilePlace"></span>
+                                <span class="count" id="tileVisits">–</span>
+                                <span class="tile-label" data-i18n="home.tile-visits">Visits</span>
+                            </div>
                         </div>
                     </div>
+                    <p class="tiles-note" data-i18n="home.tiles-note">Live totals from OneLink and GFTV links, updated every ten minutes.</p>
                 </div>
                 <div class="split-copy">
                     <h2 id="insightsTitle" class="display" data-i18n="home.insights-title">See who's visiting and keep them coming back</h2>
@@ -248,7 +251,7 @@
                     </details>
                     <details>
                         <summary><span data-i18n="faq.who-q">Who runs OneLink?</span><span data-icon="chevron-down"></span></summary>
-                        <p data-i18n="faq.who-a">Global Furry Television, from Singapore. Check the bar at the top of the page to see how to recognise an official GFTV site.</p>
+                        <p data-i18n="faq.who-a">Global Furry Television's Technology and Infrastructure Development Sub-Committee (TIDSC), from Singapore. Check the bar at the top of the page to see how to recognise an official GFTV site.</p>
                     </details>
                 </div>
             </div>

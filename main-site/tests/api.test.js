@@ -37,6 +37,7 @@ import visit from '../api/public/visit.js';
 import meStats from '../api/me/stats.js';
 import publicTestimonials from '../api/public/testimonials.js';
 import adminTestimonials from '../api/admin/testimonials.js';
+import publicInsights from '../api/public/insights.js';
 
 let fake;
 beforeEach(() => {
@@ -873,6 +874,35 @@ test('repeated harmful addresses quarantine the page and flag the connection', a
   assert.equal(listed[0].quarantineReason, page.quarantine_reason);
   assert.equal((await editor.call(adminPages, { method: 'POST', body: { action: 'release', id: page.id } })).status, 200);
   assert.equal((await browser().call(publicPage, { query: { slug: 'augy' } })).status, 200);
+});
+
+test('the home page totals are real, and borrow the GFTV short links log', async () => {
+  const empty = await browser().call(publicInsights);
+  assert.equal(empty.json.clicks, 0);
+  assert.equal(empty.json.referrer, null);
+  assert.equal(empty.json.daily.length, 30);
+  assert.match(empty.headers['cache-control'], /s-maxage=600/);
+
+  const owner = browser();
+  await makePage(owner);
+  const { links } = (await owner.call(meLinks, { method: 'POST', body: { title: 'Site', url: 'https://example.com' } })).json;
+  await browser().call(visit, { method: 'POST', body: { slug: 'augy', referrer: 'https://www.instagram.com/' }, headers: { 'user-agent': 'iPhone Mobile', 'x-vercel-ip-country': 'SG' } });
+  await browser().call(click, { method: 'POST', body: { id: links[0].id } });
+  const now = new Date().toISOString();
+  fake.table('gftvlinks_linkvisits').push(
+    { id: 'v1', link_id: 'x', slug: 'gftv', visited_at: now, device_type: 'Mobile' },
+    { id: 'v2', link_id: 'x', slug: 'gftv', visited_at: now, device_type: 'Desktop' },
+  );
+
+  const data = (await browser().call(publicInsights)).json;
+  assert.equal(data.clicks, 3, 'one OneLink click and two short link visits');
+  assert.equal(data.visits, 1);
+  assert.equal(data.pages, 1);
+  assert.equal(data.daily.at(-1).clicks, 3);
+  assert.deepEqual(data.devices, { mobile: 2, tablet: 0, desktop: 1, others: 0 });
+  assert.deepEqual(data.country, { key: 'SG', hits: 1 });
+  assert.deepEqual(data.referrer, { key: 'instagram.com', hits: 1, share: 100 });
+  assert.deepEqual(leaks(data), []);
 });
 
 test('a bio holds up to 512 characters', async () => {
