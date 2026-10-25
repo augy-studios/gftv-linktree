@@ -6,7 +6,7 @@
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
-import { limited, audit } from '../_lib/guards.js';
+import { limited, audit, refusedForBan } from '../_lib/guards.js';
 import { requireOwner } from '../_lib/session.js';
 import { loadOwnerView } from '../_lib/owner-view.js';
 import { prepareAvatar, storeAvatar, deleteAvatarFile, MAX_UPLOAD_BYTES } from '../_lib/avatar.js';
@@ -17,6 +17,7 @@ export default route('me/avatar', async (req, res) => {
   if (!owner) return;
   const page = owner.page;
   if (await limited(req, res, 'avatar', [`page:${page.id}`])) return;
+  if (await refusedForBan(req, res)) return;
 
   const previous = page.avatar_path || null;
 

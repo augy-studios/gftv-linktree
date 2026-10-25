@@ -197,6 +197,12 @@
                     <div class="pager" id="flaggedPager"></div>
                 </div>
                 <div class="panel-section">
+                    <h2 data-i18n="admin.banned-title">Banned connections</h2>
+                    <p class="muted small" data-i18n="admin.banned-body">A connection is banned when a second page is quarantined from it, or when an admin bans a flagged one. It cannot create or change pages until unbanned, but can still view pages, sign in and report. Many people can share one address (mobile networks, schools, event Wi-Fi), so lift a ban that catches someone else.</p>
+                    <ul class="data-list u-mt-075" id="bannedList"></ul>
+                    <div class="pager" id="bannedPager"></div>
+                </div>
+                <div class="panel-section">
                     <h2 data-i18n="admin.blocked-patterns">Blocked patterns</h2>
                     <p class="muted small" data-i18n="admin.blocked-patterns-body">Regular expressions, matched without regard to case. For links, any address that matches is refused and stops showing within a minute; for page names, matching names cannot be registered.</p>
                     <form class="toolbar u-mt-075" id="patternBlockForm">

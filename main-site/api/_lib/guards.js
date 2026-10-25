@@ -235,6 +235,78 @@ export async function refusedForAttempts(req, res) {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Banned connections (migration 009)
+//
+// A second page quarantined from the same connection bans it. A banned
+// connection cannot create or change pages; it can still view, sign in and
+// report. Bans last until staff lift them.
+// ---------------------------------------------------------------------------
+
+export const BAN_AFTER_PAGES = 2;
+
+// Answers 403 and returns true when this request comes from a banned
+// connection. For every route that creates or changes a page.
+export async function refusedForBan(req, res) {
+  const { data, error } = await db().from(T.ipBans).select('ip_hash').eq('ip_hash', hashIp(clientIp(req))).maybeSingle();
+  if (error) {
+    console.error('[onelink] ban check:', error.message);
+    return false;
+  }
+  if (!data) return false;
+  fail(res, 403, 'ip_banned');
+  return true;
+}
+
+async function banHash(hash, { reason, pageIds = [], staffId = null }) {
+  const { error } = await db().from(T.ipBans).upsert({ ip_hash: hash, reason, page_ids: pageIds, created_by: staffId });
+  if (error) throw error;
+}
+
+// After a page is quarantined: ban the connection if it is now the second.
+async function banIfRepeat(req, hash) {
+  const { data, error } = await db().from(T.audit).select('page_id').eq('action', 'mod.page_quarantined').eq('ip_hash', hash);
+  if (error) throw error;
+  const pages = [...new Set((data ?? []).map((r) => r.page_id).filter(Boolean))];
+  if (pages.length < BAN_AFTER_PAGES) return;
+  await banHash(hash, { reason: `${pages.length} pages quarantined from this connection`, pageIds: pages });
+  await audit(req, { action: 'security.ip_banned', actorType: 'system', details: { pages: pages.length } });
+}
+
+// Banned connections, newest first: [{ id, reason, since, slugs, byStaff }].
+export async function bannedConnections() {
+  const { data, error } = await db().from(T.ipBans).select('ip_hash, reason, page_ids, created_by, created_at').order('created_at', { ascending: false });
+  if (error) throw error;
+  const rows = [];
+  for (const ban of data ?? []) {
+    let slugs = [];
+    if ((ban.page_ids ?? []).length > 0) {
+      const { data: pages, error: pageError } = await db().from(T.pages).select('slug').in('id', ban.page_ids);
+      if (pageError) throw pageError;
+      slugs = (pages ?? []).map((p) => p.slug);
+    }
+    rows.push({ id: ban.ip_hash.slice(0, 16), reason: ban.reason, since: ban.created_at, slugs, byStaff: Boolean(ban.created_by) });
+  }
+  return rows;
+}
+
+// Ban a connection staff can see flagged, by the start of its hash.
+export async function banFlaggedConnection(id, staffId, reason) {
+  if (!/^[0-9a-f]{16}$/.test(String(id))) return false;
+  const { data, error } = await db().from('gftvonelink_rate_limits').select('bucket').like('bucket', `badlink:ip:${id}%`).limit(1);
+  if (error) throw error;
+  if (!data?.[0]) return false;
+  await banHash(data[0].bucket.slice('badlink:ip:'.length), { reason: reason || 'Banned by staff', staffId });
+  return true;
+}
+
+export async function unbanConnection(id) {
+  if (!/^[0-9a-f]{16}$/.test(String(id))) return false;
+  const { data, error } = await db().from(T.ipBans).delete().like('ip_hash', `${id}%`).select('ip_hash');
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}
+
 // Connections flagged today, newest first, for staff to look at and lift:
 // [{ id, attempts, since, slug }]. id is the start of the stored hash of the
 // address (the address itself is never kept), enough to tell them apart.
@@ -314,6 +386,7 @@ export async function noteRefusedLink(req, page, error, url) {
       if (quarantined) {
         await db().from(T.reports).insert({ page_id: page.id, reason: 'scam', details: `Automatic: ${reason}.` });
         await audit(req, { action: 'mod.page_quarantined', actorType: 'system', pageId: page.id, details: { reason } });
+        await banIfRepeat(req, hashIp(clientIp(req)));
       }
     }
   } catch (cause) {

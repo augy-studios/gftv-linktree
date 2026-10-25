@@ -8,7 +8,7 @@ import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
 import { checkSlug, checkPassword, STALE_PENDING_MS } from '../_lib/validate.js';
 import { hashPassword } from '../_lib/crypto.js';
-import { limited, slugRefusal, nameNeedsReview, audit } from '../_lib/guards.js';
+import { limited, slugRefusal, nameNeedsReview, audit, refusedForBan } from '../_lib/guards.js';
 import { createChallenge } from '../_lib/session.js';
 
 export default route('auth/register', async (req, res) => {
@@ -16,6 +16,7 @@ export default route('auth/register', async (req, res) => {
   const body = await readJson(req, res);
   if (!body) return;
   if (await limited(req, res, 'register')) return;
+  if (await refusedForBan(req, res)) return;
 
   const slugCheck = checkSlug(body.slug);
   if (!slugCheck.ok) return fail(res, 400, slugCheck.error);

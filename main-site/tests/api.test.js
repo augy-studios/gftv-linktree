@@ -931,6 +931,52 @@ test('the home page totals are real, and borrow the GFTV short links log', async
   assert.deepEqual(leaks(data), []);
 });
 
+test('a second page quarantined from one connection bans it, until staff lift the ban', async () => {
+  fake.table('gftvonelink_blocked_domains').push({ domain: 'evil.example', reason: 'x', created_at: new Date().toISOString() });
+  forgetBlockedDomains();
+  const ip = '203.0.113.66';
+  const quarantineFrom = async (b) => {
+    for (const n of [1, 2, 3]) await b.call(meLinks, { method: 'POST', body: { title: 'x', url: `https://evil.example/${n}` }, ip });
+  };
+  const first = browser();
+  await makePage(first, 'first');
+  await quarantineFrom(first);
+  assert.equal(fake.table('gftvonelink_ip_bans').length, 0, 'one quarantined page is not enough');
+
+  // The second account's attempts come after a flag on the connection would
+  // stop them, so lift the day's flag the way staff would.
+  fake.table('gftvonelink_rate_limits').filter((r) => r.bucket.startsWith('badlink:ip:')).forEach((r) => { r.hits = 0; });
+  const second = browser();
+  await makePage(second, 'second');
+  await quarantineFrom(second);
+  assert.equal(fake.table('gftvonelink_ip_bans').length, 1, 'the second bans the connection');
+  assert.ok(fake.table('gftvonelink_audit_logs').some((r) => r.action === 'security.ip_banned'));
+
+  assert.equal((await browser().call(register, { method: 'POST', body: { slug: 'third', password: 'correct horse battery' }, ip })).json.error, 'ip_banned');
+  assert.equal((await second.call(meLinks, { method: 'POST', body: { title: 'ok', url: 'https://fine.example' }, ip })).json.error, 'ip_banned');
+  assert.equal((await second.call(mePage, { method: 'PATCH', body: { bio: 'hi' }, ip })).json.error, 'ip_banned');
+  assert.equal((await second.call(mePage, { ip })).status, 200, 'the owner can still sign in and look');
+  assert.equal((await second.call(meLinks, { method: 'POST', body: { title: 'ok', url: 'https://fine.example' }, ip: '198.51.100.7' })).status, 200, 'other connections are not banned');
+
+  const { secret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', secret);
+  const banned = (await admin.call(adminBlocklist)).json.banned;
+  assert.equal(banned.length, 1);
+  assert.deepEqual(banned[0].slugs.sort(), ['first', 'second']);
+  assert.equal(banned[0].byStaff, false);
+  const lifted = await admin.call(adminBlocklist, { method: 'POST', body: { action: 'unban-connection', id: banned[0].id } });
+  assert.deepEqual(lifted.json.banned, []);
+  assert.equal((await browser().call(register, { method: 'POST', body: { slug: 'third', password: 'correct horse battery' }, ip })).status, 200);
+
+  // A flagged connection can also be banned by hand.
+  for (const n of [4, 5, 6, 7, 8]) await second.call(meLinks, { method: 'POST', body: { title: 'x', url: `https://evil.example/${n}` }, ip: '198.51.100.9' });
+  const flagged = (await admin.call(adminBlocklist)).json.flagged.find((f) => f.attempts >= 5);
+  const manual = await admin.call(adminBlocklist, { method: 'POST', body: { action: 'ban-connection', id: flagged.id, reason: 'spam wave' } });
+  assert.equal(manual.json.banned.find((b) => b.id === flagged.id).byStaff, true);
+  assert.equal((await browser().call(register, { method: 'POST', body: { slug: 'fourth', password: 'correct horse battery' }, ip: '198.51.100.9' })).json.error, 'ip_banned');
+});
+
 test('admins can delete a report, and the audit log keeps what it said', async () => {
   const owner = browser();
   await makePage(owner);

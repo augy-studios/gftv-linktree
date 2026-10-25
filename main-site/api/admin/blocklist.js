@@ -13,6 +13,8 @@
 //                                                index now (domain-blocklist.js)
 // POST { action: "unflag-connection", id }       lift a connection's flag for
 //                                                repeated harmful addresses
+// POST { action: "ban-connection", id, reason }  ban a flagged connection
+// POST { action: "unban-connection", id }        lift a ban (009)
 //
 // Blocking a slug stops it being registered; a page already on it is banned
 // separately. Blocking a domain refuses new links to it and hides existing
@@ -24,7 +26,7 @@
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
 import { cleanText, normaliseSlug, normaliseDomain, checkPattern, isUuid, PATTERN_SCOPES, LIMITS } from '../_lib/validate.js';
-import { limited, audit, forgetBlockedDomains, forgetBlockedPatterns, forgetReviewPatterns, flaggedConnections, unflagConnection } from '../_lib/guards.js';
+import { limited, audit, forgetBlockedDomains, forgetBlockedPatterns, forgetReviewPatterns, flaggedConnections, unflagConnection, bannedConnections, banFlaggedConnection, unbanConnection } from '../_lib/guards.js';
 import { requireStaff } from '../_lib/staff.js';
 import { rebuildDomainBlocklist, domainBlocklistInfo } from '../_lib/domain-blocklist.js';
 
@@ -43,6 +45,7 @@ async function lists() {
     reviews: (reviews ?? []).map((r) => ({ id: r.id, value: r.pattern, reason: r.reason, createdAt: r.created_at })),
     threatList: await domainBlocklistInfo(),
     flagged: await flaggedConnections(),
+    banned: await bannedConnections(),
   };
 }
 
@@ -116,6 +119,16 @@ export default route('admin/blocklist', async (req, res) => {
     case 'unflag-connection': {
       if (!(await unflagConnection(body.id))) return fail(res, 404, 'not_flagged');
       await audit(req, { action: 'mod.connection_unflagged', ...actor, details: { connection: body.id } });
+      break;
+    }
+    case 'ban-connection': {
+      if (!(await banFlaggedConnection(body.id, staff.user.id, reason))) return fail(res, 404, 'not_flagged');
+      await audit(req, { action: 'mod.connection_banned', ...actor, details: { connection: body.id, reason } });
+      break;
+    }
+    case 'unban-connection': {
+      if (!(await unbanConnection(body.id))) return fail(res, 404, 'not_banned_connection');
+      await audit(req, { action: 'mod.connection_unbanned', ...actor, details: { connection: body.id } });
       break;
     }
     case 'refresh-threat-list': {

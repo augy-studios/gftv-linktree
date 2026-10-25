@@ -11,7 +11,7 @@
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
 import { cleanText, checkIcon, isUuid, LIMITS, MAX_LINKS } from '../_lib/validate.js';
-import { limited, checkLinkUrl, noteRefusedLink, refusedForAttempts, addressRefusedInText } from '../_lib/guards.js';
+import { limited, checkLinkUrl, noteRefusedLink, refusedForAttempts, addressRefusedInText, refusedForBan } from '../_lib/guards.js';
 import { requireOwner } from '../_lib/session.js';
 import { ownerLink } from '../_lib/serialize.js';
 
@@ -30,6 +30,7 @@ export default route('me/links', async (req, res) => {
   const body = await readJson(req, res);
   if (!body) return;
   if (await limited(req, res, 'ownerWrite', [`page:${owner.page.id}`])) return;
+  if (await refusedForBan(req, res)) return;
   const pageId = owner.page.id;
   // A refused address also counts towards quarantine (guards.js).
   const refuse = async (url, input) => {

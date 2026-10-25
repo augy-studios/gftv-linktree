@@ -21,6 +21,8 @@ In the Supabase project that already holds the `gftvhello_` tables, open
 - `007_longer_bio.sql`: lets a bio be up to 512 characters
 - `008_site_insights.sql`: the live totals on the home page, including the
   GFTV short links' visit log (`gftvlinks_linkvisits`) while it exists
+- `009_connection_bans.sql`: banning connections that keep making harmful
+  pages
 
 **Check:** in **Table Editor** you see the `gftvonelink_` tables, each marked
 **RLS enabled**.

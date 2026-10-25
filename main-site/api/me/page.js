@@ -8,7 +8,7 @@
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
 import { cleanText, LIMITS } from '../_lib/validate.js';
-import { limited, checkLinkUrl, noteRefusedLink, refusedForAttempts, addressRefusedInText } from '../_lib/guards.js';
+import { limited, checkLinkUrl, noteRefusedLink, refusedForAttempts, addressRefusedInText, refusedForBan } from '../_lib/guards.js';
 import { requireOwner } from '../_lib/session.js';
 import { loadOwnerView } from '../_lib/owner-view.js';
 
@@ -21,6 +21,7 @@ export default route('me/page', async (req, res) => {
     const body = await readJson(req, res);
     if (!body) return;
     if (await limited(req, res, 'ownerWrite', [`page:${owner.page.id}`])) return;
+    if (await refusedForBan(req, res)) return;
     const fields = {};
     if (body.displayName !== undefined) fields.display_name = cleanText(body.displayName, LIMITS.displayName);
     if (body.bio !== undefined) fields.bio = cleanText(body.bio, LIMITS.bio, { multiline: true });

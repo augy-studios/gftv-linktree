@@ -1,6 +1,6 @@
 // An in-memory stand-in for the supabase-js client, covering the query
 // builder calls the API makes, with the schema's unique constraints, foreign
-// key cascades and RPC functions from migrations/001 to 008. Enough to drive every
+// key cascades and RPC functions from migrations/001 to 009. Enough to drive every
 // route end to end in tests; not a general PostgREST.
 
 import { randomUUID } from 'node:crypto';
@@ -23,7 +23,7 @@ const DEFAULTS = {
   gftvonelink_testimonials: () => ({ page_slug: null, is_visible: true, order_index: 0, updated_at: now() }),
 };
 
-const PRIMARY = { gftvonelink_blocked_slugs: 'slug', gftvonelink_blocked_domains: 'domain', gftvonelink_rate_limits: 'bucket' };
+const PRIMARY = { gftvonelink_blocked_slugs: 'slug', gftvonelink_blocked_domains: 'domain', gftvonelink_rate_limits: 'bucket', gftvonelink_ip_bans: 'ip_hash' };
 const UNIQUE = {
   gftvonelink_pages: ['slug'],
   gftvonelink_passkeys: ['credential_id'],

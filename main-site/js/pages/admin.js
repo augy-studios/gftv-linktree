@@ -617,10 +617,39 @@ function flaggedRows(items) {
         item.slug ? t('admin.flagged-page', { slug: item.slug }) : null,
       ].filter(Boolean).join(' · ') }),
     ]),
-    el('div', { class: 'row-actions' }, [actionButton('admin.unflag', 'check', async () => {
+    el('div', { class: 'row-actions' }, [
+      actionButton('admin.unflag', 'check', async () => {
+        try {
+          renderBlocks(await post('/api/admin/blocklist', { action: 'unflag-connection', id: item.id }));
+          toast(t('admin.unflagged'));
+        } catch (error) {
+          toast(errorText(error));
+        }
+      }),
+      actionButton('admin.ban-connection', 'ban', () => askReason({
+        title: t('admin.ban-connection-title', { id: item.id }),
+        body: t('admin.ban-connection-body'),
+        run: async (reason) => {
+          renderBlocks(await post('/api/admin/blocklist', { action: 'ban-connection', id: item.id, reason }));
+          toast(t('admin.connection-banned'));
+        },
+      }), 'btn-danger'),
+    ]),
+  ]));
+}
+
+function bannedRows(items) {
+  return items.map((item) => el('li', { class: 'data-row' }, [
+    el('div', {}, [
+      el('div', { class: 'primary mono', text: item.id }),
+      el('div', { class: 'secondary', text: [item.reason, formatDate(item.since)].filter(Boolean).join(' · ') }),
+      item.slugs.length ? el('div', { class: 'secondary', text: t('admin.banned-pages', { pages: item.slugs.map((s) => `/${s}`).join(', ') }) }) : null,
+      el('div', { class: 'tags' }, [badge(t(item.byStaff ? 'admin.banned-by-staff' : 'admin.banned-auto'))]),
+    ]),
+    el('div', { class: 'row-actions' }, [actionButton('admin.unban-connection', 'check', async () => {
       try {
-        renderBlocks(await post('/api/admin/blocklist', { action: 'unflag-connection', id: item.id }));
-        toast(t('admin.unflagged'));
+        renderBlocks(await post('/api/admin/blocklist', { action: 'unban-connection', id: item.id }));
+        toast(t('admin.connection-unbanned'));
       } catch (error) {
         toast(errorText(error));
       }
@@ -648,6 +677,7 @@ function fillPaged(listId, pagerId, rows, emptyKey) {
 
 function renderBlocks(data) {
   fillPaged('flaggedList', 'flaggedPager', flaggedRows(data.flagged ?? []), 'admin.empty-flagged');
+  fillPaged('bannedList', 'bannedPager', bannedRows(data.banned ?? []), 'admin.empty-banned');
   fillPaged('slugBlockList', 'slugBlockPager', blockRows(data.slugs, 'slug'), 'admin.empty-blocks');
   fillPaged('domainBlockList', 'domainBlockPager', blockRows(data.domains, 'domain'), 'admin.empty-blocks');
   fillPaged('patternBlockList', 'patternBlockPager', blockRows(data.patterns, 'pattern'), 'admin.empty-blocks');
@@ -657,7 +687,7 @@ function renderBlocks(data) {
 
 loaders.blocks = async () => {
   if (!isAdmin()) return;
-  for (const id of ['slugBlockList', 'domainBlockList', 'patternBlockList', 'reviewBlockList', 'flaggedList']) loading($(id));
+  for (const id of ['slugBlockList', 'domainBlockList', 'patternBlockList', 'reviewBlockList', 'flaggedList', 'bannedList']) loading($(id));
   try {
     renderBlocks(await api('/api/admin/blocklist'));
   } catch (error) {
