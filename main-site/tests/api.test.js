@@ -783,10 +783,11 @@ test('links: the domain blocklists, built into an index every two weeks', async 
     'https://lists.example/gambling.txt': '*.casino.example\n',
     'https://lists.example/nsfw.txt': '*.adult.example\n',
     'https://lists.example/short.txt': '*.tiny.example\n',
+    'https://lists.example/piracy.txt': '*.warez.example\n',
   };
   process.env.DOMAIN_BLOCKLISTS = [
     'unsafe:https://lists.example/tif.txt', 'unsafe:https://lists.example/fake.txt', 'gambling:https://lists.example/gambling.txt',
-    'adult:https://lists.example/nsfw.txt', 'shortener:https://lists.example/short.txt',
+    'adult:https://lists.example/nsfw.txt', 'shortener:https://lists.example/short.txt', 'piracy:https://lists.example/piracy.txt',
   ].join(',');
   process.env.CRON_SECRET = 'cron-secret';
   forgetDomainBlocklist();
@@ -802,7 +803,7 @@ test('links: the domain blocklists, built into an index every two weeks', async 
 
     const run = () => browser().call(cleanup, { headers: { authorization: 'Bearer cron-secret' } });
     const first = await run();
-    assert.deepEqual(first.json.blocklist, { rebuilt: { unsafe: 3, gambling: 1, adult: 1, shortener: 1 } }, 'duplicates across lists are merged');
+    assert.deepEqual(first.json.blocklist, { rebuilt: { unsafe: 3, gambling: 1, adult: 1, piracy: 1, shortener: 1 } }, 'duplicates across lists are merged');
     assert.equal(first.json.unsafe, 2, 'existing links on the lists are taken down');
     const removed = (await owner.call(mePage)).json.page.links.find((l) => l.id === links[0].id);
     assert.equal(removed.removed, true);
@@ -810,12 +811,16 @@ test('links: the domain blocklists, built into an index every two weeks', async 
     assert.equal(fake.objects.get('gftvonelink_lists/domain-blocklist-unsafe.bin').body.length, 3 * 8, 'eight bytes a domain');
 
     forgetDomainBlocklist();
-    const save = async (url) => (await owner.call(meLinks, { method: 'POST', body: { title: 'x', url } })).json.error;
+    // Each from its own connection, so the day's refusals do not flag one
+    // (that is tested on its own).
+    let ip = 0;
+    const save = async (url) => (await owner.call(meLinks, { method: 'POST', body: { title: 'x', url }, ip: `198.51.100.${(ip += 1)}` })).json.error;
     assert.equal(await save('https://login.evil.example/'), 'url_unsafe');
     assert.equal(await save('https://MALWARE.example/'), 'url_unsafe');
     assert.equal(await save('https://www.casino.example/'), 'url_gambling');
     assert.equal(await save('https://adult.example/'), 'url_adult');
     assert.equal(await save('https://tiny.example/abc'), 'url_shortener');
+    assert.equal(await save('https://dl.warez.example/x'), 'url_piracy');
     assert.equal(await save('https://notevil.example/'), undefined, 'a different domain ending the same is fine');
 
     fetched.length = 0;
@@ -823,10 +828,10 @@ test('links: the domain blocklists, built into an index every two weeks', async 
     assert.equal(fetched.length, 0);
 
     const info = (await admin.call(adminBlocklist)).json.threatList;
-    assert.deepEqual(info.categories, { unsafe: 3, gambling: 1, adult: 1, shortener: 1 });
+    assert.deepEqual(info.categories, { unsafe: 3, gambling: 1, adult: 1, piracy: 1, shortener: 1 });
     assert.equal(info.refreshDays, 14);
     await admin.call(adminBlocklist, { method: 'POST', body: { action: 'refresh-threat-list' } });
-    assert.equal(fetched.length, 5, 'staff can rebuild it now');
+    assert.equal(fetched.length, 6, 'staff can rebuild it now');
   } finally {
     globalThis.fetch = realFetch;
     process.env.DOMAIN_BLOCKLISTS = 'off';

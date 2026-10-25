@@ -9,7 +9,7 @@ import { unsafeUrls } from './safe-browsing.js';
 import { blocklistCategory } from './domain-blocklist.js';
 
 // The error an owner sees for each blocklist category.
-const LIST_ERRORS = { unsafe: 'url_unsafe', gambling: 'url_gambling', adult: 'url_adult', shortener: 'url_shortener' };
+const LIST_ERRORS = { unsafe: 'url_unsafe', gambling: 'url_gambling', adult: 'url_adult', piracy: 'url_piracy', shortener: 'url_shortener' };
 
 // name: [hits allowed, window in seconds]
 export const LIMITS = Object.freeze({
@@ -125,7 +125,7 @@ export async function blockLists() {
 // A link or redirect address an owner is saving: { ok, url, host } or
 // { ok: false, error }. Refused: generic shorteners (validate.js), anything
 // on the staff block lists, any domain on the HaGeZi blocklists
-// (domain-blocklist.js: harmful sites, gambling, shorteners, adult), and
+// (domain-blocklist.js: harmful sites, gambling, adult, piracy, shorteners), and
 // anything Google Safe Browsing lists, when that check is switched on
 // (safe-browsing.js).
 export async function checkLinkUrl(input) {
@@ -206,7 +206,7 @@ export async function slugRefusal(slug) {
 // save addresses until the day is up. Typos and shortened links do not count.
 // ---------------------------------------------------------------------------
 
-export const SUSPICIOUS_LINK_ERRORS = new Set(['url_unsafe', 'url_blocked', 'url_gambling', 'url_adult', 'url_scheme', 'url_credentials']);
+export const SUSPICIOUS_LINK_ERRORS = new Set(['url_unsafe', 'url_blocked', 'url_gambling', 'url_adult', 'url_piracy', 'url_scheme', 'url_credentials']);
 export const QUARANTINE_AFTER = 3;
 export const IP_FLAG_AFTER = 5;
 const SUSPICION_WINDOW = 86400;

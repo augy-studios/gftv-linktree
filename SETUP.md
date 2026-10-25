@@ -101,7 +101,7 @@ and again each day:
 
 - **HaGeZi blocklists**, on by default with nothing to set up: threat
   intelligence, fake stores, pop-up ads, badware hosting, gambling, URL
-  shorteners and adult content, about 2.9 million domains. The first cron run
+  shorteners, adult content and piracy, about 3 million domains. The first cron run
   (or **Fetch the lists now** under Block lists in `/admin`) downloads them
   and stores a compact copy in the `gftvonelink_lists` bucket; until then
   links are not checked against them. `DOMAIN_BLOCKLISTS=off` switches them

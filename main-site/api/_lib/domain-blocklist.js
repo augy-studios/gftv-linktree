@@ -9,6 +9,8 @@
 //   gambling   gambling (about 600,000 domains)
 //   shortener  urlshortener (link shorteners, alongside validate.js's own list)
 //   adult      nsfw (OneLink is for all ages)
+//   piracy     anti.piracy (sites mainly used to share copyrighted work
+//              without permission)
 //
 // Two million domains are 40 MB of text (300 MB as strings in memory), far too
 // much to fetch or hold per request, so each category is kept as an index:
@@ -42,10 +44,11 @@ const DEFAULT_LISTS = [
   ['gambling', 'gambling'],
   ['shortener', 'urlshortener'],
   ['adult', 'nsfw'],
+  ['piracy', 'anti.piracy'],
 ].map(([category, name]) => ({ category, url: HAGEZI(name) }));
 
 // The order lookups go in: a domain on two lists is reported as the first.
-export const CATEGORIES = ['unsafe', 'gambling', 'adult', 'shortener'];
+export const CATEGORIES = ['unsafe', 'gambling', 'adult', 'piracy', 'shortener'];
 
 export const LIST_BUCKET = 'gftvonelink_lists';
 const META_FILE = 'domain-blocklist.json';

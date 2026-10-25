@@ -28,6 +28,7 @@ const LISTED_REASONS = {
   unsafe: 'On the HaGeZi blocklist of harmful sites',
   gambling: 'A gambling site (HaGeZi gambling list)',
   adult: 'Adult content (HaGeZi NSFW list); OneLink is for all ages',
+  piracy: 'A piracy site (HaGeZi anti-piracy list)',
   shortener: 'A shortened link (HaGeZi shortener list); use the full address',
 };
 
