@@ -3,6 +3,9 @@
 // Creates the page in `pending` and returns an enrolment challenge. Nothing is
 // public and nothing can be edited until a second factor is set up through
 // /api/auth/enrol, which is what turns the page `active` and signs the owner in.
+//
+// Refused from a banned connection, and from a device banned with one
+// (guards.js refusedForBan), which is flagged for staff.
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
@@ -16,7 +19,7 @@ export default route('auth/register', async (req, res) => {
   const body = await readJson(req, res);
   if (!body) return;
   if (await limited(req, res, 'register')) return;
-  if (await refusedForBan(req, res)) return;
+  if (await refusedForBan(req, res, { newPage: true })) return;
 
   const slugCheck = checkSlug(body.slug);
   if (!slugCheck.ok) return fail(res, 400, slugCheck.error);

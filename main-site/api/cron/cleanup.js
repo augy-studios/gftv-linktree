@@ -2,7 +2,10 @@
 // Vercel sends Authorization: Bearer $CRON_SECRET; anything else is refused.
 //
 // Sweeps what expiry-on-read misses: sessions, challenges, Telegram link
-// tokens, rate limit buckets, and pages abandoned before setup finished.
+// tokens, rate limit buckets (which include the day's flags on connections
+// and devices), and pages abandoned before setup finished. Clears device
+// hashes from audit entries older than VISITOR_HASH_DAYS; bans keep theirs
+// until staff lift them.
 // Rebuilds the domain blocklist index when it is older than
 // DOMAIN_BLOCKLIST_REFRESH_DAYS (14 by default; domain-blocklist.js).
 // Then sends the one Telegram reminder a page gets a month before it goes
@@ -21,6 +24,10 @@ import { dormancyMessage } from '../_lib/telegram-messages.js';
 import { unsafeUrls, safeBrowsingConfigured } from '../_lib/safe-browsing.js';
 import { blocklistCategory, domainBlocklists, rebuildDomainBlocklist } from '../_lib/domain-blocklist.js';
 import { audit, addressRefusedInText } from '../_lib/guards.js';
+
+// How long the audit log keeps the device hash next to the address hash, for
+// banning the devices used on a connection along with it (guards.js).
+export const VISITOR_HASH_DAYS = 30;
 
 const UNSAFE_REASON = 'Flagged as unsafe by Google Safe Browsing';
 // Shown to the owner, by blocklist category (domain-blocklist.js).
@@ -136,6 +143,7 @@ export default route('cron/cleanup', async (req, res) => {
 
   const now = new Date().toISOString();
   const dayAgo = new Date(Date.now() - 86400_000).toISOString();
+  const visitorCutoff = new Date(Date.now() - VISITOR_HASH_DAYS * 86400_000).toISOString();
 
   const jobs = {
     sessions: db().from(T.sessions).delete().lt('expires_at', now).select('id'),
@@ -145,6 +153,7 @@ export default route('cron/cleanup', async (req, res) => {
     telegramLinks: db().from(T.telegramLinks).delete().lt('expires_at', dayAgo).select('id'),
     rateLimits: db().from('gftvonelink_rate_limits').delete().lt('window_start', dayAgo).select('bucket'),
     abandonedPages: db().from(T.pages).delete().eq('status', 'pending').lt('created_at', dayAgo).select('id'),
+    visitorHashes: db().from(T.audit).update({ visitor_hash: null }).not('visitor_hash', 'is', null).lt('created_at', visitorCutoff).select('id'),
   };
 
   const removed = {};

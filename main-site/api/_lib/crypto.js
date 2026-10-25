@@ -5,7 +5,8 @@
 //   Telegram link tokens        is enough and lookups stay a single index hit.
 //   TOTP secrets                AES-256-GCM with TOTP_ENCRYPTION_KEY, because
 //                               the server has to read them back.
-//   Addresses                   salted SHA-256, for rate limits and reports.
+//   Addresses and device        salted SHA-256, for rate limits, reports and
+//   fingerprints                bans.
 
 import { randomBytes, createHash, createCipheriv, createDecipheriv, timingSafeEqual } from 'node:crypto';
 import bcrypt from 'bcryptjs';
@@ -136,4 +137,9 @@ export function decryptSecret(envelope) {
 
 export function hashIp(ip) {
   return sha256(`${optionalEnv('IP_HASH_SALT', 'onelink')}:${ip}`);
+}
+
+// A device fingerprint (http.js clientVisitor), salted the same way.
+export function hashVisitor(visitor) {
+  return sha256(`${optionalEnv('IP_HASH_SALT', 'onelink')}:${visitor}`);
 }

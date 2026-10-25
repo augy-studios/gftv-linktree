@@ -38,6 +38,7 @@ export const T = Object.freeze({
   blockedPatterns: 'gftvonelink_blocked_patterns',
   reviewPatterns: 'gftvonelink_review_patterns',
   ipBans: 'gftvonelink_ip_bans',
+  visitorBans: 'gftvonelink_visitor_bans',
   pageStats: 'gftvonelink_page_stats',
   testimonials: 'gftvonelink_testimonials',
   audit: 'gftvonelink_audit_logs',

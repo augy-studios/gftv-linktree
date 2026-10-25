@@ -14,7 +14,12 @@
 // POST { action: "unflag-connection", id }       lift a connection's flag for
 //                                                repeated harmful addresses
 // POST { action: "ban-connection", id, reason }  ban a flagged connection
-// POST { action: "unban-connection", id }        lift a ban (009)
+// POST { action: "unban-connection", id }        lift a ban (009), and the
+//                                                devices banned with it (012)
+// POST { action: "unflag-visitor", id }          a flagged device is not the
+//                                                banned person: lift its bans
+// POST { action: "ban-visitor", id, reason }     it is: ban the connection it
+//                                                was flagged on
 //
 // Blocking a slug stops it being registered; a page already on it is banned
 // separately. Blocking a domain refuses new links to it and hides existing
@@ -26,7 +31,7 @@
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
 import { cleanText, normaliseSlug, normaliseDomain, checkPattern, isUuid, PATTERN_SCOPES, LIMITS } from '../_lib/validate.js';
-import { limited, audit, forgetBlockedDomains, forgetBlockedPatterns, forgetReviewPatterns, flaggedConnections, unflagConnection, bannedConnections, banFlaggedConnection, unbanConnection } from '../_lib/guards.js';
+import { limited, audit, forgetBlockedDomains, forgetBlockedPatterns, forgetReviewPatterns, flaggedConnections, unflagConnection, bannedConnections, banFlaggedConnection, unbanConnection, flaggedVisitors, unflagVisitor, banFlaggedVisitor } from '../_lib/guards.js';
 import { requireStaff } from '../_lib/staff.js';
 import { rebuildDomainBlocklist, domainBlocklistInfo } from '../_lib/domain-blocklist.js';
 
@@ -45,6 +50,7 @@ async function lists() {
     reviews: (reviews ?? []).map((r) => ({ id: r.id, value: r.pattern, reason: r.reason, createdAt: r.created_at })),
     threatList: await domainBlocklistInfo(),
     flagged: await flaggedConnections(),
+    flaggedVisitors: await flaggedVisitors(),
     banned: await bannedConnections(),
   };
 }
@@ -129,6 +135,16 @@ export default route('admin/blocklist', async (req, res) => {
     case 'unban-connection': {
       if (!(await unbanConnection(body.id))) return fail(res, 404, 'not_banned_connection');
       await audit(req, { action: 'mod.connection_unbanned', ...actor, details: { connection: body.id } });
+      break;
+    }
+    case 'unflag-visitor': {
+      if (!(await unflagVisitor(body.id))) return fail(res, 404, 'not_flagged_visitor');
+      await audit(req, { action: 'mod.visitor_unflagged', ...actor, details: { device: String(body.id).slice(0, 16) } });
+      break;
+    }
+    case 'ban-visitor': {
+      if (!(await banFlaggedVisitor(body.id, staff.user.id, reason))) return fail(res, 404, 'not_flagged_visitor');
+      await audit(req, { action: 'mod.visitor_banned', ...actor, details: { device: String(body.id).slice(0, 16), connection: String(body.id).slice(16), reason } });
       break;
     }
     case 'refresh-threat-list': {

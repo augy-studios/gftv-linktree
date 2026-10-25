@@ -17,7 +17,7 @@ export default route('me/avatar', async (req, res) => {
   if (!owner) return;
   const page = owner.page;
   if (await limited(req, res, 'avatar', [`page:${page.id}`])) return;
-  if (await refusedForBan(req, res)) return;
+  if (await refusedForBan(req, res, { pageId: owner.page.id })) return;
 
   const previous = page.avatar_path || null;
 
