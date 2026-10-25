@@ -19,7 +19,7 @@
   var html =
     '<div class="gov-bar" id="officialBar">' +
       '<div class="gov-bar-inner">' +
-        '<img class="gov-bar-mark" src="/gftv-flag.png" alt="" width="24" height="16">' +
+        '<img class="gov-bar-mark" data-src="/gftv-flag.png" alt="" width="24" height="16">' +
         '<p class="gov-bar-line">' +
           '<span class="gov-bar-line-long" data-i18n="official.line">An official Global Furry Television website</span>' +
           '<span class="gov-bar-line-short" data-i18n="official.line-short">An official GFTV website</span>' +

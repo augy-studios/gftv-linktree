@@ -25,7 +25,7 @@
 
     <header class="site-header">
         <a class="brand" href="/">
-            <img src="/OLG-192.png" alt="" width="32" height="32">
+            <img data-src="/OLG-192.png" alt="" width="32" height="32">
             <span data-i18n="site.name">OneLink GFTV</span>
         </a>
         <div class="header-actions">
@@ -265,6 +265,10 @@
             <label class="field u-mt-075">
                 <span id="reasonLabel" data-i18n="field.reason">Reason</span>
                 <textarea id="reasonText" maxlength="500" rows="3"></textarea>
+            </label>
+            <label class="field" id="reasonConfirmRow" hidden>
+                <span id="reasonConfirmLabel"></span>
+                <input id="reasonConfirm" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="32">
             </label>
             <label class="check" id="reasonRemoveRow" hidden>
                 <input type="checkbox" id="reasonRemoveLink">

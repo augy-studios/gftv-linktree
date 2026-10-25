@@ -4,6 +4,9 @@
 // GET ?id=                       one page with its links and reports
 // POST { action: "ban", id, reason }     admin only; signs the owner out
 // POST { action: "unban", id }           admin only
+// POST { action: "delete", id, reason, confirmSlug }   admin only; deletes the
+//        page and everything hanging off it, which frees its name for anyone
+//        to register again
 // POST { action: "remove-avatar", id, reason }   any staff; a picture is
 //                                                content, like a link
 
@@ -97,6 +100,18 @@ export default route('admin/pages', async (req, res) => {
       .update({ status: page.activated_at ? 'active' : 'pending', ban_reason: null, banned_at: null, banned_by: null })
       .eq('id', page.id);
     if (updateError) throw updateError;
+  } else if (body.action === 'delete') {
+    const reason = cleanText(body.reason, LIMITS.reason, { multiline: true });
+    if (!reason) return fail(res, 400, 'reason_required');
+    if (String(body.confirmSlug ?? '').trim().toLowerCase() !== page.slug) return fail(res, 400, 'confirm_slug');
+    // Written before the delete, with the slug in the details, since the page
+    // row is about to go. Its links, passkeys, sessions, codes and reports go
+    // with it (on delete cascade).
+    await audit(req, { action: 'mod.page_deleted', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug, reason } });
+    const { error: deleteError } = await db().from(T.pages).delete().eq('id', page.id);
+    if (deleteError) throw deleteError;
+    await deleteAvatarFile(page.avatar_path);
+    return ok(res, { deleted: true, slug: page.slug });
   } else if (body.action === 'remove-avatar') {
     if (!page.avatar_path) return fail(res, 409, 'no_avatar');
     const reason = cleanText(body.reason, LIMITS.reason, { multiline: true });

@@ -184,16 +184,20 @@ function statusBadge(status) {
   return badge(t(`status.${status}`), status === 'banned' ? 'danger' : status === 'active' ? 'ok' : 'warn');
 }
 
-// The shared "give a reason" dialog.
+// The shared "give a reason" dialog. confirm, when given, is a page name the
+// staff member has to type before an action that cannot be undone.
 let reasonAction = null;
-function askReason({ title, body = '', required = true, showRemove = false, run }) {
-  reasonAction = { run, required };
+function askReason({ title, body = '', required = true, showRemove = false, confirm = null, run }) {
+  reasonAction = { run, required, confirm };
   $('reasonTitle').textContent = title;
   $('reasonBody').textContent = body;
   $('reasonText').value = '';
   $('reasonError').textContent = '';
   $('reasonRemoveRow').hidden = !showRemove;
   $('reasonRemoveLink').checked = false;
+  $('reasonConfirmRow').hidden = !confirm;
+  $('reasonConfirm').value = '';
+  if (confirm) $('reasonConfirmLabel').textContent = t('admin.delete-confirm', { slug: confirm });
   $('reasonLabel').textContent = t(required ? 'field.reason' : 'field.note');
   openModal('reasonModal', { initialFocus: $('reasonText') });
 }
@@ -203,6 +207,10 @@ $('reasonForm').addEventListener('submit', (e) => {
   const text = $('reasonText').value.trim();
   if (reasonAction.required && !text) {
     $('reasonError').textContent = t('error.reason_required');
+    return;
+  }
+  if (reasonAction.confirm && $('reasonConfirm').value.trim().toLowerCase() !== reasonAction.confirm) {
+    $('reasonError').textContent = t('admin.delete-mismatch');
     return;
   }
   withBusy($('reasonSubmit'), $('reasonError'), async () => {
@@ -352,6 +360,25 @@ function banActions(p, after) {
   }), 'btn-danger')];
 }
 
+// Deleting frees the name for anyone to register, so it asks for the name to
+// be typed as well as a reason.
+function deleteAction(p) {
+  if (!isAdmin()) return null;
+  return actionButton('admin.delete-page', 'trash', () => askReason({
+    title: t('admin.delete-title', { slug: p.slug }),
+    body: t('admin.delete-body', { slug: p.slug }),
+    confirm: p.slug,
+    run: async (reason) => {
+      await post('/api/admin/pages', { action: 'delete', id: p.id, reason, confirmSlug: p.slug });
+      // The reason dialog first, so focus goes back past the page's dialog.
+      closeModal('reasonModal');
+      closeModal('pageModal');
+      toast(t('admin.deleted', { slug: p.slug }));
+      loaders.pages?.();
+    },
+  }), 'btn-danger');
+}
+
 function pageRow(p) {
   const info = el('div', {}, [
     el('div', { class: 'primary' }, [el('a', { class: 'text-link', href: `/${p.slug}`, target: '_blank', rel: 'noopener noreferrer', text: `/${p.slug}` }), p.displayName ? ` · ${p.displayName}` : '']),
@@ -400,7 +427,7 @@ async function openPage(id) {
       p.bio ? el('pre', { text: p.bio }) : null,
       el('div', { class: 'tags row u-mt-05' }, [statusBadge(p.status)]),
       p.banReason ? el('p', { class: 'callout danger', text: t('admin.ban-reason', { reason: p.banReason }) }) : null,
-      el('div', { class: 'actions inline' }, banActions(p, () => { refresh(); loaders.pages?.(); })),
+      el('div', { class: 'actions inline' }, [...banActions(p, () => { refresh(); loaders.pages?.(); }), deleteAction(p)].filter(Boolean)),
       el('p', { class: 'modal-section-label', text: t('admin.tab-links') }),
       el('ul', { class: 'data-list' }, data.links.length ? data.links.map((l) => linkRow(l, refresh)) : [el('li', { class: 'empty-state', text: t('admin.empty-links') })]),
       el('p', { class: 'modal-section-label', text: t('admin.tab-reports') }),

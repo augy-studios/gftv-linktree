@@ -1,4 +1,4 @@
-// Shared page wiring for every page: i18n, theme, icons, dialogs, the update
+// Shared page wiring for every page: i18n, theme, icons, images, dialogs, the update
 // bar, the sticky header and the footer year. Each page's own module imports
 // this first.
 
@@ -16,6 +16,7 @@ import {
   LIGHT_UNTIL_HOUR,
 } from './theme.js';
 import { icon, hydrateIcons } from './icons.js';
+import { hydrateImages } from './blob-image.js';
 import { openModal, wireModals } from './ui.js';
 import { initUpdateBar } from './update-bar.js';
 import { initPasswordToggles } from './password-toggle.js';
@@ -152,6 +153,7 @@ function wireFooterAdminLink() {
 
 initTheme();
 hydrateIcons();
+hydrateImages();
 wireModals();
 wireTheme();
 wireStickyHeader();

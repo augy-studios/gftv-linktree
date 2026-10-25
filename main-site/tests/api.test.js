@@ -509,3 +509,42 @@ test('staff can remove a picture; deleting a page removes it too', async () => {
   await owner.call(security, { method: 'POST', body: { action: 'delete-page', password, confirmSlug: 'augy' } });
   assert.equal(fake.objects.size, 0, 'the picture goes with the page');
 });
+
+test('an admin can delete a page, which frees its name', async () => {
+  const sharp = (await import('sharp')).default;
+  const avatar = (await import('../api/me/avatar.js')).default;
+  const owner = browser();
+  await makePage(owner);
+  const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: '#00aa00' } }).png().toBuffer();
+  await owner.call(avatar, { method: 'POST', body: { image: png.toString('base64') } });
+  await owner.call(meLinks, { method: 'POST', body: { title: 'Site', url: 'https://example.com' } });
+  const pageId = fake.table('gftvonelink_pages')[0].id;
+
+  const { secret: adminSecret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const { secret: editorSecret } = await makeStaff({ username: 'ed', role: 'editor' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', adminSecret);
+  const editor = browser();
+  await staffSignIn(editor, 'ed', editorSecret);
+
+  const del = (b, body) => b.call(adminPages, { method: 'POST', body: { action: 'delete', id: pageId, ...body } });
+  assert.equal((await del(editor, { reason: 'spam', confirmSlug: 'augy' })).json.error, 'admin_only');
+  assert.equal((await del(admin, { confirmSlug: 'augy' })).json.error, 'reason_required');
+  assert.equal((await del(admin, { reason: 'spam', confirmSlug: 'aug' })).json.error, 'confirm_slug');
+  assert.equal(fake.table('gftvonelink_pages').length, 1, 'nothing deleted yet');
+
+  const done = await del(admin, { reason: 'spam', confirmSlug: 'AUGY' });
+  assert.equal(done.status, 200, done.body);
+  assert.equal(done.json.slug, 'augy');
+  for (const table of ['gftvonelink_pages', 'gftvonelink_links', 'gftvonelink_sessions', 'gftvonelink_recovery_codes']) {
+    assert.equal(fake.table(table).length, 0, table);
+  }
+  assert.equal(fake.objects.size, 0, 'the picture is deleted');
+  assert.equal((await owner.call(mePage)).status, 401, 'the owner is signed out');
+  const logged = fake.table('gftvonelink_audit_logs').find((r) => r.action === 'mod.page_deleted');
+  assert.deepEqual(logged.details, { slug: 'augy', reason: 'spam' });
+
+  assert.equal((await browser().call(slug, { query: { slug: 'augy' } })).json.available, true, 'the name is free');
+  await makePage(browser());
+  assert.equal(fake.table('gftvonelink_pages').length, 1, 'and can be registered again');
+});

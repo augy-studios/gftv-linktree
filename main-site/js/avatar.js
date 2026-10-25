@@ -1,10 +1,13 @@
 // Showing a profile picture. Choosing, framing and compressing one is in
 // js/avatar-composer.js.
 
+import { setBlobSrc } from './blob-image.js';
+
 // Fill an .avatar circle with the picture, or the name's first letter when
 // there is none or it fails to load. The picture is decorative: the name sits
-// right beside it, so it has an empty alt. crossorigin lets the service
-// worker keep a readable copy for offline viewing.
+// right beside it, so it has an empty alt. It is shown from a blob: URL (see
+// js/blob-image.js); crossorigin covers the plain address it falls back to,
+// so the service worker can still keep a readable copy for offline viewing.
 export function fillAvatar(container, url, name) {
   container.replaceChildren();
   const letter = () => {
@@ -20,7 +23,7 @@ export function fillAvatar(container, url, name) {
   img.crossOrigin = 'anonymous';
   img.referrerPolicy = 'no-referrer';
   img.addEventListener('error', letter, { once: true });
-  img.src = url;
+  setBlobSrc(img, url);
   container.classList.add('has-image');
   container.appendChild(img);
 }
