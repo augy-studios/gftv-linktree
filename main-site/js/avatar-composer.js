@@ -10,6 +10,9 @@
 //     circle with a margin, centred on the subject;
 //   - a photo starts as the centred square that fills the circle.
 // Either can then be moved and zoomed, and Reset framing goes back to that.
+//
+// A picture that is already see-through (a cut-out PNG, say) skips removal:
+// its own alpha is the mask, and the background choices open straight away.
 
 import { t } from '../assets/i18n/i18n.js';
 import { openModal, closeModal, setBusy, errorText } from './ui.js';
@@ -87,6 +90,23 @@ async function loadBitmap(file) {
   });
   bitmap.close?.();
   return small;
+}
+
+// The picture's own alpha at the mask's size, in the model's layout, or null
+// when the picture is opaque. A few soft pixels (rounded corners, a faint
+// edge) do not count: at least 1% of it has to be clearly see-through.
+function alphaMask(source) {
+  const canvas = new OffscreenCanvas(MASK, MASK);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(source, 0, 0, MASK, MASK);
+  const { data } = ctx.getImageData(0, 0, MASK, MASK);
+  const mask = new Uint8Array(MASK * MASK);
+  let clear = 0;
+  for (let i = 0; i < mask.length; i += 1) {
+    mask[i] = data[i * 4 + 3];
+    if (mask[i] < 128) clear += 1;
+  }
+  return clear >= mask.length * 0.01 ? mask : null;
 }
 
 // --- framing ---------------------------------------------------------------
@@ -352,6 +372,7 @@ function render() {
 
 function syncControls() {
   const removeBtn = $('composerRemoveBg');
+  removeBtn.hidden = state.seeThrough;
   removeBtn.setAttribute('aria-pressed', String(state.removed));
   removeBtn.querySelector('span:last-child').textContent = t(state.removed ? 'avatar.restore-bg' : 'avatar.remove-bg');
   $('composerBg').hidden = !state.removed;
@@ -707,7 +728,15 @@ export async function editAvatar(file, save) {
     bgImage: null,
     base: 1,
     view: { cx: 0, cy: 0, scale: 1 },
+    seeThrough: false,
   };
+  const mask = alphaMask(source);
+  if (mask) {
+    state.seeThrough = true;
+    state.cutout = source;
+    state.subject = subjectOf(mask, state.w, state.h);
+    state.removed = true;
+  }
   onSave = save;
   if (!wired) {
     wire();
@@ -715,7 +744,7 @@ export async function editAvatar(file, save) {
   }
   buildSwatches();
   buildGradients();
-  status('');
+  status(state.seeThrough ? t('avatar.see-through') : '');
   $('composerError').textContent = '';
   const canvas = $('composerCanvas');
   const px = Math.round(Math.min(320, canvas.clientWidth || 320) * (window.devicePixelRatio || 1));

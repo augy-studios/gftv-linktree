@@ -232,6 +232,7 @@
   "avatar.preparing": "正在准备去背景工具，第一次需要一点时间。",
   "avatar.downloading": "正在准备去背景工具（只有第一次）：{loaded} / {total} MB",
   "avatar.removing": "正在去除背景",
+  "avatar.see-through": "这张图片的背景已经是透明的。可以在后面加一个背景，或保留“无”。",
   "avatar.removed-ok": "背景已去除。图片已放进圆框内，请选择放在后面的背景。",
   "avatar.colour-yellow": "国际兽视黄",
   "avatar.colour-blue-grey": "蓝灰",

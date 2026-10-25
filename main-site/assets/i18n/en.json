@@ -232,6 +232,7 @@
   "avatar.preparing": "Getting the background remover ready. The first time takes a moment.",
   "avatar.downloading": "Getting the background remover ready, first time only: {loaded} of {total} MB",
   "avatar.removing": "Removing the background",
+  "avatar.see-through": "This picture already has a see-through background. Add one behind it, or leave it as None.",
   "avatar.removed-ok": "Background removed. The picture is fitted inside the circle; choose what goes behind it.",
   "avatar.colour-yellow": "GFTV yellow",
   "avatar.colour-blue-grey": "Blue-grey",
