@@ -139,6 +139,17 @@ test('link icons: the browser and the server agree, and every one draws', async 
   }
 });
 
+test('every language has a flag, and every flag is a language', async () => {
+  const { registry } = await import('../assets/i18n/locales.js');
+  const { FLAGS } = await import('../js/icon-data.js');
+  const icons = await import('../js/icons.js');
+  for (const entry of registry) {
+    assert.ok(icons.flag(entry.flag).startsWith('<svg viewBox="0 0 640 480"'), entry.code);
+    assert.doesNotMatch(FLAGS[entry.flag], /xlink:|<script|\son\w+=/i, entry.flag);
+  }
+  assert.deepEqual(Object.keys(FLAGS).sort(), registry.map((l) => l.flag).sort());
+});
+
 test('platform links build and read back their addresses', async () => {
   const p = await import('../js/platforms.js');
   const icons = await import('../js/icons.js');

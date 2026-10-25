@@ -611,6 +611,11 @@ body { display: flex; flex-direction: column; min-height: 100dvh; }
 }
 .lang-option:hover { background: var(--surface-hover); }
 .lang-option[aria-selected="true"] { border-color: var(--focus-ring); background: var(--surface-active); }
+.lang-option .lang-label { display: inline-flex; align-items: center; gap: 0.65rem; min-width: 0; }
+/* A hairline round the flag, so white edges (Indonesia, India) still show
+   against a light row. */
+.lang-option .lang-flag { display: inline-flex; flex: none; }
+.lang-option .lang-flag svg { width: 24px; height: 18px; border-radius: 3px; box-shadow: 0 0 0 1px var(--border); }
 .lang-option .lang-check { visibility: hidden; color: var(--brand-text); }
 .lang-option[aria-selected="true"] .lang-check { visibility: visible; }
 .lang-option .lang-check svg { width: 18px; height: 18px; }

@@ -1,8 +1,9 @@
 // Inline SVG icons, coloured with currentColor. Feather-style, 24 unit grid.
 // Usage: <span data-icon="sun" aria-hidden="true"></span>, then hydrateIcons().
-// No emoji anywhere, per the theme rules.
+// No emoji anywhere, per the theme rules. Flags, for the language picker,
+// are the one thing drawn in their own colours (flag() below).
 
-import { BRANDS, FEATHER } from './icon-data.js';
+import { BRANDS, FEATHER, FLAGS } from './icon-data.js';
 
 const PATHS = {
   // interface
@@ -117,6 +118,13 @@ export function icon(name) {
   const body = PATHS[name] ?? FEATHER[name];
   if (!body) return '';
   return `<svg ${svg} fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+}
+
+// A country flag by flag-icons code ('gb', 'my'), 4:3. Always shown next to
+// a language's own name, so it is hidden from screen readers.
+export function flag(code) {
+  const body = FLAGS[code];
+  return body ? `<svg viewBox="0 0 640 480" aria-hidden="true" focusable="false">${body}</svg>` : '';
 }
 
 // A span holding an icon, for building nodes in code.

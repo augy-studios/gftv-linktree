@@ -4,7 +4,7 @@
 // from js/ui.js: focus trap, inert background, scroll lock, Escape and
 // backdrop to close.
 import { t, getLocale, getLocales, setLocale, onChange } from './i18n.js';
-import { icon } from '../../js/icons.js';
+import { icon, flag } from '../../js/icons.js';
 import { openModal, closeModal } from '../../js/ui.js';
 
 const MODAL_ID = 'langModal';
@@ -47,13 +47,22 @@ function buildModal() {
     li.setAttribute('lang', entry.code);
     li.setAttribute('dir', entry.dir);
     li.tabIndex = -1;
+    // The flag before the name; the name alone is what is read out and what
+    // typing a letter matches.
+    const label = document.createElement('span');
+    label.className = 'lang-label';
+    const mark = document.createElement('span');
+    mark.className = 'lang-flag';
+    mark.setAttribute('aria-hidden', 'true');
+    mark.innerHTML = flag(entry.flag);
     const name = document.createElement('span');
     name.textContent = entry.name;
+    label.append(mark, name);
     const check = document.createElement('span');
     check.className = 'lang-check';
     check.setAttribute('aria-hidden', 'true');
     check.innerHTML = icon('check');
-    li.append(name, check);
+    li.append(label, check);
     list.appendChild(li);
   }
 

@@ -8,6 +8,7 @@
   },
   "devDependencies": {
     "feather-icons": "4.29.2",
+    "flag-icons": "7.5.0",
     "simple-icons": "16.35.0"
   }
 }
