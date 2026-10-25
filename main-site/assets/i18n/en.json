@@ -797,6 +797,8 @@
   "admin.empty-flagged-devices": "No devices are flagged.",
   "error.visitor_banned": "New pages cannot be made from this device. If you think this is a mistake, contact GFTV.",
   "error.not_flagged_visitor": "That device is no longer flagged.",
+  "error.human_check_pending": "The check that you are a person has not finished. Wait a moment, or complete it if it asks, then try again.",
+  "error.human_check_failed": "The check that you are a person did not pass. Try it again.",
   "testimonial.title": "Loved OneLink?",
   "testimonial.body": "Tell us about it, and your testimonial might be featured on the home page.",
   "testimonial.quote": "What you would tell a friend",

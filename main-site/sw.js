@@ -86,6 +86,7 @@ const PRECACHE = [
   '/js/vendor/qrcode.js',
   '/js/vendor/fingerprintjs.js',
   '/js/visitor.js',
+  '/js/turnstile.js',
   '/js/pages/home.js',
   '/js/pages/register.js',
   '/js/pages/login.js',

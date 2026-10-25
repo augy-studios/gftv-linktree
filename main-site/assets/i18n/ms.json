@@ -797,6 +797,8 @@
   "admin.empty-flagged-devices": "Tiada peranti yang ditandakan.",
   "error.visitor_banned": "Halaman baharu tidak boleh dibuat daripada peranti ini. Jika anda fikir ini satu kesilapan, hubungi GFTV.",
   "error.not_flagged_visitor": "Peranti tersebut tidak lagi ditandakan.",
+  "error.human_check_pending": "Semakan bahawa anda seorang manusia belum selesai. Tunggu sebentar, atau lengkapkannya jika diminta, kemudian cuba lagi.",
+  "error.human_check_failed": "Semakan bahawa anda seorang manusia tidak lulus. Cuba lagi.",
   "testimonial.title": "Suka OneLink?",
   "testimonial.body": "Beritahu kami mengenainya, dan testimoni anda mungkin dipaparkan pada laman utama.",
   "testimonial.quote": "Apa yang anda akan beritahu rakan",

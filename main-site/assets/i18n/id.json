@@ -767,6 +767,8 @@
   "admin.empty-flagged-devices": "Tidak ada perangkat yang ditandai.",
   "error.visitor_banned": "Halaman baru tidak dapat dibuat dari perangkat ini. Jika Anda merasa ini adalah kesalahan, hubungi GFTV.",
   "error.not_flagged_visitor": "Perangkat itu tidak lagi ditandai.",
+  "error.human_check_pending": "Pemeriksaan bahwa Anda manusia belum selesai. Tunggu sebentar, atau selesaikan jika diminta, lalu coba lagi.",
+  "error.human_check_failed": "Pemeriksaan bahwa Anda manusia tidak lolos. Coba lagi.",
   "testimonial.title": "Menyukai OneLink?",
   "testimonial.body": "Beri tahu kami tentang hal itu, dan testimoni Anda mungkin akan ditampilkan di beranda.",
   "testimonial.quote": "Apa yang akan Anda sampaikan kepada seorang teman",

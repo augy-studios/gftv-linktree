@@ -799,6 +799,11 @@ button.text-link { padding: 0; }
 .callout:empty { display: none; }
 .callout + .callout, * + .callout { margin-top: 0.85rem; }
 
+/* Cloudflare Turnstile (js/turnstile.js). Takes no room until it is drawn,
+   and its iframe fills the form's width. */
+.human-check { margin-top: 0.85rem; }
+.human-check:empty { display: none; }
+
 /* Backup codes, shown once. */
 .codes {
   display: grid;

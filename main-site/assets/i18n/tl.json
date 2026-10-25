@@ -767,6 +767,8 @@
   "admin.empty-flagged-devices": "Walang mga na-flag na device.",
   "error.visitor_banned": "Hindi maaaring gumawa ng bagong pahina mula sa device na ito. Kung sa tingin mo ay isa itong pagkakamali, kontakin ang GFTV.",
   "error.not_flagged_visitor": "Hindi na na-flag ang device na iyon.",
+  "error.human_check_pending": "Hindi pa tapos ang pagsusuri na ikaw ay isang tao. Maghintay sandali, o kumpletuhin ito kung hihilingin, at subukan ulit.",
+  "error.human_check_failed": "Hindi pumasa ang pagsusuri na ikaw ay isang tao. Subukan ulit.",
   "testimonial.title": "Gustong-gusto ang OneLink?",
   "testimonial.body": "Sabihin sa amin ang tungkol dito, at baka itampok ang iyong testimonial sa home page.",
   "testimonial.quote": "Ano ang sasabihin mo sa isang kaibigan",
