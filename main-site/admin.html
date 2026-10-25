@@ -96,7 +96,7 @@
                 <button class="tab" role="tab" id="atab-pages" aria-controls="apanel-pages" aria-selected="false" tabindex="-1"><span data-icon="user"></span><span data-i18n="admin.tab-pages">Pages</span></button>
                 <button class="tab" role="tab" id="atab-links" aria-controls="apanel-links" aria-selected="false" tabindex="-1"><span data-icon="link"></span><span data-i18n="admin.tab-links">Links</span></button>
                 <button class="tab" role="tab" id="atab-blocks" aria-controls="apanel-blocks" aria-selected="false" tabindex="-1" data-admin-only hidden><span data-icon="ban"></span><span data-i18n="admin.tab-blocks">Block lists</span></button>
-                <button class="tab" role="tab" id="atab-testimonials" aria-controls="apanel-testimonials" aria-selected="false" tabindex="-1" data-admin-only hidden><span data-icon="chat"></span><span data-i18n="admin.tab-testimonials">Testimonials</span></button>
+                <button class="tab" role="tab" id="atab-testimonials" aria-controls="apanel-testimonials" aria-selected="false" tabindex="-1"><span data-icon="chat"></span><span data-i18n="admin.tab-testimonials">Testimonials</span></button>
                 <button class="tab" role="tab" id="atab-audit" aria-controls="apanel-audit" aria-selected="false" tabindex="-1" data-admin-only hidden><span data-icon="document"></span><span data-i18n="admin.tab-audit">Audit log</span></button>
                 <button class="tab" role="tab" id="atab-account" aria-controls="apanel-account" aria-selected="false" tabindex="-1"><span data-icon="key"></span><span data-i18n="admin.tab-account">My passkeys</span></button>
             </div>
@@ -238,7 +238,12 @@
             <section class="glass-card panel" role="tabpanel" id="apanel-testimonials" aria-labelledby="atab-testimonials" hidden>
                 <h2 data-i18n="admin.testimonials-title">Testimonials</h2>
                 <p class="muted small" data-i18n="admin.testimonials-body">Shown under "Loved by the community" on the home page, in this order. Only add what people actually said, with their permission. The section is hidden while none are visible.</p>
-                <form id="testimonialForm" class="u-mt-075" novalidate>
+                <div class="panel-section u-mt-075">
+                    <h3 data-i18n="admin.testimonials-pending">Waiting for approval</h3>
+                    <p class="muted small" data-i18n="admin.testimonials-pending-body">Sent in by page owners, who agreed to it being shown with their page's name. Approve to put it on the home page.</p>
+                    <ul class="data-list u-mt-075" id="testimonialPending"></ul>
+                </div>
+                <form id="testimonialForm" class="u-mt-1" novalidate data-admin-only hidden>
                     <label class="field">
                         <span data-i18n="admin.testimonial-quote">What they said</span>
                         <textarea id="testimonialQuote" maxlength="280" rows="3" required></textarea>

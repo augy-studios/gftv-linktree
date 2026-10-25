@@ -274,6 +274,7 @@ loaders.overview = async () => {
       ['openReports', 'admin.stat-open-reports', 'reports'],
       ['awaitingReview', 'admin.stat-review', 'pages', 'review'],
       ['quarantined', 'admin.stat-quarantined', 'pages', 'quarantined'],
+      ['pendingTestimonials', 'admin.stat-testimonials', 'testimonials'],
       ['active', 'admin.stat-active'],
       ['pending', 'admin.stat-pending'],
       ['banned', 'admin.stat-banned'],
@@ -741,31 +742,54 @@ $('threatListRefresh').addEventListener('click', () => {
 // Testimonials (admin)
 // ---------------------------------------------------------------------------
 
-function renderTestimonials(list) {
+// Owners' testimonials wait at the top for any staff member to approve or
+// decline; the published list below is arranged by admins only.
+function renderTestimonials(all) {
+  const send = async (item, body) => {
+    try {
+      renderTestimonials((await post('/api/admin/testimonials', { id: item.id, ...body })).testimonials);
+    } catch (error) {
+      if (!guardSession(error)) toast(errorText(error));
+    }
+  };
+  const pending = all.filter((x) => x.status === 'pending');
+  fill($('testimonialPending'), pending.map((item) => el('li', { class: 'data-row' }, [
+    el('div', {}, [
+      el('div', { class: 'primary', text: `“${item.quote}”` }),
+      el('div', { class: 'secondary' }, [
+        item.pageSlug ? el('a', { class: 'text-link', href: `/${item.pageSlug}`, target: '_blank', rel: 'noopener noreferrer', text: `${item.author} · /${item.pageSlug}` }) : item.author,
+        ` · ${formatDate(item.createdAt)}`,
+      ]),
+    ]),
+    el('div', { class: 'row-actions' }, [
+      actionButton('admin.approve', 'check', () => send(item, { action: 'approve' }), 'btn-primary'),
+      actionButton('admin.decline', 'close', () => send(item, { action: 'decline' })),
+    ]),
+  ])), 'admin.empty-pending-testimonials');
+  const list = all.filter((x) => x.status !== 'pending');
   fill($('testimonialList'), list.map((item, i) => {
-    const send = async (body) => {
-      try {
-        renderTestimonials((await post('/api/admin/testimonials', { id: item.id, ...body })).testimonials);
-      } catch (error) {
-        if (!guardSession(error)) toast(errorText(error));
-      }
-    };
-    const up = el('button', { class: 'icon-btn small', type: 'button', 'aria-label': t('admin.move-up'), disabled: i === 0, onclick: () => send({ action: 'move', delta: -1 }) });
+    const act = (body) => send(item, body);
+    const up = el('button', { class: 'icon-btn small', type: 'button', 'aria-label': t('admin.move-up'), disabled: i === 0, onclick: () => act({ action: 'move', delta: -1 }) });
     up.innerHTML = icon('arrow-up');
-    const down = el('button', { class: 'icon-btn small', type: 'button', 'aria-label': t('admin.move-down'), disabled: i === list.length - 1, onclick: () => send({ action: 'move', delta: 1 }) });
+    const down = el('button', { class: 'icon-btn small', type: 'button', 'aria-label': t('admin.move-down'), disabled: i === list.length - 1, onclick: () => act({ action: 'move', delta: 1 }) });
     down.innerHTML = icon('arrow-down');
     return el('li', { class: `data-row${item.isVisible ? '' : ' off'}` }, [
       el('div', {}, [
         el('div', { class: 'primary', text: `“${item.quote}”` }),
         el('div', { class: 'secondary', text: [item.author, item.pageSlug ? `/${item.pageSlug}` : null].filter(Boolean).join(' · ') }),
-        item.isVisible ? null : el('div', { class: 'tags' }, [badge(t('admin.hidden'))]),
+        el('div', { class: 'tags' }, [
+          item.status === 'declined' ? badge(t('admin.declined'), 'danger') : null,
+          item.isVisible ? null : badge(t('admin.hidden')),
+          item.sentByOwner ? badge(t('admin.sent-by-owner')) : null,
+        ]),
       ]),
-      el('div', { class: 'row-actions' }, [
+      // Arranging the published list is for admins; editors see it as it is.
+      !isAdmin() ? null : el('div', { class: 'row-actions' }, [
         up,
         down,
-        actionButton(item.isVisible ? 'admin.hide' : 'admin.show', item.isVisible ? 'eye-off' : 'eye', () => send({ action: 'update', isVisible: !item.isVisible })),
+        actionButton(item.isVisible ? 'admin.hide' : 'admin.show', item.isVisible ? 'eye-off' : 'eye', () => act({ action: 'update', isVisible: !item.isVisible })),
         actionButton('common.remove', 'trash', () => {
-          if (window.confirm(t('admin.testimonial-remove-confirm', { author: item.author }))) send({ action: 'remove' });
+          if (window.confirm(t('admin.testimonial-remove-confirm', { author: item.author }))) act({ action: 'remove' });
         }),
       ]),
     ]);
@@ -773,7 +797,7 @@ function renderTestimonials(list) {
 }
 
 loaders.testimonials = async () => {
-  if (!isAdmin()) return;
+  loading($('testimonialPending'));
   loading($('testimonialList'));
   try {
     renderTestimonials((await api('/api/admin/testimonials')).testimonials);

@@ -1,6 +1,6 @@
 // An in-memory stand-in for the supabase-js client, covering the query
 // builder calls the API makes, with the schema's unique constraints, foreign
-// key cascades and RPC functions from migrations/001 to 009. Enough to drive every
+// key cascades and RPC functions from migrations/001 to 010. Enough to drive every
 // route end to end in tests; not a general PostgREST.
 
 import { randomUUID } from 'node:crypto';
@@ -20,7 +20,7 @@ const DEFAULTS = {
   gftvonelink_audit_logs: () => ({ details: {}, actor_type: 'system', actor_id: null, page_id: null, ip_hash: null }),
   gftvonelink_blocked_patterns: () => ({ applies_to: 'links', reason: null }),
   gftvonelink_review_patterns: () => ({ reason: null }),
-  gftvonelink_testimonials: () => ({ page_slug: null, is_visible: true, order_index: 0, updated_at: now() }),
+  gftvonelink_testimonials: () => ({ page_slug: null, is_visible: true, order_index: 0, updated_at: now(), page_id: null, status: 'approved', consented_at: null, reviewed_by: null, reviewed_at: null }),
 };
 
 const PRIMARY = { gftvonelink_blocked_slugs: 'slug', gftvonelink_blocked_domains: 'domain', gftvonelink_rate_limits: 'bucket', gftvonelink_ip_bans: 'ip_hash' };
@@ -35,6 +35,7 @@ const UNIQUE = {
   gftvhello_users: ['username', 'email'],
   gftvonelink_blocked_patterns: ['pattern'],
   gftvonelink_review_patterns: ['pattern'],
+  gftvonelink_testimonials: ['page_id'],
 };
 
 // child table -> [{ column, parent, onDelete }]
@@ -45,6 +46,7 @@ const FKS = {
   gftvonelink_sessions: [{ column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' }],
   gftvonelink_telegram_links: [{ column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' }],
   gftvonelink_page_stats: [{ column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' }],
+  gftvonelink_testimonials: [{ column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' }],
   gftvonelink_reports: [
     { column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' },
     { column: 'link_id', parent: 'gftvonelink_links', onDelete: 'set null' },

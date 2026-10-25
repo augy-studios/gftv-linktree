@@ -23,6 +23,8 @@ In the Supabase project that already holds the `gftvhello_` tables, open
   GFTV short links' visit log (`gftvlinks_linkvisits`) while it exists
 - `009_connection_bans.sql`: banning connections that keep making harmful
   pages
+- `010_testimonial_submissions.sql`: testimonials sent in by page owners,
+  waiting for staff approval
 
 **Check:** in **Table Editor** you see the `gftvonelink_` tables, each marked
 **RLS enabled**.

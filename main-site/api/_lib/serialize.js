@@ -167,8 +167,18 @@ export function adminTestimonialRow(row) {
     author: row.author,
     pageSlug: row.page_slug || null,
     isVisible: row.is_visible,
+    // pending | approved | declined; sent in by the page's owner, or entered by staff.
+    status: row.status || 'approved',
+    sentByOwner: Boolean(row.page_id),
     createdAt: row.created_at,
+    reviewedAt: row.reviewed_at || null,
   };
+}
+
+// The owner's own testimonial, or null.
+export function ownerTestimonial(row) {
+  if (!row) return null;
+  return { quote: row.quote, status: row.status, sentAt: row.created_at, reviewedAt: row.reviewed_at || null };
 }
 
 // ---------------------------------------------------------------------------

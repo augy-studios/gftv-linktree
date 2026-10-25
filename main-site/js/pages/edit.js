@@ -41,6 +41,7 @@ async function load() {
     page = data.page;
     view('ready');
     render();
+    loadOwnQuote();
   } catch (error) {
     if (error.code === 'page_banned') view('banned');
     else if (error.status === 401) view('signedOut');
@@ -70,6 +71,7 @@ function render() {
   renderShare();
   renderSecurity();
   renderStats();
+  renderOwnQuote();
 }
 
 // ---------------------------------------------------------------------------
@@ -464,6 +466,51 @@ $('avatarRemove').addEventListener('click', () => {
     page = data.page;
     renderProfile();
     toast(t('avatar.removed'));
+  });
+});
+
+// The owner's testimonial for the home page (api/me/testimonial.js): send,
+// see whether staff put it up, withdraw.
+let ownQuote = null;
+
+function renderOwnQuote() {
+  const status = $('ownQuoteStatus');
+  status.hidden = !ownQuote;
+  status.classList.toggle('ok', ownQuote?.status === 'approved');
+  status.classList.toggle('warn', ownQuote?.status === 'declined');
+  if (ownQuote) status.textContent = t(`testimonial.status-${ownQuote.status}`, { quote: ownQuote.quote });
+  $('ownQuoteWithdraw').hidden = !ownQuote;
+  $('ownQuoteSend').querySelector('span:last-child').textContent = t(ownQuote ? 'testimonial.replace' : 'testimonial.send');
+  $('ownQuoteCount').textContent = t('field.bio-count', { used: [...$('ownQuote').value].length, max: 280 });
+}
+
+async function loadOwnQuote() {
+  try {
+    ownQuote = (await api('/api/me/testimonial')).testimonial;
+  } catch {
+    ownQuote = null;
+  }
+  renderOwnQuote();
+}
+
+$('ownQuote').addEventListener('input', renderOwnQuote);
+$('ownQuoteForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  withBusy($('ownQuoteSend'), $('ownQuoteError'), async () => {
+    const data = await post('/api/me/testimonial', { quote: $('ownQuote').value, consent: $('ownQuoteConsent').checked });
+    ownQuote = data.testimonial;
+    $('ownQuote').value = '';
+    $('ownQuoteConsent').checked = false;
+    renderOwnQuote();
+    toast(t('testimonial.sent'));
+  });
+});
+$('ownQuoteWithdraw').addEventListener('click', () => {
+  if (!window.confirm(t('testimonial.withdraw-confirm'))) return;
+  withBusy($('ownQuoteWithdraw'), $('ownQuoteError'), async () => {
+    ownQuote = (await api('/api/me/testimonial', { method: 'DELETE', body: {} })).testimonial;
+    renderOwnQuote();
+    toast(t('testimonial.withdrawn'));
   });
 });
 

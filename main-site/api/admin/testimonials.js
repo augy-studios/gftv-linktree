@@ -1,13 +1,15 @@
-// Testimonials for the home page's community section. Admin only.
+// Testimonials for the home page's community section.
 //
 // GET                                                  -> { testimonials }
-// POST { action: "add", quote, author, pageSlug? }
+// POST { action: "approve" | "decline", id }           any staff
+// POST { action: "add", quote, author, pageSlug? }     admins from here on
 // POST { action: "update", id, quote?, author?, pageSlug?, isVisible? }
 // POST { action: "move", id, delta: -1 | 1 }
 // POST { action: "remove", id }
 //
-// Every answer is the full list in display order. Quotes are entered by
-// staff from what people actually said; the home page shows the visible ones.
+// Every answer is the full list in display order, sent in by owners
+// (me/testimonial.js, waiting until approved) and entered by staff from what
+// people actually said. The home page shows the approved, visible ones.
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
@@ -19,7 +21,7 @@ import { adminTestimonialRow } from '../_lib/serialize.js';
 async function all() {
   const { data, error } = await db()
     .from(T.testimonials)
-    .select('id, quote, author, page_slug, is_visible, order_index, created_at')
+    .select('id, quote, author, page_slug, page_id, status, is_visible, order_index, created_at, reviewed_at')
     .order('order_index');
   if (error) throw error;
   return data ?? [];
@@ -34,7 +36,8 @@ function slugField(input) {
 
 export default route('admin/testimonials', async (req, res) => {
   if (guard(req, res, ['GET', 'POST'])) return;
-  const staff = await requireStaff(req, res, { admin: true });
+  // Editors approve and decline what owners send; the rest is for admins.
+  const staff = await requireStaff(req, res);
   if (!staff) return;
   const answer = async () => ok(res, { testimonials: (await all()).map(adminTestimonialRow) });
   if (req.method === 'GET') return answer();
@@ -43,6 +46,8 @@ export default route('admin/testimonials', async (req, res) => {
   if (!body) return;
   if (await limited(req, res, 'staffWrite', [`staff:${staff.user.id}`])) return;
   const actor = { actorType: 'staff', actorId: staff.user.id };
+  const reviewing = body.action === 'approve' || body.action === 'decline';
+  if (!reviewing && staff.user.is_admin !== true) return fail(res, 403, 'admin_only');
 
   if (body.action === 'add') {
     const quote = cleanText(body.quote, LIMITS.quote, { multiline: true });
@@ -66,6 +71,17 @@ export default route('admin/testimonials', async (req, res) => {
   const rows = await all();
   const row = rows.find((r) => r.id === body.id);
   if (!row) return fail(res, 404, 'testimonial_not_found');
+
+  if (reviewing) {
+    const status = body.action === 'approve' ? 'approved' : 'declined';
+    const { error } = await db()
+      .from(T.testimonials)
+      .update({ status, reviewed_by: staff.user.id, reviewed_at: new Date().toISOString() })
+      .eq('id', row.id);
+    if (error) throw error;
+    await audit(req, { action: `mod.testimonial_${status}`, ...actor, pageId: row.page_id ?? null, details: { id: row.id, author: row.author } });
+    return answer();
+  }
 
   if (body.action === 'update') {
     const fields = {};

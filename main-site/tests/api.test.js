@@ -38,6 +38,7 @@ import meStats from '../api/me/stats.js';
 import publicTestimonials from '../api/public/testimonials.js';
 import adminTestimonials from '../api/admin/testimonials.js';
 import publicInsights from '../api/public/insights.js';
+import meTestimonial from '../api/me/testimonial.js';
 
 let fake;
 beforeEach(() => {
@@ -977,6 +978,44 @@ test('a second page quarantined from one connection bans it, until staff lift th
   assert.equal((await browser().call(register, { method: 'POST', body: { slug: 'fourth', password: 'correct horse battery' }, ip: '198.51.100.9' })).json.error, 'ip_banned');
 });
 
+test('owners send testimonials, which wait for an admin or editor', async () => {
+  const owner = browser();
+  const { password } = await makePage(owner);
+  await owner.call(mePage, { method: 'PATCH', body: { displayName: 'Augy' } });
+  const send = (body) => owner.call(meTestimonial, { method: 'POST', body });
+
+  assert.equal((await send({ quote: 'Love it' })).json.error, 'testimonial_consent', 'agreeing to be shown is required');
+  assert.equal((await send({ quote: '', consent: true })).json.error, 'testimonial_required');
+  assert.equal((await send({ quote: 'Go to bit[.]ly/x', consent: true })).json.error, 'text_address');
+  const sent = await send({ quote: 'Made my con badge QR in a minute', consent: true });
+  assert.equal(sent.json.testimonial.status, 'pending');
+  assert.deepEqual((await browser().call(publicTestimonials)).json.testimonials, [], 'not shown until approved');
+
+  const { secret } = await makeStaff({ username: 'ed', role: 'editor' });
+  const editor = browser();
+  await staffSignIn(editor, 'ed', secret);
+  assert.equal((await editor.call(adminOverview)).json.counts.pendingTestimonials, 1);
+  const waiting = (await editor.call(adminTestimonials)).json.testimonials.find((x) => x.status === 'pending');
+  assert.equal(waiting.sentByOwner, true);
+  assert.equal(waiting.author, 'Augy');
+  assert.equal(waiting.pageSlug, 'augy');
+  await editor.call(adminTestimonials, { method: 'POST', body: { action: 'approve', id: waiting.id } });
+  assert.deepEqual((await browser().call(publicTestimonials)).json.testimonials.map((x) => x.quote), ['Made my con badge QR in a minute']);
+  assert.equal((await owner.call(meTestimonial)).json.testimonial.status, 'approved', 'the owner sees it went up');
+
+  // Sending again replaces it, and it waits again.
+  await send({ quote: 'Still love it', consent: true });
+  assert.equal(fake.table('gftvonelink_testimonials').length, 1, 'one per page');
+  assert.deepEqual((await browser().call(publicTestimonials)).json.testimonials, []);
+  await editor.call(adminTestimonials, { method: 'POST', body: { action: 'decline', id: waiting.id } });
+  assert.equal((await owner.call(meTestimonial)).json.testimonial.status, 'declined');
+
+  assert.equal((await owner.call(meTestimonial, { method: 'DELETE', body: {} })).json.testimonial, null, 'the owner can withdraw it');
+  await send({ quote: 'Again', consent: true });
+  await owner.call(security, { method: 'POST', body: { action: 'delete-page', password, confirmSlug: 'augy' } });
+  assert.equal(fake.table('gftvonelink_testimonials').length, 0, 'deleting the page takes it too');
+});
+
 test('admins can delete a report, and the audit log keeps what it said', async () => {
   const owner = browser();
   await makePage(owner);
@@ -1052,7 +1091,8 @@ test('testimonials: admins manage them, the home page shows the visible ones', a
   const editor = browser();
   await staffSignIn(editor, 'ed', editorSecret);
 
-  assert.equal((await editor.call(adminTestimonials)).json.error, 'admin_only');
+  assert.equal((await editor.call(adminTestimonials)).status, 200, 'editors see them, to approve what owners send');
+  assert.equal((await editor.call(adminTestimonials, { method: 'POST', body: { action: 'add', quote: 'x', author: 'y' } })).json.error, 'admin_only');
   const send = (body) => admin.call(adminTestimonials, { method: 'POST', body });
   assert.equal((await send({ action: 'add', quote: '', author: 'x' })).json.error, 'testimonial_required');
   assert.equal((await send({ action: 'add', quote: 'Lovely', author: 'A', pageSlug: 'not a slug!' })).json.error, 'slug_invalid');

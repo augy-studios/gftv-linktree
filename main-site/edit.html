@@ -148,6 +148,28 @@
                             <button class="btn btn-primary" type="submit" id="profileSave"><span data-i18n="common.save">Save</span></button>
                         </div>
                     </form>
+
+                    <div class="panel-section u-mt-1">
+                        <h3 data-i18n="testimonial.title">Loved OneLink? Say so</h3>
+                        <p class="muted small" data-i18n="testimonial.body">A few words for the community section on the home page. The GFTV team reads each one before it goes up.</p>
+                        <p class="callout u-mt-075" id="ownQuoteStatus" role="status" hidden></p>
+                        <form id="ownQuoteForm" class="u-mt-075" novalidate>
+                            <label class="field">
+                                <span data-i18n="testimonial.quote">What you would tell a friend</span>
+                                <textarea id="ownQuote" maxlength="280" rows="3"></textarea>
+                                <p class="field-hint" id="ownQuoteCount" aria-live="polite"></p>
+                            </label>
+                            <label class="check">
+                                <input type="checkbox" id="ownQuoteConsent">
+                                <span data-i18n="testimonial.consent">GFTV may show this on the home page with my page's name and a link to it.</span>
+                            </label>
+                            <div class="callout danger" id="ownQuoteError" role="alert"></div>
+                            <div class="actions inline">
+                                <button class="btn btn-primary btn-small" type="submit" id="ownQuoteSend"><span data-icon="send"></span><span data-i18n="testimonial.send">Send</span></button>
+                                <button class="btn btn-small btn-quiet" type="button" id="ownQuoteWithdraw" hidden><span data-i18n="testimonial.withdraw">Withdraw</span></button>
+                            </div>
+                        </form>
+                    </div>
                 </section>
 
                 <section class="glass-card panel" role="tabpanel" id="panel-share" aria-labelledby="tab-share" hidden>
