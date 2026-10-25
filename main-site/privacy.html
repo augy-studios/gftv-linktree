@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title data-i18n="privacy.meta-title">Privacy | OneLink GFTV</title>
+    <meta name="description" content="One page for all your links, by Global Furry Television TIDSC." data-i18n-attr="content:meta.description">
+    <meta name="robots" content="index">
+
+    <meta name="theme-color" content="#ffffff">
+    <script src="/js/prepaint.js"></script>
+
+    <link rel="preload" href="/assets/fonts/ProximaNova-Regular.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/OLG-180.png">
+
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Privacy | OneLink GFTV">
+    <meta property="og:site_name" content="OneLink GFTV">
+    <meta property="og:description" content="One page for all your links, by Global Furry Television TIDSC.">
+    <meta property="og:url" content="https://links.gftv.asia/privacy">
+    <link rel="canonical" href="https://links.gftv.asia/privacy">
+    <meta property="og:image" content="https://links.gftv.asia/OLG-main.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content="https://links.gftv.asia/OLG-main.png">
+
+    <script type="module" src="/assets/i18n/boot.js"></script>
+</head>
+
+<body>
+    <script src="/js/official-bar.js"></script>
+
+    <header class="site-header">
+        <a class="brand" href="/">
+            <img data-src="/OLG-192.png" alt="" width="32" height="32">
+            <span data-i18n="site.name">OneLink GFTV</span>
+        </a>
+        <div class="header-actions">
+            <div data-language-switcher></div>
+            <button class="icon-btn" type="button" id="themeBtn" aria-label="Theme" aria-haspopup="dialog" aria-controls="themeModal">
+                <span data-icon="sun"></span>
+            </button>
+        </div>
+    </header>
+
+    <main class="center">
+        <article class="glass-card page-card prose">
+            <div class="page-head">
+                <h1 data-i18n="privacy.title">Privacy at OneLink</h1>
+                <p data-i18n="privacy.lede">What OneLink GFTV keeps, why, and for how long.</p>
+            </div>
+            <p data-i18n="privacy.gftv">OneLink GFTV is a Global Furry Television (GFTV) service, so GFTV's Privacy Statement and Terms of Use apply to it. This notice adds only what is particular to OneLink.</p>
+            <div class="actions inline">
+                <a class="btn btn-small" href="https://policy.globalfurry.tv/legal/privacy" target="_blank" rel="noopener"><span data-i18n="privacy.gftv-privacy">GFTV Privacy Statement</span></a>
+                <a class="btn btn-small" href="https://policy.globalfurry.tv/legal/terms" target="_blank" rel="noopener"><span data-i18n="privacy.gftv-terms">GFTV Terms of Use</span></a>
+            </div>
+
+            <h2 data-i18n="privacy.collect-title">What we keep</h2>
+            <ul>
+                <li data-i18n="privacy.collect-page">If you make a page: its name, your password (only as a one-way hash), and what you put on it: display name, bio, links and picture. For your second step: an authenticator secret (encrypted), passkeys, backup codes (as one-way hashes), and your Telegram chat and username if you link Telegram. We do not ask for your email address.</li>
+                <li data-i18n="privacy.collect-connection">For security: a salted one-way hash of your connection's IP address, kept with rate limits, the security log, reports and bans. The address itself is never stored.</li>
+                <li data-i18n="privacy.collect-device">On the sign-up, sign-in, password reset and page editor pages only: a device fingerprint, worked out in your browser by the open-source FingerprintJS library. We keep only a salted one-way hash of it, next to the hash of your connection. It is never taken on public pages or the home page, and nothing is sent to FingerprintJS.</li>
+                <li data-i18n="privacy.collect-turnstile">On sign-up and the report form: Cloudflare Turnstile, which checks that you are a person. Cloudflare runs that check under its own privacy terms. On a public page it loads only when you open the report form.</li>
+                <li data-i18n="privacy.collect-visits">When someone opens a page: daily totals of visits and clicks, with the country, the kind of device (phone, tablet or computer) and the site that sent them. To count a visitor once per half hour, a hash of their connection is held for a day or two. Nothing that says who a visitor is is kept.</li>
+                <li data-i18n="privacy.collect-analytics">On the home page, public pages and the page-not-found page: Google Analytics, which sets cookies and sends Google details of the visit, under Google's privacy policy. It is not used on sign-up, sign-in, the page editor or the staff dashboard.</li>
+                <li data-i18n="privacy.collect-reports">If you report a page: what you write, and the hash of the connection it came from.</li>
+                <li data-i18n="privacy.collect-browser">In your browser: your theme, language and similar settings, a sign-in cookie while you are signed in, and copies of public pages you have opened, so they work offline.</li>
+            </ul>
+
+            <h2 data-i18n="privacy.why-title">Why</h2>
+            <p data-i18n="privacy.why-body">To run OneLink, to keep pages and accounts secure, and to prevent misuse: scams, spam, harmful links, and people coming back after a ban.</p>
+            <p data-i18n="privacy.why-pdpa">For the hashes of your connection and device, and the Turnstile check, we rely on the legitimate interests exception in Singapore's Personal Data Protection Act 2012 (PDPA), for security and the prevention of misuse of our services.</p>
+
+            <h2 data-i18n="privacy.keep-title">How long</h2>
+            <ul>
+                <li data-i18n="privacy.keep-page">Your page and everything on it: until you delete it (Security, then Delete my page) or GFTV staff do. A sign-up that never finished is deleted within two days.</li>
+                <li data-i18n="privacy.keep-limits">Rate limits and the day's flags, with their hashed connection or device: deleted within two days.</li>
+                <li data-i18n="privacy.keep-log">The security log keeps the hashed connection with each entry, for GFTV's records as its Privacy Statement describes. The hashed device is removed from it after 30 days.</li>
+                <li data-i18n="privacy.keep-bans">A ban keeps the hashed connection, and the hashed devices seen on it, until staff lift it.</li>
+                <li data-i18n="privacy.keep-reports">Reports, with their hashed connection: until staff delete them, or the page is deleted.</li>
+                <li data-i18n="privacy.keep-visits">Daily visit totals: for as long as the page exists.</li>
+            </ul>
+
+            <h2 data-i18n="privacy.contact-title">Questions</h2>
+            <p data-i18n="privacy.contact-body">For questions about OneLink and your data, or to ask what is kept about you, write to:</p>
+            <p><a class="text-link" href="mailto:augy@augystudios.com">augy@augystudios.com</a></p>
+            <p data-i18n="privacy.contact-gftv">GFTV can also be reached through its official platforms and channels, as its Privacy Statement says.</p>
+
+            <p class="muted small" data-i18n="privacy.updated">Last updated October 2026.</p>
+        </article>
+    </main>
+
+    <footer class="site-footer">
+        <nav>
+            <a href="/privacy" data-i18n="footer.privacy">Privacy</a>
+            <a href="https://policy.globalfurry.tv/legal/terms" target="_blank" rel="noopener" data-i18n="footer.terms">Terms of Use</a>
+        </nav>
+        <span data-i18n="footer.made">Made with</span> <span data-icon="heart"></span> <span data-i18n="footer.in">in</span>
+        <a href="https://www.google.com/maps/place/Singapore" target="_blank" rel="noopener" data-i18n="footer.singapore">Singapore</a>
+        <span data-i18n="footer.by">by Global Furry Television</span> &copy; 2014-<span id="currentYear"></span>.
+        <span data-i18n="footer.rights">All rights reserved.</span>
+    </footer>
+
+    <div class="modal-backdrop hidden" id="themeModal">
+        <div class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="themeModalTitle">
+            <div class="modal-head">
+                <h2 id="themeModalTitle" data-i18n="theme.title">Theme</h2>
+                <button class="icon-btn small" type="button" data-close-modal="themeModal" aria-label="Close" data-i18n-attr="aria-label:common.close">
+                    <span data-icon="close"></span>
+                </button>
+            </div>
+            <p class="modal-section-label" data-i18n="theme.mode-label">Mode</p>
+            <div class="mode-toggle" id="modeToggle">
+                <button class="mode-btn" type="button" data-mode="light" aria-pressed="false"><span data-icon="sun"></span><span data-i18n="theme.mode.light">Light</span></button>
+                <button class="mode-btn" type="button" data-mode="dark" aria-pressed="false"><span data-icon="moon"></span><span data-i18n="theme.mode.dark">Dark</span></button>
+                <button class="mode-btn mode-btn-wide" type="button" data-mode="time" aria-pressed="false"><span data-icon="clock"></span><span data-i18n="theme.mode.time">Time-based</span></button>
+            </div>
+            <p class="mode-note" id="modeNote" hidden></p>
+            <p class="modal-section-label" data-i18n="theme.color-label">Colour theme</p>
+            <div class="swatch-grid" id="swatchGrid"></div>
+        </div>
+    </div>
+
+    <script type="module" src="/js/pages/privacy.js"></script>
+</body>
+
+</html>

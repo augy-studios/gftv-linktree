@@ -37,6 +37,7 @@ const PRECACHE = [
   '/reset',
   '/edit',
   '/admin',
+  '/privacy',
   '/404.html',
   '/shell/profile',
   '/style.css',
@@ -95,10 +96,11 @@ const PRECACHE = [
   '/js/pages/admin.js',
   '/js/pages/profile.js',
   '/js/pages/notfound.js',
+  '/js/pages/privacy.js',
 ];
 
 // The pages that are part of the shell, by their clean path.
-const SHELL_PAGES = new Set(['/', '/register', '/login', '/reset', '/edit', '/admin']);
+const SHELL_PAGES = new Set(['/', '/register', '/login', '/reset', '/edit', '/admin', '/privacy']);
 const SLUG_PATH = /^\/[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){1,31}$/;
 
 // A redirected response cannot be served to a navigation, so store a clean copy.
