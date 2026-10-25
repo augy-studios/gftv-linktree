@@ -19,7 +19,7 @@
 // visitor's saved pages. A page that has been taken down or deleted is
 // dropped from the saved copies the next time it is fetched.
 
-const VERSION = '2026-10-26.3';
+const VERSION = '2026-10-26.4';
 const PREFIX = 'gftv-onelink-';
 const CACHE = PREFIX + VERSION;
 const SAVED_PAGES = 'onelink-saved-pages-v1';
@@ -84,6 +84,8 @@ const PRECACHE = [
   '/js/bg-removal-worker.js',
   '/js/password-toggle.js',
   '/js/vendor/qrcode.js',
+  '/js/vendor/fingerprintjs.js',
+  '/js/visitor.js',
   '/js/pages/home.js',
   '/js/pages/register.js',
   '/js/pages/login.js',

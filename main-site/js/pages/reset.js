@@ -1,6 +1,7 @@
 // Reset a forgotten password: a Telegram code plus the second factor.
 
 import '../app.js';
+import '../visitor.js';
 import { t, onChange } from '../../assets/i18n/i18n.js';
 import { post } from '../api.js';
 import { withBusy, toast } from '../ui.js';

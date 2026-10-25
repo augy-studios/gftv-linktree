@@ -1,6 +1,7 @@
 // Sign up: name and password, then the first second factor, then backup codes.
 
 import '../app.js';
+import '../visitor.js';
 import { t } from '../../assets/i18n/i18n.js';
 import { post } from '../api.js';
 import { withBusy, errorText } from '../ui.js';

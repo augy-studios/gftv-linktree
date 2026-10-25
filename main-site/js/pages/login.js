@@ -1,6 +1,7 @@
 // Sign in: password, then one second factor.
 
 import '../app.js';
+import '../visitor.js';
 import { t, onChange } from '../../assets/i18n/i18n.js';
 import { api, post } from '../api.js';
 import { withBusy, toast } from '../ui.js';
