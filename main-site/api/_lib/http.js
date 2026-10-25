@@ -75,10 +75,10 @@ function isLocalDev(origin) {
 
 // The parsed JSON body, or null after answering 400. Vercel's Node runtime
 // parses JSON bodies itself; the stream fallback covers anything that does not.
-export async function readJson(req, res) {
+export async function readJson(req, res, { maxBytes = MAX_BODY_BYTES } = {}) {
   try {
     let body = req.body;
-    if (body === undefined) body = await readStream(req);
+    if (body === undefined) body = await readStream(req, maxBytes);
     if (typeof body === 'string') body = body === '' ? {} : JSON.parse(body);
     if (Buffer.isBuffer(body)) body = JSON.parse(body.toString('utf8'));
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('not an object');
@@ -89,13 +89,13 @@ export async function readJson(req, res) {
   }
 }
 
-function readStream(req) {
+function readStream(req, maxBytes) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on('data', (chunk) => {
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > maxBytes) {
         reject(new Error('body too large'));
         req.destroy();
         return;

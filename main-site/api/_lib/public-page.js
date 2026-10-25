@@ -13,7 +13,7 @@ export async function loadPublicPage(slugInput) {
 
   const { data: page, error } = await db()
     .from(T.pages)
-    .select('id, slug, display_name, bio, status')
+    .select('id, slug, display_name, bio, avatar_path, status')
     .eq('slug', slug)
     .maybeSingle();
   if (error) throw error;

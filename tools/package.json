@@ -1,0 +1,13 @@
+{
+  "name": "onelink-tools",
+  "private": true,
+  "description": "Build-time helpers for OneLink GFTV. Nothing here is deployed.",
+  "type": "module",
+  "scripts": {
+    "icons": "node make-icon-data.mjs"
+  },
+  "devDependencies": {
+    "feather-icons": "4.29.2",
+    "simple-icons": "16.35.0"
+  }
+}

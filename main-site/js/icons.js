@@ -2,6 +2,8 @@
 // Usage: <span data-icon="sun" aria-hidden="true"></span>, then hydrateIcons().
 // No emoji anywhere, per the theme rules.
 
+import { BRANDS, FEATHER } from './icon-data.js';
+
 const PATHS = {
   // interface
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>',
@@ -30,7 +32,9 @@ const PATHS = {
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
   key: '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>',
   smartphone: '<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/>',
-  fingerprint: '<path d="M12 11c0 3.5-.5 6.5-2 9M8 8.5a5 5 0 0 1 9 3c0 2-.2 4-.7 6M5 11a7 7 0 0 1 13-3.5M4.5 15c.3-1.3.5-2.7.5-4M16 21c.4-1 .7-2 .9-3M12 11c0 0 0 0 0 0"/>',
+  // Passkeys use "key"; backup codes use the life ring, so the two never
+  // look alike side by side in the sign-in choices.
+  lifebuoy: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="M4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M14.83 9.17l4.24-4.24M4.93 19.07l4.24-4.24"/>',
   send: '<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
   external: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/>',
@@ -67,17 +71,46 @@ const PATHS = {
   phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>',
 };
 
-// The owner-selectable set, in picker order. Kept in step with LINK_ICONS in
-// api/_lib/validate.js, which is the authority.
-export const LINK_ICONS = [
-  'link', 'globe', 'video', 'music', 'camera', 'chat', 'shop', 'code', 'calendar', 'document',
-  'heart', 'star', 'mic', 'game', 'news', 'map', 'gift', 'ticket', 'mail', 'phone',
+// The icons a link can use, by picker category. The first twenty names keep
+// their original drawings above; the rest come from icon-data.js (Feather
+// outlines and Simple Icons logos). LINK_ICONS in api/_lib/validate.js is
+// the authority on which names a link may store, and the tests check the two
+// lists agree.
+export const ICON_CATEGORIES = [
+  ['general', ['link', 'globe', 'home', 'user', 'users', 'info', 'star', 'heart', 'bookmark', 'award', 'zap', 'smile']],
+  ['media', ['video', 'film', 'music', 'headphones', 'mic', 'radio', 'tv', 'camera', 'image']],
+  ['contact', ['chat', 'mail', 'phone', 'at', 'send', 'smartphone']],
+  ['shopping', ['shop', 'cart', 'card', 'dollar', 'coffee', 'gift', 'ticket', 'tag', 'package', 'box']],
+  ['creative', ['brush', 'pencil', 'feather', 'book', 'book-open', 'document', 'news', 'rss', 'layers']],
+  ['tech', ['code', 'terminal', 'cpu', 'monitor', 'download', 'game']],
+  ['places', ['map', 'map-pin', 'compass', 'calendar', 'clock', 'sun', 'moon', 'cloud', 'briefcase']],
+  ['social', ['instagram', 'x', 'threads', 'bluesky', 'facebook', 'tiktok', 'mastodon', 'tumblr', 'reddit', 'snapchat', 'pinterest', 'xiaohongshu', 'linktree']],
+  ['streaming', ['youtube', 'twitch', 'kick', 'vimeo', 'bilibili']],
+  ['audio', ['spotify', 'soundcloud', 'bandcamp', 'applemusic', 'youtubemusic', 'applepodcasts']],
+  ['messaging', ['telegram', 'discord', 'whatsapp', 'line']],
+  ['creators', ['furaffinity', 'deviantart', 'artstation', 'pixiv', 'behance', 'dribbble', 'vrchat', 'patreon', 'kofi', 'buymeacoffee', 'gumroad', 'substack', 'medium']],
+  ['payments', ['etsy', 'redbubble', 'threadless', 'shopee', 'paypal', 'cashapp', 'venmo']],
+  ['gaming', ['steam', 'itchdotio', 'github', 'gitlab']],
 ];
 
+export const LINK_ICONS = ICON_CATEGORIES.flatMap(([, names]) => names);
+
+export function isBrand(name) {
+  return Object.prototype.hasOwnProperty.call(BRANDS, name);
+}
+
+// A brand's own name, for labels ("YouTube"), or null for a general icon.
+export function brandTitle(name) {
+  return isBrand(name) ? BRANDS[name].title : null;
+}
+
 export function icon(name) {
-  const body = PATHS[name];
+  const svg = 'viewBox="0 0 24 24" aria-hidden="true" focusable="false"';
+  // Logos are filled shapes; everything else is a stroked outline.
+  if (isBrand(name)) return `<svg ${svg} fill="currentColor"><path d="${BRANDS[name].path}"/></svg>`;
+  const body = PATHS[name] ?? FEATHER[name];
   if (!body) return '';
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${body}</svg>`;
+  return `<svg ${svg} fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
 }
 
 // A span holding an icon, for building nodes in code.

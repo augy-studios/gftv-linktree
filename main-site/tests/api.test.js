@@ -127,7 +127,7 @@ test('links: only http(s), owner order, public view is minimal', async () => {
 
   const pub = await b.call(publicPage, { query: { slug: 'augy' } });
   assert.deepEqual(pub.json.page.links.map((l) => l.title), ['Second', 'First']);
-  assert.deepEqual(Object.keys(pub.json.page).sort(), ['bio', 'displayName', 'links', 'slug']);
+  assert.deepEqual(Object.keys(pub.json.page).sort(), ['avatarUrl', 'bio', 'displayName', 'links', 'slug']);
   assert.deepEqual(Object.keys(pub.json.page.links[0]).sort(), ['icon', 'id', 'title', 'url']);
   assert.deepEqual(leaks(pub.json), []);
 
@@ -432,4 +432,72 @@ test('cron cleanup needs its secret', async () => {
 
 test('origin used by the harness is the production one', () => {
   assert.equal(ORIGIN, 'https://links.gftv.asia');
+});
+
+test('profile pictures: re-encoded to 512px WebP, metadata gone, old file removed', async () => {
+  const sharp = (await import('sharp')).default;
+  const avatar = (await import('../api/me/avatar.js')).default;
+  process.env.SUPABASE_URL = 'https://example.supabase.co';
+  try {
+    const owner = browser();
+    await makePage(owner);
+    // A 900 by 600 JPEG carrying EXIF, as a phone would send it.
+    const jpeg = await sharp({ create: { width: 900, height: 600, channels: 3, background: '#3366cc' } })
+      .jpeg().withMetadata({ exif: { IFD0: { Copyright: 'secret-location-marker' } } }).toBuffer();
+    const sent = await owner.call(avatar, { method: 'POST', body: { image: `data:image/jpeg;base64,${jpeg.toString('base64')}` } });
+    assert.equal(sent.status, 200, sent.body);
+    assert.match(sent.json.page.avatarUrl, /^https:\/\/example\.supabase\.co\/storage\/v1\/object\/public\/gftvonelink_avatars\/[0-9a-f-]{36}\/[A-Za-z0-9_-]+\.webp$/);
+
+    assert.equal(fake.objects.size, 1);
+    const [[key, stored]] = [...fake.objects];
+    assert.equal(stored.contentType, 'image/webp');
+    const meta = await sharp(stored.body).metadata();
+    assert.deepEqual([meta.format, meta.width, meta.height], ['webp', 512, 512]);
+    assert.equal(meta.exif, undefined, 'EXIF stripped');
+    assert.equal(stored.body.includes('secret-location-marker'), false);
+
+    const pub = await browser().call(publicPage, { query: { slug: 'augy' } });
+    assert.equal(pub.json.page.avatarUrl, sent.json.page.avatarUrl);
+    assert.deepEqual(leaks(pub.json), []);
+    assert.equal(JSON.stringify(pub.json).includes('avatar_path'), false);
+
+    // Replacing removes the old file; removing clears both.
+    const png = await sharp({ create: { width: 64, height: 64, channels: 4, background: '#ff0000' } }).png().toBuffer();
+    await owner.call(avatar, { method: 'POST', body: { image: png.toString('base64') } });
+    assert.equal(fake.objects.size, 1);
+    assert.equal(fake.objects.has(key), false);
+    assert.equal((await owner.call(avatar, { method: 'DELETE', body: {} })).json.page.avatarUrl, null);
+    assert.equal(fake.objects.size, 0);
+
+    for (const bad of ['', 'not base64 at all', Buffer.from('<svg onload=alert(1)>').toString('base64'), Buffer.from('GIF89a....').toString('base64')]) {
+      assert.equal((await owner.call(avatar, { method: 'POST', body: { image: bad } })).json.error, 'avatar_invalid', bad.slice(0, 20));
+    }
+    const huge = Buffer.alloc(3 * 1024 * 1024 + 10, 0xff);
+    assert.equal((await owner.call(avatar, { method: 'POST', body: { image: huge.toString('base64') } })).json.error, 'avatar_too_large');
+  } finally {
+    delete process.env.SUPABASE_URL;
+  }
+});
+
+test('staff can remove a picture; deleting a page removes it too', async () => {
+  const sharp = (await import('sharp')).default;
+  const avatar = (await import('../api/me/avatar.js')).default;
+  const owner = browser();
+  const { password } = await makePage(owner);
+  const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: '#00aa00' } }).png().toBuffer();
+  await owner.call(avatar, { method: 'POST', body: { image: png.toString('base64') } });
+  assert.equal(fake.objects.size, 1);
+
+  const { secret } = await makeStaff({ username: 'ed', role: 'editor' });
+  const editor = browser();
+  await staffSignIn(editor, 'ed', secret);
+  const pageId = fake.table('gftvonelink_pages')[0].id;
+  assert.equal((await editor.call(adminPages, { method: 'POST', body: { action: 'remove-avatar', id: pageId } })).json.error, 'reason_required');
+  assert.equal((await editor.call(adminPages, { method: 'POST', body: { action: 'remove-avatar', id: pageId, reason: 'offensive' } })).status, 200);
+  assert.equal(fake.objects.size, 0);
+  assert.equal(fake.table('gftvonelink_audit_logs').some((r) => r.action === 'mod.avatar_removed'), true);
+
+  await owner.call(avatar, { method: 'POST', body: { image: png.toString('base64') } });
+  await owner.call(security, { method: 'POST', body: { action: 'delete-page', password, confirmSlug: 'augy' } });
+  assert.equal(fake.objects.size, 0, 'the picture goes with the page');
 });

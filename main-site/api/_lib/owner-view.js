@@ -12,7 +12,7 @@ export async function loadOwnerView(pageId) {
   const [{ data: page, error: pageError }, { data: links, error }, passkeys, left] = await Promise.all([
     db()
       .from(T.pages)
-      .select('id, slug, display_name, bio, totp_secret, telegram_chat_id, telegram_username, created_at')
+      .select('id, slug, display_name, bio, avatar_path, totp_secret, telegram_chat_id, telegram_username, created_at')
       .eq('id', pageId)
       .single(),
     db().from(T.links).select(LINK_COLUMNS).eq('page_id', pageId),

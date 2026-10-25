@@ -5,7 +5,7 @@ import { t, onChange } from '../../assets/i18n/i18n.js';
 import { api, post } from '../api.js';
 import { withBusy, toast } from '../ui.js';
 import { normaliseSlugInput } from '../slug-check.js';
-import { passkeysSupported, usePasskey, wasCancelled } from '../passkeys.js';
+import { passkeysSupported, usePasskey, passkeyErrorCode } from '../passkeys.js';
 
 const $ = (id) => document.getElementById(id);
 let challenge = null;
@@ -113,8 +113,7 @@ $('passkeyUse').addEventListener('click', () => {
       try {
         response = await usePasskey(options);
       } catch (cause) {
-        if (wasCancelled(cause)) return;
-        throw Object.assign(new Error('passkey'), { code: 'passkey_failed' });
+        throw Object.assign(new Error('passkey'), { code: passkeyErrorCode(cause) });
       }
       await post('/api/auth/verify', { challenge, method: 'passkey', response });
       signedIn();

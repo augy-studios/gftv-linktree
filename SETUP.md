@@ -10,6 +10,8 @@ In the Supabase project that already holds the `gftvhello_` tables, open
 **SQL Editor** and run each file in `migrations/` once, in number order:
 
 - `001_onelink_schema.sql`
+- `002_avatars.sql`: adds profile pictures, and creates the public
+  `gftvonelink_avatars` storage bucket they are kept in
 
 **Check:** in **Table Editor** you see the `gftvonelink_` tables, each marked
 **RLS enabled**.

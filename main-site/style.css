@@ -919,6 +919,101 @@ button.text-link { padding: 0; }
   user-select: none;
   -webkit-user-select: none;
 }
+.avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.avatar.has-image { background: var(--surface-active); }
+/* Picture editor. The preview is round, like the page, and sits on the same
+   ground the page's avatar does, so a see-through cut-out looks as it will. */
+.composer { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+.composer-canvas {
+  width: min(320px, 72vw);
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--surface-active);
+  box-shadow: 0 0 0 1px var(--border-strong);
+  cursor: grab;
+  touch-action: none;
+}
+.composer-canvas:active { cursor: grabbing; }
+.composer-status { min-height: 1.4em; text-align: center; color: var(--text-muted); font-weight: 400; }
+.composer-status .spinner { --spinner-size: 0.95rem; vertical-align: -2px; margin-inline-end: 0.4rem; }
+.field input[type="range"] { min-height: 0; padding: 0; background: none; border: 0; accent-color: var(--brand-dark); }
+.colour-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.25rem; }
+.colour-swatch {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--swatch-color);
+  border: 1px solid color-mix(in srgb, var(--text) 30%, transparent);
+}
+.colour-swatch[aria-pressed="true"] {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus-ring);
+}
+/* Gradient presets show the picture's own background, set by script, so
+   like the wheel they are picture content rather than interface. */
+.gradient-swatch { width: 44px; border-radius: var(--radius-sm); }
+.stop-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--text) 30%, transparent);
+}
+.colour-custom {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-active);
+  color: var(--text-muted-strong);
+}
+.colour-custom svg { width: 18px; height: 18px; }
+
+/* Custom colour wheel, ported from the colorguess game. The wheel shows
+   colours for what they are, like the swatches; the brightness track is a
+   plain slider, since the theme has no gradients. */
+.wheel-box { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 1rem; margin-top: 0.75rem; }
+.wheel-wrap {
+  position: relative;
+  width: min(200px, 60vw);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow) 0 4px 12px;
+  cursor: crosshair;
+  touch-action: none;
+}
+.wheel-canvas { display: block; width: 100%; height: 100%; border-radius: 50%; }
+.wheel-dot {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-radius: 50%;
+  border: 3px solid var(--bg);
+  box-shadow: 0 0 0 1px var(--text), var(--shadow) 0 2px 6px;
+  pointer-events: none;
+}
+.wheel-side { display: flex; flex-direction: column; gap: 0.25rem; width: min(180px, 80vw); }
+.wheel-side .field { margin-bottom: 0.5rem; }
+.wheel-side #wheelHex { font-variant-numeric: tabular-nums; letter-spacing: 0.04em; text-transform: uppercase; }
+.wheel-side #wheelHex[aria-invalid="true"] { border-color: var(--danger); }
+.pick-preview {
+  display: block;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+}
+.admin-avatar { width: 64px; height: 64px; margin: 0; font-size: 1.5rem; }
+.admin-avatar-row { margin-bottom: 0.5rem; }
+.profile-saved { margin-bottom: 1rem; text-align: center; }
+.avatar-edit { display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 1.25rem; }
+.avatar-edit .avatar { width: 80px; height: 80px; margin: 0; flex: none; font-size: 2rem; }
+.avatar-edit-body { flex: 1 1 auto; min-width: 0; }
+.avatar-edit-label { font-weight: 600; font-size: 0.9375rem; }
+.avatar-edit .actions { margin-top: 0.6rem; }
+/* The file input is visually hidden inside its label, so the label is the
+   control; this gives it the focus ring the input would have had. */
+.avatar-edit label.btn:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.avatar-edit label.btn[aria-busy="true"] { opacity: 0.7; pointer-events: none; }
 .profile h1 { font-size: 1.5rem; font-weight: 600; line-height: 1.2; word-break: break-word; }
 .profile .handle { margin-top: 0.2rem; color: var(--text-muted); font-size: 0.9375rem; }
 .profile .bio { margin: 0.75rem auto 0; max-width: 30rem; color: var(--text-muted); white-space: pre-line; word-break: break-word; }
@@ -1053,6 +1148,34 @@ button.text-link { padding: 0; }
 [dir="rtl"] .switch input:checked + .track::after { transform: translateX(-18px); }
 .switch input:focus-visible + .track { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
+/* The icon picker holds over a hundred icons in categories, so it scrolls
+   inside the dialog rather than making the dialog very long. */
+.icon-picker-box {
+  max-height: 15rem;
+  overflow-y: auto;
+  padding: 0.25rem 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overscroll-behavior: contain;
+}
+.icon-category {
+  margin: 0.6rem 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.icon-category:first-child { margin-top: 0.25rem; }
+/* A long fixed start (www.youtube.com/channel/) would leave no room to type
+   on a phone, so the typing area drops under it when it must. */
+.platform-input { flex-wrap: wrap; }
+.platform-input input { flex: 1 1 9rem; min-width: 9rem; }
+.platform-input .slug-host { padding-inline: 0.8rem 0; min-height: 44px; overflow-wrap: anywhere; white-space: normal; }
+.platform-input .slug-suffix { padding-inline: 0 0.8rem; }
+.platform-input input { padding-inline-start: 0; }
+.link-url-preview { overflow-wrap: anywhere; }
+.link-url-preview.bad { color: var(--danger); }
 .icon-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 0.35rem; }
 .icon-picker button {
   display: flex;

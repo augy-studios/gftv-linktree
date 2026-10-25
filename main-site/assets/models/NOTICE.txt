@@ -1,0 +1,18 @@
+isnet-general-use-int8.onnx
+
+Background removal model used in the browser by js/bg-removal-worker.js.
+
+Model: IS-Net (DIS, "Highly Accurate Dichotomous Image Segmentation"),
+general-use weights, by Xuebin Qin et al.
+https://github.com/xuebinqin/DIS
+Licensed under the Apache License, Version 2.0 (LICENSE-Apache-2.0.txt).
+
+Source file: isnet-general-use.onnx from the rembg project's v0.0.0 release,
+https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx
+sha256 60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a
+
+Changes made for OneLink GFTV (25 October 2026):
+- pruned to the single output_image head (onnx.utils.extract_model);
+- weights quantised to uint8 with onnxruntime.quantization.quantize_dynamic.
+Mask agreement with the original on test images: IoU 0.98 to 0.99.
+Result sha256 1d1a5a44717ed5394170115612d5a17d754f2bdd1eab083331213ffa4324d419

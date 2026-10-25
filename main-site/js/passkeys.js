@@ -69,7 +69,20 @@ export async function usePasskey(options) {
   };
 }
 
-// The person closed the prompt, or it timed out. Not an error worth a message.
+// The person closed the prompt, or it timed out, or the browser refused to
+// show it. Browsers report all three as NotAllowedError.
 export function wasCancelled(error) {
   return error?.name === 'NotAllowedError' || error?.name === 'AbortError';
+}
+
+// The error code to show for a failed passkey prompt, so the page always says
+// what happened rather than going quiet. An error already carrying a server
+// code is passed through. The browser's own reason goes to the console, which
+// is the first thing to look at when a passkey will not work on a device.
+export function passkeyErrorCode(error) {
+  if (error?.code) return error.code;
+  console.warn('[passkey]', error?.name, error?.message);
+  if (wasCancelled(error)) return 'passkey_cancelled';
+  if (error?.name === 'InvalidStateError') return 'passkey_exists';
+  return 'passkey_failed';
 }

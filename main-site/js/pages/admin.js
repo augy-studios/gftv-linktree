@@ -5,7 +5,8 @@ import { t, onChange } from '../../assets/i18n/i18n.js';
 import { api, post } from '../api.js';
 import { openModal, closeModal, withBusy, toast, el, formatNumber, formatDate, errorText, setBusy } from '../ui.js';
 import { icon, iconNode } from '../icons.js';
-import { passkeysSupported, createPasskey, usePasskey, wasCancelled } from '../passkeys.js';
+import { passkeysSupported, createPasskey, usePasskey, passkeyErrorCode } from '../passkeys.js';
+import { fillAvatar } from '../avatar.js';
 
 const $ = (id) => document.getElementById(id);
 let staff = null;
@@ -80,8 +81,7 @@ $('staffPasskeyUse').addEventListener('click', () => {
       try {
         response = await usePasskey(options);
       } catch (cause) {
-        if (wasCancelled(cause)) return;
-        throw Object.assign(new Error('passkey'), { code: 'passkey_failed' });
+        throw Object.assign(new Error('passkey'), { code: passkeyErrorCode(cause) });
       }
       const data = await post('/api/admin/auth', { action: 'verify', challenge, method: 'passkey', response });
       enter(data.staff);
@@ -380,7 +380,22 @@ async function openPage(id) {
     const p = data.page;
     $('pageModalTitle').textContent = `/${p.slug}`;
     const refresh = () => openPage(id);
+    const avatar = el('div', { class: 'avatar admin-avatar', 'aria-hidden': 'true' });
+    fillAvatar(avatar, p.avatarUrl, p.displayName || p.slug);
+    // Any staff member can take a picture down, the way they can a link.
+    const removeAvatar = p.avatarUrl
+      ? actionButton('admin.remove-avatar', 'trash', () => askReason({
+        title: t('admin.remove-avatar-title', { slug: p.slug }),
+        body: t('admin.remove-avatar-body'),
+        run: async (reason) => {
+          await post('/api/admin/pages', { action: 'remove-avatar', id: p.id, reason });
+          toast(t('admin.done'));
+          refresh();
+        },
+      }), 'btn-danger')
+      : null;
     body.replaceChildren(...[
+      el('div', { class: 'row admin-avatar-row' }, [avatar, removeAvatar]),
       el('p', { class: 'muted small', text: [p.displayName, t('admin.created', { when: formatDate(p.createdAt) })].filter(Boolean).join(' · ') }),
       p.bio ? el('pre', { text: p.bio }) : null,
       el('div', { class: 'tags row u-mt-05' }, [statusBadge(p.status)]),
@@ -603,7 +618,7 @@ $('staffPasskeyAdd').addEventListener('click', () => askPassword(
       renderStaffPasskeys((await post('/api/admin/passkeys', { action: 'finish', response })).passkeys);
       toast(t('security.passkey-added'));
     } catch (error) {
-      if (!wasCancelled(error)) toast(errorText(error.code ? error : { code: 'passkey_failed' }));
+      toast(errorText({ code: passkeyErrorCode(error) }));
     } finally {
       setBusy(button, false);
     }

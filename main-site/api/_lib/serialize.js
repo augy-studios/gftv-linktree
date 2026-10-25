@@ -7,6 +7,7 @@
 // have no serializer at all and so cannot reach a browser.
 
 import { hostIsBlocked } from './validate.js';
+import { avatarUrl } from './avatar.js';
 
 // A visitor's view of a link. Hidden, removed and blocked links never get
 // this far.
@@ -35,6 +36,7 @@ export function publicPage(page, links, blocked) {
     slug: page.slug,
     displayName: page.display_name || page.slug,
     bio: page.bio,
+    avatarUrl: avatarUrl(page.avatar_path),
     links: servableLinks(links, blocked),
   };
 }
@@ -64,6 +66,7 @@ export function ownerPage(page, links, security) {
     slug: page.slug,
     displayName: page.display_name,
     bio: page.bio,
+    avatarUrl: avatarUrl(page.avatar_path),
     createdAt: page.created_at,
     links: (links ?? []).sort((a, b) => a.order_index - b.order_index).map(ownerLink),
     security: {
@@ -89,6 +92,7 @@ export function adminPageRow(page, extra = {}) {
     slug: page.slug,
     displayName: page.display_name,
     bio: page.bio,
+    avatarUrl: avatarUrl(page.avatar_path),
     status: page.status,
     banReason: page.ban_reason || null,
     bannedAt: page.banned_at || null,

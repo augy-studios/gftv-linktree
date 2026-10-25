@@ -15,6 +15,7 @@ export const LIMITS = Object.freeze({
   telegramSend: [3, 900],
   recover: [5, 3600],
   ownerWrite: [120, 60],
+  avatar: [20, 3600],
   click: [30, 60],
   report: [5, 3600],
   staffLogin: [8, 900],

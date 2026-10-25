@@ -10,6 +10,7 @@ import { api, post } from '../api.js';
 import { openModal, closeModal, withBusy, toast, copyText, el } from '../ui.js';
 import { iconNode, hydrateIcons } from '../icons.js';
 import { qrSvg, downloadQr } from '../qr.js';
+import { fillAvatar } from '../avatar.js';
 
 const $ = (id) => document.getElementById(id);
 const root = $('profile');
@@ -35,11 +36,6 @@ async function load() {
     }
   }
   render();
-}
-
-function firstLetter(name) {
-  const [first] = [...String(name || '').trim()];
-  return first || '?';
 }
 
 function pageUrl() {
@@ -93,8 +89,13 @@ function render() {
   const share = el('button', { class: 'btn btn-small', type: 'button', onclick: openShare }, [iconNode('share'), el('span', { text: t('share.share') })]);
   const report = el('button', { class: 'btn btn-small btn-quiet', type: 'button', onclick: () => openReport(null) }, [iconNode('flag'), el('span', { text: t('report.page') })]);
 
+  const avatar = el('div', { class: 'avatar', 'aria-hidden': 'true' });
+  fillAvatar(avatar, page.avatarUrl, page.displayName);
+
   root.append(...[
-    el('div', { class: 'avatar', 'aria-hidden': 'true', text: firstLetter(page.displayName) }),
+    // Offline, the service worker serves the copy saved on an earlier visit.
+    navigator.onLine === false ? el('p', { class: 'callout warn profile-saved', role: 'status', text: t('profile.saved-copy') }) : null,
+    avatar,
     el('h1', { text: page.displayName }),
     el('p', { class: 'handle', text: `links.gftv.asia/${page.slug}` }),
     page.bio ? el('p', { class: 'bio', text: page.bio }) : null,
@@ -108,6 +109,19 @@ function render() {
   ].filter(Boolean));
   hydrateIcons(root);
   $('profileStatus')?.remove();
+  keepForOffline();
+}
+
+// Ask the service worker to keep this page for offline viewing. Its own
+// fetch handler saves every later visit; this covers the first one, which
+// happened before the worker was installed.
+let keptForOffline = false;
+function keepForOffline() {
+  if (keptForOffline || !('serviceWorker' in navigator) || navigator.onLine === false) return;
+  keptForOffline = true;
+  navigator.serviceWorker.ready
+    .then((reg) => reg.active?.postMessage({ type: 'keep-page', path: window.location.pathname, avatar: data.page?.avatarUrl || null }))
+    .catch(() => {});
 }
 
 // --- share ------------------------------------------------------------------

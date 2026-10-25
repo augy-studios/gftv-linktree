@@ -4,6 +4,8 @@
 // GET ?id=                       one page with its links and reports
 // POST { action: "ban", id, reason }     admin only; signs the owner out
 // POST { action: "unban", id }           admin only
+// POST { action: "remove-avatar", id, reason }   any staff; a picture is
+//                                                content, like a link
 
 import { route, guard, readJson, ok, fail, query } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
@@ -12,9 +14,10 @@ import { limited, audit } from '../_lib/guards.js';
 import { requireStaff } from '../_lib/staff.js';
 import { endAllOwnerSessions } from '../_lib/session.js';
 import { adminPageRow, adminLinkRow, adminReportRow } from '../_lib/serialize.js';
+import { deleteAvatarFile } from '../_lib/avatar.js';
 import { PAGE_SIZE, offsetOf, searchTerm, pattern } from '../_lib/admin.js';
 
-const PAGE_COLUMNS = 'id, slug, display_name, bio, status, ban_reason, banned_at, created_at, activated_at, telegram_chat_id';
+const PAGE_COLUMNS = 'id, slug, display_name, bio, avatar_path, status, ban_reason, banned_at, created_at, activated_at, telegram_chat_id';
 
 export default route('admin/pages', async (req, res) => {
   if (guard(req, res, ['GET', 'POST'])) return;
@@ -62,14 +65,16 @@ export default route('admin/pages', async (req, res) => {
     });
   }
 
-  const staff = await requireStaff(req, res, { admin: true });
-  if (!staff) return;
   const body = await readJson(req, res);
   if (!body) return;
+  // Taking a page down is for admins; removing a picture, like removing a
+  // link, is moderation any editor can do.
+  const staff = await requireStaff(req, res, { admin: body.action !== 'remove-avatar' });
+  if (!staff) return;
   if (await limited(req, res, 'staffWrite', [`staff:${staff.user.id}`])) return;
   if (!isUuid(body.id)) return fail(res, 400, 'bad_request');
 
-  const { data: page, error } = await db().from(T.pages).select('id, slug, status, activated_at').eq('id', body.id).maybeSingle();
+  const { data: page, error } = await db().from(T.pages).select('id, slug, status, activated_at, avatar_path').eq('id', body.id).maybeSingle();
   if (error) throw error;
   if (!page) return fail(res, 404, 'page_not_found');
 
@@ -92,6 +97,14 @@ export default route('admin/pages', async (req, res) => {
       .update({ status: page.activated_at ? 'active' : 'pending', ban_reason: null, banned_at: null, banned_by: null })
       .eq('id', page.id);
     if (updateError) throw updateError;
+  } else if (body.action === 'remove-avatar') {
+    if (!page.avatar_path) return fail(res, 409, 'no_avatar');
+    const reason = cleanText(body.reason, LIMITS.reason, { multiline: true });
+    if (!reason) return fail(res, 400, 'reason_required');
+    await audit(req, { action: 'mod.avatar_removed', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug, reason } });
+    const { error: updateError } = await db().from(T.pages).update({ avatar_path: null }).eq('id', page.id);
+    if (updateError) throw updateError;
+    await deleteAvatarFile(page.avatar_path);
   } else {
     return fail(res, 400, 'bad_request');
   }

@@ -99,11 +99,38 @@ export function checkPassword(value) {
   return { ok: true };
 }
 
-// Names from the app's inline SVG set (js/icons.js LINK_ICONS). Never markup.
+// Names from the app's icon set (js/icons.js ICON_CATEGORIES): general icons
+// and service logos. A link stores one of these names, never markup or a URL.
+// The tests check this list and the browser's agree.
 export const LINK_ICONS = new Set([
-  'link', 'globe', 'video', 'music', 'camera', 'chat', 'shop', 'code',
-  'calendar', 'document', 'heart', 'star', 'mic', 'game', 'news', 'map',
-  'gift', 'ticket', 'mail', 'phone',
+  // general
+  'link', 'globe', 'home', 'user', 'users', 'info', 'star', 'heart', 'bookmark', 'award', 'zap', 'smile',
+  // media
+  'video', 'film', 'music', 'headphones', 'mic', 'radio', 'tv', 'camera', 'image',
+  // contact
+  'chat', 'mail', 'phone', 'at', 'send', 'smartphone',
+  // shopping
+  'shop', 'cart', 'card', 'dollar', 'coffee', 'gift', 'ticket', 'tag', 'package', 'box',
+  // creative
+  'brush', 'pencil', 'feather', 'book', 'book-open', 'document', 'news', 'rss', 'layers',
+  // tech
+  'code', 'terminal', 'cpu', 'monitor', 'download', 'game',
+  // places
+  'map', 'map-pin', 'compass', 'calendar', 'clock', 'sun', 'moon', 'cloud', 'briefcase',
+  // social
+  'instagram', 'x', 'threads', 'bluesky', 'facebook', 'tiktok', 'mastodon', 'tumblr', 'reddit', 'snapchat', 'pinterest', 'xiaohongshu', 'linktree',
+  // streaming
+  'youtube', 'twitch', 'kick', 'vimeo', 'bilibili',
+  // audio
+  'spotify', 'soundcloud', 'bandcamp', 'applemusic', 'youtubemusic', 'applepodcasts',
+  // messaging
+  'telegram', 'discord', 'whatsapp', 'line',
+  // creators
+  'furaffinity', 'deviantart', 'artstation', 'pixiv', 'behance', 'dribbble', 'vrchat', 'patreon', 'kofi', 'buymeacoffee', 'gumroad', 'substack', 'medium',
+  // payments
+  'etsy', 'redbubble', 'threadless', 'shopee', 'paypal', 'cashapp', 'venmo',
+  // gaming
+  'steam', 'itchdotio', 'github', 'gitlab',
 ]);
 
 export function checkIcon(value) {

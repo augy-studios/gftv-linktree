@@ -4,10 +4,13 @@ import '../app.js';
 import { t, onChange } from '../../assets/i18n/i18n.js';
 import { api, post } from '../api.js';
 import { openModal, closeModal, withBusy, toast, copyText, el, formatNumber, formatDate, errorText, setBusy } from '../ui.js';
-import { icon, iconNode, LINK_ICONS, guessIcon } from '../icons.js';
+import { icon, iconNode, ICON_CATEGORIES, brandTitle, guessIcon } from '../icons.js';
+import { PLATFORMS, PLATFORM_CATEGORIES, platformById, matchPlatform, cleanUsername, buildUrl, usernameOk } from '../platforms.js';
 import { qrSvg, downloadQr } from '../qr.js';
 import { showCodes } from '../codes.js';
-import { passkeysSupported, createPasskey, wasCancelled } from '../passkeys.js';
+import { passkeysSupported, createPasskey, passkeyErrorCode } from '../passkeys.js';
+import { fillAvatar } from '../avatar.js';
+import { editAvatar } from '../avatar-composer.js';
 
 const $ = (id) => document.getElementById(id);
 let page = null;
@@ -185,48 +188,166 @@ function deleteLink(link) {
 }
 
 // The add and edit dialog.
+//
+// A link is either a platform link (pick the service, type the username or
+// ID, and the start of the address is filled in) or any other web address.
+// The icon follows the platform or the address until the owner picks one.
 let editing = null;
 let chosenIcon = 'link';
 let iconTouched = false;
+let platform = null;
+let format = null;
+let autoTitle = '';
+
+function buildLinkTypes() {
+  const select = $('linkType');
+  select.replaceChildren(el('option', { value: '', text: t('link.type-custom') }));
+  for (const category of PLATFORM_CATEGORIES) {
+    const group = el('optgroup', { label: t(`link.category-${category}`) });
+    for (const p of PLATFORMS.filter((x) => x.category === category)) {
+      group.append(el('option', { value: p.id, text: p.name }));
+    }
+    select.append(group);
+  }
+}
 
 function renderIconPicker() {
   const picker = $('iconPicker');
-  picker.replaceChildren(...LINK_ICONS.map((name) => {
-    const b = el('button', { type: 'button', 'aria-pressed': String(name === chosenIcon), 'aria-label': t(`icon.${name}`), title: t(`icon.${name}`) });
-    b.innerHTML = icon(name);
-    b.addEventListener('click', () => {
-      chosenIcon = name;
-      iconTouched = true;
-      renderIconPicker();
-      picker.querySelector('[aria-pressed="true"]')?.focus();
-    });
-    return b;
-  }));
+  picker.replaceChildren();
+  for (const [category, names] of ICON_CATEGORIES) {
+    const heading = el('p', { class: 'icon-category', id: `icons-${category}`, text: t(`icon.category-${category}`) });
+    const grid = el('div', { class: 'icon-picker', role: 'group', 'aria-labelledby': `icons-${category}` });
+    for (const name of names) {
+      const label = brandTitle(name) || t(`icon.${name}`);
+      const b = el('button', { type: 'button', 'aria-pressed': String(name === chosenIcon), 'aria-label': label, title: label });
+      b.innerHTML = icon(name);
+      b.addEventListener('click', () => {
+        chosenIcon = name;
+        iconTouched = true;
+        renderIconPicker();
+        picker.querySelector('[aria-pressed="true"]')?.focus();
+      });
+      grid.append(b);
+    }
+    picker.append(heading, grid);
+  }
+  // Keep the chosen icon in view inside the scrolling box, without moving
+  // the dialog itself.
+  const chosen = picker.querySelector('[aria-pressed="true"]');
+  if (chosen) picker.scrollTop = chosen.offsetTop - picker.offsetTop - picker.clientHeight / 2 + chosen.offsetHeight / 2;
+}
+
+function setIconFromLink() {
+  if (iconTouched) return;
+  if (platform) chosenIcon = platform.icon;
+  else {
+    const matched = matchPlatform($('linkUrl').value);
+    chosenIcon = matched ? matched.platform.icon : guessIcon($('linkUrl').value);
+  }
+  renderIconPicker();
+}
+
+// The username field's start, end, example and the address it makes.
+function renderPlatformFields() {
+  const isPlatform = Boolean(platform);
+  $('linkPlatformFields').hidden = !isPlatform;
+  $('linkUrlField').hidden = isPlatform;
+  if (!isPlatform) return;
+
+  const formatSelect = $('linkFormat');
+  formatSelect.replaceChildren(...platform.formats.map((x) => el('option', { value: x.id, text: t(`link.format-${x.id}`) })));
+  formatSelect.value = format.id;
+  $('linkFormatField').hidden = platform.formats.length < 2;
+  $('linkPrefix').textContent = format.prefix.replace(/^https:\/\/(www\.)?/, '');
+  $('linkSuffix').textContent = format.suffix;
+  $('linkSuffix').hidden = !format.suffix;
+  $('linkUsername').placeholder = format.example;
+  $('linkUsernameHint').textContent = t('link.username-hint', { example: format.example });
+  updateUrlPreview();
+}
+
+function updateUrlPreview() {
+  if (!platform) return;
+  const username = cleanUsername(format, $('linkUsername').value);
+  const preview = $('linkUrlPreview');
+  if (!username) {
+    preview.textContent = '';
+    return;
+  }
+  preview.textContent = usernameOk(format, username)
+    ? t('link.will-open', { url: buildUrl(format, username) })
+    : t('link.username-invalid', { platform: platform.name });
+  preview.classList.toggle('bad', !usernameOk(format, username));
+}
+
+function choosePlatform(id, { keepUsername = false } = {}) {
+  const previousName = platform ? platform.name : '';
+  platform = platformById(id);
+  format = platform ? platform.formats[0] : null;
+  if (!keepUsername) $('linkUsername').value = '';
+  // Fill the title with the platform's name, unless the owner wrote their own.
+  const title = $('linkTitle');
+  if (platform && (!title.value || title.value === previousName || title.value === autoTitle)) {
+    title.value = platform.name;
+    autoTitle = platform.name;
+  }
+  renderPlatformFields();
+  setIconFromLink();
 }
 
 function openLinkModal(link = null) {
   editing = link;
+  buildLinkTypes();
   $('linkModalTitle').textContent = t(link ? 'link.edit-title' : 'link.add-title');
-  $('linkUrl').value = link ? link.url : '';
   $('linkTitle').value = link ? link.title : '';
+  $('linkUrl').value = link ? link.url : '';
+  $('linkUsername').value = '';
   chosenIcon = link ? link.icon : 'link';
   iconTouched = Boolean(link);
+  autoTitle = '';
   $('linkError').textContent = '';
+
+  // An existing link to a known platform opens as that platform, with its
+  // username, so changing it means typing only the name again.
+  const matched = link ? matchPlatform(link.url) : null;
+  platform = matched ? matched.platform : null;
+  format = matched ? matched.format : null;
+  $('linkType').value = platform ? platform.id : '';
+  if (matched) $('linkUsername').value = matched.username;
+  renderPlatformFields();
   renderIconPicker();
-  openModal('linkModal', { initialFocus: $('linkUrl') });
+  openModal('linkModal', { initialFocus: $('linkType') });
 }
 
 $('addLink').addEventListener('click', () => openLinkModal());
-$('linkUrl').addEventListener('input', () => {
-  if (iconTouched) return;
-  chosenIcon = guessIcon($('linkUrl').value);
-  renderIconPicker();
+$('linkType').addEventListener('change', (e) => choosePlatform(e.target.value));
+$('linkFormat').addEventListener('change', (e) => {
+  format = platform.formats.find((x) => x.id === e.target.value) || platform.formats[0];
+  renderPlatformFields();
 });
+$('linkUsername').addEventListener('input', updateUrlPreview);
+// A whole address pasted into the username field is cut down to the name.
+$('linkUsername').addEventListener('change', () => {
+  if (platform) $('linkUsername').value = cleanUsername(format, $('linkUsername').value);
+  updateUrlPreview();
+});
+$('linkUrl').addEventListener('input', setIconFromLink);
 
 $('linkForm').addEventListener('submit', (e) => {
   e.preventDefault();
+  let url = $('linkUrl').value;
+  if (platform) {
+    const username = cleanUsername(format, $('linkUsername').value);
+    if (!usernameOk(format, username)) {
+      $('linkError').textContent = t('link.username-invalid', { platform: platform.name });
+      $('linkUsername').focus();
+      return;
+    }
+    url = buildUrl(format, username);
+  }
+  const title = $('linkTitle').value.trim() || (platform ? platform.name : '');
   withBusy($('linkSave'), $('linkError'), async () => {
-    const body = { title: $('linkTitle').value, url: $('linkUrl').value, icon: chosenIcon };
+    const body = { title, url, icon: chosenIcon };
     const data = editing
       ? await api('/api/me/links', { method: 'PATCH', body: { id: editing.id, ...body } })
       : await post('/api/me/links', body);
@@ -246,7 +367,39 @@ function renderProfile() {
   if (document.activeElement !== $('bio')) $('bio').value = page.bio;
   $('displayName').placeholder = page.slug;
   updateBioCount();
+  fillAvatar($('avatarPreview'), page.avatarUrl, page.displayName || page.slug);
+  $('avatarRemove').hidden = !page.avatarUrl;
+  $('avatarPickLabel').textContent = t(page.avatarUrl ? 'avatar.change' : 'avatar.upload');
 }
+
+// Picking a file opens the picture editor (js/avatar-composer.js), where it
+// is framed, optionally cut out, and only then uploaded.
+$('avatarFile').addEventListener('change', async () => {
+  const input = $('avatarFile');
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  $('avatarError').textContent = '';
+  try {
+    await editAvatar(file, async (image) => {
+      const data = await post('/api/me/avatar', { image });
+      page = data.page;
+      renderProfile();
+      toast(t('avatar.updated'));
+    });
+  } catch (error) {
+    $('avatarError').textContent = errorText(error);
+  }
+});
+
+$('avatarRemove').addEventListener('click', () => {
+  withBusy($('avatarRemove'), $('avatarError'), async () => {
+    const data = await api('/api/me/avatar', { method: 'DELETE', body: {} });
+    page = data.page;
+    renderProfile();
+    toast(t('avatar.removed'));
+  });
+});
 
 function updateBioCount() {
   $('bioCount').textContent = t('field.bio-count', { used: [...$('bio').value].length, max: 280 });
@@ -381,7 +534,7 @@ $('passkeyAdd').addEventListener('click', () => askPassword(
       setPage(data.page);
       toast(t('security.passkey-added'));
     } catch (error) {
-      if (!wasCancelled(error)) toast(errorText(error.code ? error : { code: 'passkey_failed' }));
+      toast(errorText({ code: passkeyErrorCode(error) }));
     } finally {
       setBusy(button, false);
     }

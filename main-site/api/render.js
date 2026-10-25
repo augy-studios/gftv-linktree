@@ -42,7 +42,8 @@ function metaFor(page) {
   const url = `${siteUrl()}/${page.slug}`;
   const title = `${page.displayName} | OneLink GFTV`;
   const description = page.bio ? page.bio.replace(/\s+/g, ' ').slice(0, 200) : `Links from ${page.displayName}, on OneLink GFTV.`;
-  const image = `${siteUrl()}/OLG-main.png`;
+  // The owner's picture when there is one, so a shared link previews as them.
+  const image = page.avatarUrl || `${siteUrl()}/OLG-main.png`;
   return [
     `<title>${escapeHtml(title)}</title>`,
     `<meta name="description" content="${escapeHtml(description)}">`,

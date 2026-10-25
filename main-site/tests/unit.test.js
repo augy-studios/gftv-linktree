@@ -105,3 +105,38 @@ test('inlined page data cannot close its script element', () => {
   assert.equal(out.includes(ls), false);
   assert.equal(JSON.parse(out).bio, `</script><script>alert(1)</script><!-- & ${ls}`);
 });
+
+test('link icons: the browser and the server agree, and every one draws', async () => {
+  const { LINK_ICONS: server } = await import('../api/_lib/validate.js');
+  const icons = await import('../js/icons.js');
+  assert.deepEqual([...server].sort(), [...icons.LINK_ICONS].sort());
+  for (const name of icons.LINK_ICONS) {
+    assert.ok(icons.icon(name).startsWith('<svg'), name);
+    assert.match(name, /^[a-z0-9-]{1,24}$/, `${name} fits the database check`);
+  }
+});
+
+test('platform links build and read back their addresses', async () => {
+  const p = await import('../js/platforms.js');
+  const icons = await import('../js/icons.js');
+  for (const platform of p.PLATFORMS) {
+    assert.ok(icons.LINK_ICONS.includes(platform.icon), platform.id);
+    for (const format of platform.formats) {
+      const url = p.buildUrl(format, format.example);
+      assert.ok(p.usernameOk(format, format.example), `${platform.id}/${format.id} example passes its own pattern`);
+      assert.match(url, /^https:\/\//);
+      if (format.prefix !== 'https://' || format.suffix) {
+        const back = p.matchPlatform(url);
+        assert.equal(back?.platform.id, platform.id, url);
+        assert.equal(back?.username, format.example, url);
+      }
+    }
+  }
+  const yt = p.platformById('youtube');
+  assert.deepEqual(yt.formats.map((x) => x.id), ['handle', 'channel', 'custom', 'user']);
+  assert.equal(p.cleanUsername(yt.formats[0], 'https://youtube.com/@augy/'), 'augy');
+  assert.equal(p.cleanUsername(yt.formats[0], '@augy'), 'augy');
+  assert.equal(p.usernameOk(yt.formats[1], 'UC123'), false, 'channel IDs are 24 characters starting UC');
+  assert.equal(p.matchPlatform('https://example.com/augy'), null);
+  assert.equal(p.matchPlatform('https://youtube.com.evil.example/@augy'), null);
+});

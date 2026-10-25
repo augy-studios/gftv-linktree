@@ -89,6 +89,21 @@
 
                 <section class="glass-card panel" role="tabpanel" id="panel-profile" aria-labelledby="tab-profile" hidden>
                     <h2 data-i18n="edit.profile-title">Profile</h2>
+                    <div class="avatar-edit">
+                        <div class="avatar" id="avatarPreview" aria-hidden="true"></div>
+                        <div class="avatar-edit-body">
+                            <p class="avatar-edit-label" id="avatarLabel" data-i18n="avatar.label">Profile picture</p>
+                            <p class="field-hint" data-i18n="avatar.hint">A square crop is shown at the top of your page. It is shrunk and saved as WebP, without any location data.</p>
+                            <div class="actions inline">
+                                <label class="btn btn-small" id="avatarPick">
+                                    <span data-icon="camera"></span><span id="avatarPickLabel" data-i18n="avatar.upload">Upload a picture</span>
+                                    <input class="visually-hidden" type="file" id="avatarFile" accept="image/*" aria-labelledby="avatarLabel avatarPickLabel">
+                                </label>
+                                <button class="btn btn-small btn-quiet" type="button" id="avatarRemove" hidden><span data-icon="trash"></span><span data-i18n="avatar.remove">Remove</span></button>
+                            </div>
+                            <div class="callout danger" id="avatarError" role="alert"></div>
+                        </div>
+                    </div>
                     <form id="profileForm" novalidate>
                         <label class="field">
                             <span data-i18n="field.display-name">Display name</span>
@@ -133,7 +148,7 @@
                         </div>
                         <div class="panel-section">
                             <div class="factor-row">
-                                <div class="what"><span data-icon="fingerprint"></span><div><span data-i18n="factor.passkeys">Passkeys</span><small id="passkeyState"></small></div></div>
+                                <div class="what"><span data-icon="key"></span><div><span data-i18n="factor.passkeys">Passkeys</span><small id="passkeyState"></small></div></div>
                                 <button class="btn btn-small" type="button" id="passkeyAdd"><span data-i18n="security.add-passkey">Add a passkey</span></button>
                             </div>
                             <ul class="passkey-list" id="passkeyList"></ul>
@@ -144,7 +159,7 @@
                         <h2 data-i18n="security.recovery-title">Ways back in</h2>
                         <div class="panel-section">
                             <div class="factor-row">
-                                <div class="what"><span data-icon="key"></span><div><span data-i18n="factor.backup-codes">Backup codes</span><small id="codesState"></small></div></div>
+                                <div class="what"><span data-icon="lifebuoy"></span><div><span data-i18n="factor.backup-codes">Backup codes</span><small id="codesState"></small></div></div>
                                 <button class="btn btn-small" type="button" id="codesRegenerate"><span data-i18n="security.new-codes">Make new codes</span></button>
                             </div>
                         </div>
@@ -222,8 +237,28 @@
                 <button class="icon-btn small" type="button" data-close-modal="linkModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
             </div>
             <label class="field">
+                <span data-i18n="link.type">Link type</span>
+                <select id="linkType"></select>
+            </label>
+            <div id="linkPlatformFields" hidden>
+                <label class="field" id="linkFormatField">
+                    <span data-i18n="link.format">Address type</span>
+                    <select id="linkFormat"></select>
+                </label>
+                <div class="field">
+                    <label for="linkUsername" id="linkUsernameLabel" data-i18n="link.username">Username or ID</label>
+                    <div class="slug-input platform-input">
+                        <span class="slug-host" id="linkPrefix" aria-hidden="true"></span>
+                        <input id="linkUsername" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="256" aria-describedby="linkUsernameHint linkUrlPreview">
+                        <span class="slug-host slug-suffix" id="linkSuffix" aria-hidden="true"></span>
+                    </div>
+                    <p class="field-hint" id="linkUsernameHint"></p>
+                    <p class="field-hint link-url-preview" id="linkUrlPreview" aria-live="polite"></p>
+                </div>
+            </div>
+            <label class="field" id="linkUrlField">
                 <span data-i18n="field.link-url">Address</span>
-                <input id="linkUrl" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" maxlength="2048" placeholder="https://" required>
+                <input id="linkUrl" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" maxlength="2048" placeholder="https://">
             </label>
             <label class="field">
                 <span data-i18n="field.link-title">Title</span>
@@ -231,7 +266,7 @@
             </label>
             <div class="field">
                 <span id="iconLabel" data-i18n="field.link-icon">Icon</span>
-                <div class="icon-picker" id="iconPicker" role="group" aria-labelledby="iconLabel"></div>
+                <div class="icon-picker-box" id="iconPicker" role="group" aria-labelledby="iconLabel"></div>
             </div>
             <div class="callout danger" id="linkError" role="alert"></div>
             <div class="actions">
@@ -306,6 +341,85 @@
             <div class="actions">
                 <a class="btn btn-primary" id="telegramOpen" href="https://t.me/" target="_blank" rel="noopener noreferrer"><span data-icon="send"></span><span data-i18n="telegram.open">Open Telegram</span></a>
                 <button class="btn" type="button" id="telegramDone"><span data-i18n="telegram.done">I have pressed Start</span></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="avatarModal">
+        <div class="modal wide glass-card" role="dialog" aria-modal="true" aria-labelledby="avatarModalTitle">
+            <div class="modal-head">
+                <h2 id="avatarModalTitle" data-i18n="avatar.edit-title">Edit picture</h2>
+                <button class="icon-btn small" type="button" data-close-modal="avatarModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
+            </div>
+            <div class="composer">
+                <canvas id="composerCanvas" class="composer-canvas" width="320" height="320" tabindex="0" role="img"
+                    aria-label="Preview. Drag or use the arrow keys to move the picture, and plus or minus to zoom."
+                    data-i18n-attr="aria-label:avatar.canvas-label"></canvas>
+                <p class="composer-status field-status" id="composerStatus" role="status" aria-live="polite"></p>
+            </div>
+            <label class="field">
+                <span data-i18n="avatar.zoom">Zoom</span>
+                <input type="range" id="composerZoom" min="1" max="4" step="0.01" value="1">
+            </label>
+            <div class="actions inline">
+                <button class="btn btn-small" type="button" id="composerRemoveBg" aria-pressed="false"><span data-icon="camera"></span><span data-i18n="avatar.remove-bg">Remove background</span></button>
+                <button class="btn btn-small btn-quiet" type="button" id="composerReset"><span data-icon="refresh"></span><span data-i18n="avatar.reset">Reset framing</span></button>
+            </div>
+            <div id="composerBg" hidden>
+                <p class="modal-section-label" id="composerBgLabel" data-i18n="avatar.bg-label">Background</p>
+                <div class="segmented" role="group" id="composerBgMode" aria-labelledby="composerBgLabel">
+                    <button type="button" data-bg="none" aria-pressed="true"><span data-i18n="avatar.bg-none">None</span></button>
+                    <button type="button" data-bg="colour" aria-pressed="false"><span data-i18n="avatar.bg-colour">Colour</span></button>
+                    <button type="button" data-bg="gradient" aria-pressed="false"><span data-i18n="avatar.bg-gradient">Gradient</span></button>
+                    <button type="button" data-bg="image" aria-pressed="false"><span data-i18n="avatar.bg-image">Image</span></button>
+                </div>
+                <div id="composerGradientBlock" hidden>
+                    <div class="colour-row" id="composerGradients" role="group" aria-label="Gradient presets" data-i18n-attr="aria-label:avatar.gradient-presets"></div>
+                    <div class="segmented u-mt-075" role="group" id="composerStops" aria-label="Gradient colour to edit" data-i18n-attr="aria-label:avatar.gradient-stop">
+                        <button type="button" data-stop="from" aria-pressed="true"><span class="stop-dot" id="stopFrom" aria-hidden="true"></span><span data-i18n="avatar.gradient-from">Start colour</span></button>
+                        <button type="button" data-stop="to" aria-pressed="false"><span class="stop-dot" id="stopTo" aria-hidden="true"></span><span data-i18n="avatar.gradient-to">End colour</span></button>
+                    </div>
+                    <label class="field">
+                        <span id="gradientAngleLabel" data-i18n="avatar.gradient-angle">Direction</span>
+                        <input type="range" id="gradientAngle" min="0" max="345" step="15" value="135" aria-describedby="gradientAngleValue">
+                        <span class="field-hint" id="gradientAngleValue"></span>
+                    </label>
+                </div>
+                <div id="composerColourBlock" hidden>
+                    <div class="colour-row" id="composerColours">
+                        <button type="button" class="colour-swatch colour-custom" id="composerCustomToggle" aria-expanded="false" aria-controls="composerCustom"
+                            aria-label="Custom colour" data-i18n-attr="aria-label:avatar.colour-custom, title:avatar.colour-custom" title="Custom colour"><span data-icon="palette"></span></button>
+                    </div>
+                    <div class="wheel-box" id="composerCustom" hidden>
+                        <div class="wheel-wrap" id="wheelWrap" role="slider" tabindex="0" aria-valuemin="0" aria-valuemax="100"
+                            aria-label="Colour wheel. Left and right arrows turn the hue, up and down change the saturation."
+                            data-i18n-attr="aria-label:avatar.wheel-label">
+                            <canvas id="wheelCanvas" class="wheel-canvas"></canvas>
+                            <span class="wheel-dot" id="wheelMarker" aria-hidden="true"></span>
+                        </div>
+                        <div class="wheel-side">
+                            <label class="field">
+                                <span data-i18n="avatar.brightness">Brightness</span>
+                                <input type="range" id="wheelBrightness" min="0" max="100" value="100">
+                            </label>
+                            <label class="field">
+                                <span data-i18n="avatar.hex">Hex code</span>
+                                <input type="text" id="wheelHex" inputmode="text" autocapitalize="characters" spellcheck="false" maxlength="7" placeholder="#FEDC00">
+                            </label>
+                            <span class="pick-preview" id="wheelPreview" aria-hidden="true"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="actions inline" id="composerBgImageRow" hidden>
+                    <label class="btn btn-small">
+                        <span data-icon="camera"></span><span data-i18n="avatar.bg-pick-image">Choose image</span>
+                        <input class="visually-hidden" type="file" id="composerBgFile" accept="image/*">
+                    </label>
+                </div>
+            </div>
+            <div class="callout danger" id="composerError" role="alert"></div>
+            <div class="actions">
+                <button class="btn btn-primary" type="button" id="composerSave"><span data-i18n="avatar.save">Save picture</span></button>
             </div>
         </div>
     </div>

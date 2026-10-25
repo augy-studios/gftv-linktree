@@ -103,6 +103,49 @@ and logs `rich send failed, falling back`. One-line notices stay plain. Data in
 the Markdown goes through `escapeMd`, and table cells through `escapeCell`.
 Neither path uses `parse_mode`.
 
+### Profile pictures
+
+Owners pick a picture in the editor's Profile tab, which opens the picture
+editor (`js/avatar-composer.js`):
+
+- **Framing.** The preview is the round frame the page uses. A cut-out is
+  framed so the whole subject sits inside the circle; a subject the photo cut
+  off (a head-and-shoulders shot) has its cut edges pushed outside the circle
+  so no straight line shows. Drag, arrow keys, the slider or the wheel adjust
+  it; Reset framing goes back to the automatic framing.
+- **Background removal** runs in the browser, in `js/bg-removal-worker.js`,
+  with IS-Net (`assets/models/`, Apache-2.0, provenance in `NOTICE.txt`) on
+  onnxruntime-web (`assets/vendor/ort/`, MIT). The picture never leaves the
+  device. The first use downloads about 57 MB, kept in the
+  `onelink-models-v1` cache after that.
+- **Backgrounds** behind a cut-out: none, a colour (swatches, or the colour
+  wheel and hex field in `js/colour-wheel.js`, ported from the colorguess
+  game), a gradient (presets, or custom start, end and direction), or another
+  image.
+- The browser saves a 512 by 512 WebP; `api/me/avatar.js` re-encodes it with
+  sharp to WebP again, stripping all metadata, and stores it in the
+  `gftvonelink_avatars` bucket under a fresh random name.
+
+Staff can remove a picture from the page's details in the dashboard.
+
+### Platform links
+
+`js/platforms.js` lists 52 services with their address formats. Choosing one
+fills in the start of the address, so the owner types only the username or
+ID; YouTube offers handle, channel ID, custom address and legacy username.
+An existing link to a known service opens again as that service. Links are
+stored as ordinary addresses and checked like any other.
+
+Icons come in categories (`ICON_CATEGORIES` in `js/icons.js`), from general
+icons to service logos. `LINK_ICONS` in `api/_lib/validate.js` is the server's
+list; the tests check the two agree.
+
+### Offline
+
+Every public page a visitor opens is kept on their device (the last 30 pages,
+and the last 60 profile pictures), so it opens again without a connection,
+marked as a saved copy. These caches are not emptied by a deploy.
+
 ## Tests
 
 `npm test` runs every route end to end against `tests/fake-db.js`, an

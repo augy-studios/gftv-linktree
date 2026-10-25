@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 const now = () => new Date().toISOString();
 
 const DEFAULTS = {
-  gftvonelink_pages: () => ({ display_name: '', bio: '', totp_secret: null, telegram_chat_id: null, telegram_username: null, status: 'pending', ban_reason: null, banned_at: null, banned_by: null, password_changed_at: now(), activated_at: null, updated_at: now() }),
+  gftvonelink_pages: () => ({ display_name: '', bio: '', avatar_path: null, totp_secret: null, telegram_chat_id: null, telegram_username: null, status: 'pending', ban_reason: null, banned_at: null, banned_by: null, password_changed_at: now(), activated_at: null, updated_at: now() }),
   gftvonelink_links: () => ({ order_index: 0, icon: 'link', click_count: 0, is_active: true, removed_at: null, removed_by: null, removed_reason: null, updated_at: now() }),
   gftvonelink_passkeys: () => ({ counter: 0, transports: null, label: null, last_used_at: null }),
   gftvonelink_staff_passkeys: () => ({ counter: 0, transports: null, label: null, last_used_at: null }),
@@ -278,9 +278,28 @@ export function createFakeDb() {
     },
   };
 
+  // Supabase Storage: upload and remove, kept in a map of "bucket/path".
+  const objects = new Map();
+  const storage = {
+    from: (bucket) => ({
+      async upload(path, body, opts = {}) {
+        const key = `${bucket}/${path}`;
+        if (objects.has(key) && !opts.upsert) return { data: null, error: { message: 'The resource already exists' } };
+        objects.set(key, { body, contentType: opts.contentType });
+        return { data: { path }, error: null };
+      },
+      async remove(paths) {
+        paths.forEach((p) => objects.delete(`${bucket}/${p}`));
+        return { data: paths.map((name) => ({ name })), error: null };
+      },
+    }),
+  };
+
   return {
     tables,
     table,
+    objects,
+    storage,
     from: (name) => new Query(name),
     rpc: async (name, args) => {
       if (!rpcs[name]) return { data: null, error: { message: `no rpc ${name}` } };

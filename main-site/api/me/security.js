@@ -30,6 +30,7 @@ import { registrationOptions, finishRegistration, removePasskey } from '../_lib/
 import { createLinkToken, telegramConfigured } from '../_lib/telegram.js';
 import { issueBackupCodes, secondFactorCount, pagePasswordOk } from '../_lib/factors.js';
 import { loadOwnerView } from '../_lib/owner-view.js';
+import { deleteAvatarFile } from '../_lib/avatar.js';
 import {
   requireOwner,
   endAllOwnerSessions,
@@ -173,6 +174,7 @@ export default route('me/security', async (req, res) => {
       await record('page_deleted', { slug: page.slug });
       const { error } = await db().from(T.pages).delete().eq('id', page.id);
       if (error) throw error;
+      await deleteAvatarFile(page.avatar_path);
       await endOwnerSession(req, res);
       return ok(res, { deleted: true });
     }

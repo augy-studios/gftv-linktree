@@ -14,7 +14,7 @@ const OWNER_SESSION_DAYS = 7;
 // Columns an owner route may need. password_hash is fetched only by the
 // routes that verify a password, by name, never through this list.
 const OWNER_PAGE_COLUMNS =
-  'id, slug, display_name, bio, status, totp_secret, telegram_chat_id, telegram_username, created_at, activated_at';
+  'id, slug, display_name, bio, status, totp_secret, telegram_chat_id, telegram_username, avatar_path, created_at, activated_at';
 
 export async function createOwnerSession(res, pageId) {
   const token = randomToken(32);

@@ -26,7 +26,19 @@ export default route('telegram/webhook', async (req, res) => {
   if (req.method !== 'POST') return send(res, 405, { ok: false });
   const secret = optionalEnv('TELEGRAM_WEBHOOK_SECRET');
   const given = String(req.headers['x-telegram-bot-api-secret-token'] || '');
-  if (!secret || !safeEqual(given, secret)) return send(res, 401, { ok: false });
+  // Logged, because a webhook Telegram cannot get through to is otherwise
+  // invisible: the bot just goes quiet. getWebhookInfo shows the same 401.
+  if (!secret) {
+    console.warn('[onelink] telegram webhook: TELEGRAM_WEBHOOK_SECRET is not set; refusing the update');
+    return send(res, 401, { ok: false });
+  }
+  if (!safeEqual(given, secret)) {
+    console.warn(`[onelink] telegram webhook: secret token ${given ? 'does not match' : 'missing'}; check setWebhook's secret_token`);
+    return send(res, 401, { ok: false });
+  }
+  if (!optionalEnv('TELEGRAM_BOT_TOKEN')) {
+    console.warn('[onelink] telegram webhook: TELEGRAM_BOT_TOKEN is not set, so the bot cannot reply');
+  }
 
   const update = await readJson(req, res);
   if (!update) return;

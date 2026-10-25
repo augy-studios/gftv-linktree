@@ -7,7 +7,7 @@ import { withBusy, errorText } from '../ui.js';
 import { wireSlugCheck, normaliseSlugInput } from '../slug-check.js';
 import { qrSvg } from '../qr.js';
 import { showCodes } from '../codes.js';
-import { passkeysSupported, createPasskey, wasCancelled } from '../passkeys.js';
+import { passkeysSupported, createPasskey, passkeyErrorCode } from '../passkeys.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -141,8 +141,7 @@ $('passkeyCreate').addEventListener('click', () => {
       try {
         response = await createPasskey(options);
       } catch (cause) {
-        if (wasCancelled(cause)) return;
-        throw Object.assign(new Error('passkey'), { code: 'passkey_failed' });
+        throw Object.assign(new Error('passkey'), { code: passkeyErrorCode(cause) });
       }
       const data = await post('/api/auth/enrol', { challenge: enrol.challenge, action: 'passkey-finish', response });
       finished(data);
