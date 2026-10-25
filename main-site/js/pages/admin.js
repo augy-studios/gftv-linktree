@@ -35,7 +35,7 @@ $('staffPasswordForm').addEventListener('submit', (e) => {
     document.querySelectorAll('#staffMethods [data-method]').forEach((b) => { b.hidden = !usable[b.dataset.method]; });
     $('staffPasswordForm').hidden = true;
     $('staffCodeForm').hidden = false;
-    pickMethod(usable.passkey ? 'passkey' : usable.totp ? 'totp' : 'backup');
+    pickMethod(usable.totp ? 'totp' : usable.passkey ? 'passkey' : 'backup');
   });
 });
 

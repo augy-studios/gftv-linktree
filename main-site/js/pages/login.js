@@ -39,7 +39,9 @@ function showFactors(methods) {
   document.querySelectorAll('#methodPicker [data-method]').forEach((b) => { b.hidden = !usable[b.dataset.method]; });
   $('stepPassword').hidden = true;
   $('stepFactor').hidden = false;
-  pick(usable.passkey ? 'passkey' : usable.totp ? 'totp' : usable.telegram ? 'telegram' : 'backup');
+  // The authenticator app first. Picking Telegram sends nothing by itself:
+  // the code goes out only when "Send me a code" is pressed.
+  pick(usable.totp ? 'totp' : usable.passkey ? 'passkey' : usable.telegram ? 'telegram' : 'backup');
   const heading = document.querySelector('#stepFactor h1');
   heading.tabIndex = -1;
   heading.focus();
