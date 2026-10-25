@@ -49,7 +49,8 @@ export function wireSlugCheck(input, status) {
       const data = await api(`/api/slug?slug=${encodeURIComponent(slug)}`);
       if (mine !== sequence) return;
       last = { available: data.available, slug };
-      if (data.available) show('slug.available', { slug }, 'ok');
+      // A free name on the staff review list can be taken, but says so.
+      if (data.available) show(data.review ? 'slug.available-review' : 'slug.available', { slug }, 'ok');
       else show(`error.${data.reason || 'slug_taken'}`, undefined, 'bad');
     } catch (error) {
       if (mine !== sequence) return;

@@ -16,6 +16,9 @@ const OWNER_SESSION_DAYS = 7;
 const OWNER_PAGE_COLUMNS =
   'id, slug, display_name, bio, status, totp_secret, telegram_chat_id, telegram_username, avatar_path, created_at, activated_at';
 
+// Every owner sign-in comes through here (second factor, first setup,
+// password reset), so this is also where the dormancy clock restarts: a page
+// stays live while its owner signs in at least once a year.
 export async function createOwnerSession(res, pageId) {
   const token = randomToken(32);
   const expires = new Date(Date.now() + OWNER_SESSION_DAYS * 86400_000);
@@ -25,6 +28,11 @@ export async function createOwnerSession(res, pageId) {
     expires_at: expires.toISOString(),
   });
   if (error) throw error;
+  const { error: touchError } = await db()
+    .from(T.pages)
+    .update({ last_sign_in_at: new Date().toISOString(), dormancy_warned_at: null })
+    .eq('id', pageId);
+  if (touchError) throw touchError;
   setCookie(res, OWNER_COOKIE, token, OWNER_SESSION_DAYS * 86400);
 }
 

@@ -1,6 +1,6 @@
 // An in-memory stand-in for the supabase-js client, covering the query
 // builder calls the API makes, with the schema's unique constraints, foreign
-// key cascades and RPC functions from migrations/001. Enough to drive every
+// key cascades and RPC functions from migrations/001 to 006. Enough to drive every
 // route end to end in tests; not a general PostgREST.
 
 import { randomUUID } from 'node:crypto';
@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 const now = () => new Date().toISOString();
 
 const DEFAULTS = {
-  gftvonelink_pages: () => ({ display_name: '', bio: '', avatar_path: null, totp_secret: null, telegram_chat_id: null, telegram_username: null, status: 'pending', ban_reason: null, banned_at: null, banned_by: null, password_changed_at: now(), activated_at: null, updated_at: now() }),
+  gftvonelink_pages: () => ({ display_name: '', bio: '', avatar_path: null, totp_secret: null, telegram_chat_id: null, telegram_username: null, status: 'pending', ban_reason: null, banned_at: null, banned_by: null, password_changed_at: now(), activated_at: null, updated_at: now(), redirect_url: null, last_sign_in_at: now(), dormancy_warned_at: null, needs_review: false, reviewed_at: null, reviewed_by: null, quarantined_at: null, quarantine_reason: null }),
   gftvonelink_links: () => ({ order_index: 0, icon: 'link', click_count: 0, is_active: true, removed_at: null, removed_by: null, removed_reason: null, updated_at: now() }),
   gftvonelink_passkeys: () => ({ counter: 0, transports: null, label: null, last_used_at: null }),
   gftvonelink_staff_passkeys: () => ({ counter: 0, transports: null, label: null, last_used_at: null }),
@@ -18,6 +18,9 @@ const DEFAULTS = {
   gftvonelink_telegram_links: () => ({ used_at: null }),
   gftvonelink_reports: () => ({ link_id: null, details: '', status: 'open', resolved_by: null, resolved_at: null, resolution_note: null }),
   gftvonelink_audit_logs: () => ({ details: {}, actor_type: 'system', actor_id: null, page_id: null, ip_hash: null }),
+  gftvonelink_blocked_patterns: () => ({ applies_to: 'links', reason: null }),
+  gftvonelink_review_patterns: () => ({ reason: null }),
+  gftvonelink_testimonials: () => ({ page_slug: null, is_visible: true, order_index: 0, updated_at: now() }),
 };
 
 const PRIMARY = { gftvonelink_blocked_slugs: 'slug', gftvonelink_blocked_domains: 'domain', gftvonelink_rate_limits: 'bucket' };
@@ -30,6 +33,8 @@ const UNIQUE = {
   gftvonelink_auth_challenges: ['token_hash'],
   gftvonelink_telegram_links: ['token_hash'],
   gftvhello_users: ['username', 'email'],
+  gftvonelink_blocked_patterns: ['pattern'],
+  gftvonelink_review_patterns: ['pattern'],
 };
 
 // child table -> [{ column, parent, onDelete }]
@@ -39,6 +44,7 @@ const FKS = {
   gftvonelink_recovery_codes: [{ column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' }],
   gftvonelink_sessions: [{ column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' }],
   gftvonelink_telegram_links: [{ column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' }],
+  gftvonelink_page_stats: [{ column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' }],
   gftvonelink_reports: [
     { column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' },
     { column: 'link_id', parent: 'gftvonelink_links', onDelete: 'set null' },
@@ -147,6 +153,7 @@ export function createFakeDb() {
     neq(c, v) { this.filters.push((r) => r[c] !== v); return this; }
     lt(c, v) { this.filters.push((r) => r[c] !== null && r[c] < v); return this; }
     gt(c, v) { this.filters.push((r) => r[c] !== null && r[c] > v); return this; }
+    gte(c, v) { this.filters.push((r) => r[c] !== null && r[c] >= v); return this; }
     is(c, v) { this.filters.push((r) => (v === null ? r[c] === null || r[c] === undefined : r[c] === v)); return this; }
     not(c, op, v) {
       if (op !== 'is' || v !== null) throw new Error(`fake not(${op}) unsupported`);
@@ -246,6 +253,15 @@ export function createFakeDb() {
     }
   }
 
+  // One running count per page, Singapore day, kind and key (migration 003).
+  function statHit(pageId, kind, key) {
+    const day = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+    const t = table('gftvonelink_page_stats');
+    const row = t.find((r) => r.page_id === pageId && r.day === day && r.kind === kind && r.key === key);
+    if (row) row.hits += 1;
+    else t.push({ page_id: pageId, day, kind, key, hits: 1 });
+  }
+
   const rpcs = {
     gftvonelink_rate_hit({ p_bucket, p_window_seconds }) {
       const t = table('gftvonelink_rate_limits');
@@ -267,6 +283,16 @@ export function createFakeDb() {
       const page = link && table('gftvonelink_pages').find((p) => p.id === link.page_id);
       if (!link || !page || page.status !== 'active' || !link.is_active || link.removed_at) return false;
       link.click_count += 1;
+      statHit(page.id, 'clicks', '');
+      return true;
+    },
+    gftvonelink_page_visit({ p_page_id, p_country, p_device, p_referrer }) {
+      const page = table('gftvonelink_pages').find((p) => p.id === p_page_id);
+      if (!page || page.status !== 'active') return false;
+      statHit(page.id, 'visits', '');
+      statHit(page.id, 'country', p_country ?? 'XX');
+      statHit(page.id, 'device', p_device ?? 'desktop');
+      statHit(page.id, 'referrer', p_referrer ?? '');
       return true;
     },
     gftvonelink_reorder_links({ p_page_id, p_ids }) {
@@ -291,6 +317,11 @@ export function createFakeDb() {
       async remove(paths) {
         paths.forEach((p) => objects.delete(`${bucket}/${p}`));
         return { data: paths.map((name) => ({ name })), error: null };
+      },
+      async download(path) {
+        const object = objects.get(`${bucket}/${path}`);
+        if (!object) return { data: null, error: { message: 'Object not found' } };
+        return { data: new Blob([object.body], { type: object.contentType }), error: null };
       },
     }),
   };

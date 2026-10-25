@@ -6,7 +6,7 @@
 // hashes, token hashes), Telegram chat ids, staff emails and reporter hashes
 // have no serializer at all and so cannot reach a browser.
 
-import { hostIsBlocked } from './validate.js';
+import { addressBlocked, dormantFrom, isDormant } from './validate.js';
 import { avatarUrl } from './avatar.js';
 
 // A visitor's view of a link. Hidden, removed and blocked links never get
@@ -15,28 +15,27 @@ export function publicLink(link) {
   return { id: link.id, title: link.title, url: link.url, icon: link.icon };
 }
 
-// Only links that are switched on, not removed by staff, and not pointing at
-// a blocked domain, in the owner's order.
+// Only links that are switched on, not removed by staff, and not caught by
+// the staff block lists ({ domains, patterns }), in the owner's order.
 export function servableLinks(links, blocked) {
   return (links ?? [])
     .filter((l) => l.is_active && !l.removed_at)
-    .filter((l) => {
-      try {
-        return !hostIsBlocked(new URL(l.url).hostname, blocked);
-      } catch {
-        return false;
-      }
-    })
+    .filter((l) => !addressBlocked(l.url, blocked))
     .sort((a, b) => a.order_index - b.order_index)
     .map(publicLink);
 }
 
+// redirectUrl is set when the page sends visitors on to one address rather
+// than listing links. A redirect the block lists now catch is dropped, and
+// the page falls back to its links.
 export function publicPage(page, links, blocked) {
+  const redirect = page.redirect_url && !addressBlocked(page.redirect_url, blocked) ? page.redirect_url : null;
   return {
     slug: page.slug,
     displayName: page.display_name || page.slug,
     bio: page.bio,
     avatarUrl: avatarUrl(page.avatar_path),
+    redirectUrl: redirect,
     links: servableLinks(links, blocked),
   };
 }
@@ -68,6 +67,14 @@ export function ownerPage(page, links, security) {
     bio: page.bio,
     avatarUrl: avatarUrl(page.avatar_path),
     createdAt: page.created_at,
+    redirectUrl: page.redirect_url || null,
+    // When the page stops being shown unless the owner signs in again.
+    lastSignInAt: page.last_sign_in_at || null,
+    dormantFrom: page.last_sign_in_at ? dormantFrom(page.last_sign_in_at) : null,
+    // The name is on the staff review list and has not been approved yet.
+    awaitingReview: Boolean(page.needs_review && !page.reviewed_at),
+    // Hidden after repeated attempts at harmful addresses, until staff look.
+    quarantined: Boolean(page.quarantined_at),
     links: (links ?? []).sort((a, b) => a.order_index - b.order_index).map(ownerLink),
     security: {
       totp: Boolean(page.totp_secret),
@@ -99,6 +106,12 @@ export function adminPageRow(page, extra = {}) {
     createdAt: page.created_at,
     activatedAt: page.activated_at || null,
     telegramLinked: Boolean(page.telegram_chat_id),
+    redirectUrl: page.redirect_url || null,
+    lastSignInAt: page.last_sign_in_at || null,
+    dormant: page.status === 'active' && isDormant(page.last_sign_in_at),
+    awaitingReview: Boolean(page.needs_review && !page.reviewed_at),
+    quarantined: Boolean(page.quarantined_at),
+    quarantineReason: page.quarantine_reason || null,
     ...extra,
   };
 }
@@ -145,4 +158,23 @@ export function adminAuditRow(row) {
     details: row.details ?? {},
     createdAt: row.created_at,
   };
+}
+
+export function adminTestimonialRow(row) {
+  return {
+    id: row.id,
+    quote: row.quote,
+    author: row.author,
+    pageSlug: row.page_slug || null,
+    isVisible: row.is_visible,
+    createdAt: row.created_at,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The home page
+// ---------------------------------------------------------------------------
+
+export function publicTestimonial(row) {
+  return { id: row.id, quote: row.quote, author: row.author, pageSlug: row.page_slug || null };
 }

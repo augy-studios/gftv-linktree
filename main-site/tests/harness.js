@@ -6,6 +6,8 @@ import { randomBytes } from 'node:crypto';
 process.env.TOTP_ENCRYPTION_KEY ??= randomBytes(32).toString('base64');
 process.env.IP_HASH_SALT ??= 'test-salt';
 process.env.SITE_URL ??= 'https://links.gftv.asia';
+// The HaGeZi lists are fetched from jsDelivr; tests switch them on one at a time.
+process.env.DOMAIN_BLOCKLISTS ??= 'off';
 
 export const ORIGIN = 'https://links.gftv.asia';
 

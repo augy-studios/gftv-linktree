@@ -7,8 +7,12 @@
 // platform and username again. Links are stored as plain addresses; the
 // server checks them like any other link.
 //
-// Brand names are written as the brands write them, so they are not
-// translated. Format labels are, under link.format-<id> in the locale files.
+// name is the brand as the brand writes it, for code and tests. What people
+// see is platform.<id> in the locale files: the same brand name in English,
+// and in Chinese the name the service is known by there where it has one
+// (小红书, 领英, 电报), the brand otherwise. Format labels are under
+// link.format-<id>, and a format's note (opts.note) is a locale key shown
+// under the username field when that format is chosen.
 
 const USER = '[A-Za-z0-9._-]{1,64}';
 
@@ -19,6 +23,7 @@ const f = (id, prefix, opts = {}) => ({
   pattern: new RegExp(`^${opts.pattern || USER}$`),
   example: opts.example || 'yourname',
   strip: opts.strip ?? /^@/,
+  note: opts.note || null,
 });
 
 export const PLATFORMS = [
@@ -66,7 +71,15 @@ export const PLATFORMS = [
 
   // messaging
   { id: 'telegram', name: 'Telegram', icon: 'telegram', category: 'messaging', formats: [f('profile', 'https://t.me/', { pattern: '[A-Za-z0-9_]{4,32}' })] },
-  { id: 'discord', name: 'Discord', icon: 'discord', category: 'messaging', formats: [f('invite', 'https://discord.gg/', { pattern: '[A-Za-z0-9-]{2,32}', example: 'abc123', strip: /^(https?:\/\/)?(discord\.gg\/|discord\.com\/invite\/)/ })] },
+  {
+    id: 'discord', name: 'Discord', icon: 'discord', category: 'messaging',
+    formats: [
+      f('invite', 'https://discord.gg/', { pattern: '[A-Za-z0-9-]{2,32}', example: 'abc123', strip: /^(https?:\/\/)?(discord\.gg\/|discord\.com\/invite\/)/ }),
+      // Discord profile links only work with the numeric user ID, never the
+      // username, so this format says so and how to find the ID.
+      f('userid', 'https://discord.com/users/', { pattern: '[0-9]{17,20}', example: '723403569260134401', strip: /^$/, note: 'link.note-discord-user' }),
+    ],
+  },
   { id: 'whatsapp', name: 'WhatsApp', icon: 'whatsapp', category: 'messaging', formats: [f('number', 'https://wa.me/', { pattern: '[0-9]{7,15}', example: '6591234567', strip: /^\+|[\s-]/g })] },
   { id: 'line', name: 'LINE', icon: 'line', category: 'messaging', formats: [f('profile', 'https://line.me/ti/p/~', { strip: /^~/ })] },
 

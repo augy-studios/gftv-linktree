@@ -154,7 +154,7 @@ export async function withBusy(button, errorBox, fn) {
 
 export function errorText(error) {
   const code = error && error.code ? error.code : 'generic';
-  const text = t(`error.${code}`);
+  const text = t(`error.${code}`, error?.detail?.host ? { host: error.detail.host } : undefined);
   return text === `error.${code}` ? t('error.generic') : text;
 }
 

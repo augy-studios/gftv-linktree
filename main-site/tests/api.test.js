@@ -7,7 +7,8 @@ import bcrypt from 'bcryptjs';
 import { useTestClient } from '../api/_lib/supabase.js';
 import { createFakeDb } from './fake-db.js';
 import { totpAt, generateTotpSecret } from '../api/_lib/totp.js';
-import { forgetBlockedDomains } from '../api/_lib/guards.js';
+import { forgetDomainBlocklist } from '../api/_lib/domain-blocklist.js';
+import { forgetBlockedDomains, forgetBlockedPatterns, forgetReviewPatterns } from '../api/_lib/guards.js';
 
 import slug from '../api/slug.js';
 import register from '../api/auth/register.js';
@@ -32,12 +33,18 @@ import adminBlocklist from '../api/admin/blocklist.js';
 import adminAudit from '../api/admin/audit.js';
 import webhook from '../api/telegram/webhook.js';
 import cleanup from '../api/cron/cleanup.js';
+import visit from '../api/public/visit.js';
+import meStats from '../api/me/stats.js';
+import publicTestimonials from '../api/public/testimonials.js';
+import adminTestimonials from '../api/admin/testimonials.js';
 
 let fake;
 beforeEach(() => {
   fake = createFakeDb();
   useTestClient(fake);
   forgetBlockedDomains();
+  forgetBlockedPatterns();
+  forgetReviewPatterns();
 });
 
 // A page set up the way a person would: register, authenticator, codes.
@@ -87,8 +94,11 @@ test('slug rules and reserved names at registration', async () => {
     const r = await attempt({ slug: bad, password: 'correct horse battery' });
     assert.equal(r.status, 400, bad);
   }
-  fake.table('gftvonelink_blocked_slugs').push({ slug: 'gftvhq', reason: 'x', created_at: new Date().toISOString() });
-  assert.equal((await attempt({ slug: 'gftvhq', password: 'correct horse battery' })).json.error, 'slug_reserved');
+  fake.table('gftvonelink_blocked_slugs').push({ slug: 'squatter', reason: 'x', created_at: new Date().toISOString() });
+  assert.equal((await attempt({ slug: 'squatter', password: 'correct horse battery' })).json.error, 'slug_reserved');
+  for (const posing of ['gftvhq', 'gftvofficial', 'cpf-refund', 'g-f-t-v']) {
+    assert.equal((await attempt({ slug: posing, password: 'correct horse battery' })).json.error, 'slug_not_allowed', posing);
+  }
   assert.equal((await attempt({ slug: 'okname', password: 'short' })).json.error, 'password_too_short');
 });
 
@@ -115,6 +125,8 @@ test('links: only http(s), owner order, public view is minimal', async () => {
     const r = await b.call(meLinks, { method: 'POST', body: { title: 'x', url } });
     assert.equal(r.status, 400, url);
   }
+  // Four attempts like these quarantine a page (tested on its own below).
+  fake.table('gftvonelink_pages')[0].quarantined_at = null;
   await b.call(meLinks, { method: 'POST', body: { title: 'First', url: 'example.com', icon: 'globe' } });
   await b.call(meLinks, { method: 'POST', body: { title: 'Second', url: 'https://example.org/b', icon: '<script>' } });
   let list = (await b.call(meLinks, { method: 'POST', body: { title: 'Hidden', url: 'https://example.net' } })).json.links;
@@ -127,7 +139,8 @@ test('links: only http(s), owner order, public view is minimal', async () => {
 
   const pub = await b.call(publicPage, { query: { slug: 'augy' } });
   assert.deepEqual(pub.json.page.links.map((l) => l.title), ['Second', 'First']);
-  assert.deepEqual(Object.keys(pub.json.page).sort(), ['avatarUrl', 'bio', 'displayName', 'links', 'slug']);
+  assert.deepEqual(Object.keys(pub.json.page).sort(), ['avatarUrl', 'bio', 'displayName', 'links', 'redirectUrl', 'slug']);
+  assert.equal(pub.json.page.redirectUrl, null);
   assert.deepEqual(Object.keys(pub.json.page.links[0]).sort(), ['icon', 'id', 'title', 'url']);
   assert.deepEqual(leaks(pub.json), []);
 
@@ -227,11 +240,11 @@ test('recovery needs Telegram and the second factor, never one alone', async () 
   try {
     const link = await a.call(security, { method: 'POST', body: { action: 'telegram-link', password: 'correct horse battery' } });
     const token = new URL(link.json.url).searchParams.get('start');
-    assert.equal((await r.call(webhook, { method: 'POST', body: { message: { chat: { id: 42, type: 'private' }, from: { username: 'augy' }, text: `/start ${token}` } }, headers: { 'x-telegram-bot-api-secret-token': 'wrong' } })).status, 401);
-    await r.call(webhook, { method: 'POST', body: { message: { chat: { id: 42, type: 'private' }, from: { username: 'augy' }, text: `/start ${token}` } }, headers: { 'x-telegram-bot-api-secret-token': 'hook-secret' } });
+    assert.equal((await r.call(webhook, { method: 'POST', body: { message: { chat: { id: 987654321, type: 'private' }, from: { username: 'augy' }, text: `/start ${token}` } }, headers: { 'x-telegram-bot-api-secret-token': 'wrong' } })).status, 401);
+    await r.call(webhook, { method: 'POST', body: { message: { chat: { id: 987654321, type: 'private' }, from: { username: 'augy' }, text: `/start ${token}` } }, headers: { 'x-telegram-bot-api-secret-token': 'hook-secret' } });
     const view = (await a.call(mePage)).json.page;
     assert.deepEqual(view.security.telegram, { linked: true, username: 'augy' });
-    assert.equal(JSON.stringify(view).includes('42'), false, 'the chat id never reaches the browser');
+    assert.equal(JSON.stringify(view).includes('987654321'), false, 'the chat id never reaches the browser');
 
     const start = await r.call(recover, { method: 'POST', body: { action: 'start', slug: 'augy' } });
     assert.equal(start.json.telegram, true);
@@ -404,6 +417,7 @@ test('blocked domains refuse new links and hide old ones', async () => {
   await owner.call(meLinks, { method: 'POST', body: { title: 'Old', url: 'https://cdn.badsite.example/a' } });
   fake.table('gftvonelink_blocked_domains').push({ domain: 'badsite.example', created_at: new Date().toISOString() });
   forgetBlockedDomains();
+  forgetBlockedPatterns();
   assert.equal((await owner.call(meLinks, { method: 'POST', body: { title: 'New', url: 'https://badsite.example' } })).json.error, 'url_blocked');
   assert.equal((await browser().call(publicPage, { query: { slug: 'augy' } })).json.page.links.length, 0);
 });
@@ -547,4 +561,387 @@ test('an admin can delete a page, which frees its name', async () => {
   assert.equal((await browser().call(slug, { query: { slug: 'augy' } })).json.available, true, 'the name is free');
   await makePage(browser());
   assert.equal(fake.table('gftvonelink_pages').length, 1, 'and can be registered again');
+});
+
+test('a page can redirect instead of listing links', async () => {
+  const owner = browser();
+  await makePage(owner);
+  await owner.call(meLinks, { method: 'POST', body: { title: 'Kept', url: 'https://example.com' } });
+
+  for (const bad of ['javascript:alert(1)', 'https://gftv.asia@evil.example']) {
+    assert.equal((await owner.call(mePage, { method: 'PATCH', body: { redirectUrl: bad } })).status, 400, bad);
+  }
+  const set = await owner.call(mePage, { method: 'PATCH', body: { redirectUrl: 'example.org/shop' } });
+  assert.equal(set.json.page.redirectUrl, 'https://example.org/shop');
+  let pub = (await browser().call(publicPage, { query: { slug: 'augy' } })).json.page;
+  assert.equal(pub.redirectUrl, 'https://example.org/shop');
+  assert.equal(pub.links.length, 1, 'the links are kept for when the redirect is turned off');
+
+  // A redirect the block lists catch later is not served; the links are.
+  fake.table('gftvonelink_blocked_domains').push({ domain: 'example.org', reason: 'x', created_at: new Date().toISOString() });
+  forgetBlockedDomains();
+  pub = (await browser().call(publicPage, { query: { slug: 'augy' } })).json.page;
+  assert.equal(pub.redirectUrl, null);
+  assert.equal((await owner.call(mePage, { method: 'PATCH', body: { redirectUrl: 'https://shop.example.org' } })).json.error, 'url_blocked');
+
+  const off = await owner.call(mePage, { method: 'PATCH', body: { redirectUrl: '' } });
+  assert.equal(off.json.page.redirectUrl, null);
+});
+
+test('a page goes dormant after a year without a sign-in, and a sign-in brings it back', async () => {
+  const owner = browser();
+  const { secret, password } = await makePage(owner);
+  const page = fake.table('gftvonelink_pages')[0];
+  assert.ok(page.last_sign_in_at, 'setup counts as a sign-in');
+
+  page.last_sign_in_at = new Date(Date.now() - 340 * 86400_000).toISOString();
+  assert.equal((await browser().call(publicPage, { query: { slug: 'augy' } })).status, 200, 'still live inside the year');
+
+  // The reminder goes out once, a month before.
+  process.env.CRON_SECRET = 'cron-secret';
+  process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+  process.env.TELEGRAM_BOT_USERNAME = 'onelink_test_bot';
+  page.telegram_chat_id = 42;
+  const sent = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    sent.push({ method: String(url).split('/').pop(), ...JSON.parse(init.body) });
+    return new Response('{"ok":true}', { status: 200 });
+  };
+  try {
+    const run = () => browser().call(cleanup, { headers: { authorization: 'Bearer cron-secret' } });
+    assert.equal((await run()).json.reminded, 1);
+    assert.equal((await run()).json.reminded, 0, 'only once');
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].rich_message.markdown, /links\.gftv\.asia\/augy/);
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.CRON_SECRET;
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    delete process.env.TELEGRAM_BOT_USERNAME;
+  }
+
+  page.last_sign_in_at = new Date(Date.now() - 366 * 86400_000).toISOString();
+  const gone = await browser().call(publicPage, { query: { slug: 'augy' } });
+  assert.equal(gone.status, 410);
+  assert.equal(gone.json.error, 'page_dormant');
+  assert.equal((await browser().call(render, { query: { slug: 'augy' } })).status, 410);
+  assert.equal((await browser().call(slug, { query: { slug: 'augy' } })).json.available, false, 'the name stays held');
+
+  const back = browser();
+  const step = await back.call(login, { method: 'POST', body: { slug: 'augy', password } });
+  assert.equal((await back.call(verify, { method: 'POST', body: { challenge: step.json.challenge, method: 'totp', code: totpAt(secret) } })).status, 200);
+  assert.equal((await browser().call(publicPage, { query: { slug: 'augy' } })).status, 200, 'signing in restores it');
+  assert.equal(page.dormancy_warned_at, null, 'and resets the reminder');
+});
+
+test('visits and clicks become insights, with nothing about the visitor', async () => {
+  const owner = browser();
+  await makePage(owner);
+  const { links } = (await owner.call(meLinks, { method: 'POST', body: { title: 'Site', url: 'https://example.com' } })).json;
+  const phone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148';
+  const seen = (ip, extra = {}) => browser().call(visit, {
+    method: 'POST', ip, body: { slug: 'augy', referrer: 'https://l.instagram.com/?u=x' },
+    headers: { 'user-agent': phone, 'x-vercel-ip-country': 'sg', ...extra },
+  });
+  assert.equal((await seen('203.0.113.1')).json.counted, true);
+  assert.equal((await seen('203.0.113.1')).json.counted, false, 'once per visitor per half hour');
+  assert.equal((await seen('203.0.113.2', { 'x-vercel-ip-country': 'MY', 'user-agent': 'Mozilla/5.0 (Windows NT 10.0)' })).json.counted, true);
+  assert.equal((await seen('203.0.113.3', { 'user-agent': 'facebookexternalhit/1.1' })).json.counted, false, 'previews are not visits');
+  await browser().call(click, { method: 'POST', body: { id: links[0].id } });
+
+  const stats = await owner.call(meStats, { query: { days: '7' } });
+  assert.equal(stats.status, 200, stats.body);
+  assert.deepEqual(stats.json.totals, { visits: 2, clicks: 1 });
+  assert.equal(stats.json.daily.length, 7);
+  assert.equal(stats.json.daily.at(-1).visits, 2);
+  assert.deepEqual(stats.json.countries, [{ key: 'MY', hits: 1 }, { key: 'SG', hits: 1 }]);
+  assert.deepEqual(stats.json.devices.map((d) => d.key).sort(), ['desktop', 'mobile']);
+  assert.deepEqual(stats.json.referrers, [{ key: 'instagram.com', hits: 2 }]);
+  const stored = JSON.stringify(fake.table('gftvonelink_page_stats'));
+  assert.equal(stored.includes('203.0.113'), false, 'no address is kept');
+  assert.equal((await browser().call(meStats)).status, 401);
+});
+
+test('staff block patterns: names, links, and slow patterns refused', async () => {
+  const { secret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', secret);
+  const add = (value, appliesTo) => admin.call(adminBlocklist, { method: 'POST', body: { action: 'add-pattern', value, appliesTo, reason: 'test' } });
+
+  assert.equal((await add('(a+)+', 'links')).json.error, 'pattern_slow');
+  assert.equal((await add('[', 'links')).json.error, 'pattern_invalid');
+  assert.equal((await add('^scam', 'names')).status, 200);
+  const both = await add('promo\\.example/', 'links');
+  assert.equal(both.json.patterns.length, 2);
+
+  assert.deepEqual((await browser().call(slug, { query: { slug: 'scamshop' } })).json, { ok: true, available: false, reason: 'slug_not_allowed' });
+  assert.equal((await browser().call(slug, { query: { slug: 'not-a-scam' } })).json.available, true, 'anchored to the start');
+
+  const owner = browser();
+  await makePage(owner);
+  await owner.call(meLinks, { method: 'POST', body: { title: 'Fine', url: 'https://example.com' } });
+  // Added before the pattern, then caught by it: hidden from visitors.
+  fake.table('gftvonelink_links').push({ id: crypto.randomUUID(), page_id: fake.table('gftvonelink_pages')[0].id, title: 'Short', url: 'https://promo.example/abc', icon: 'link', order_index: 5, click_count: 0, is_active: true, removed_at: null });
+  assert.equal((await owner.call(meLinks, { method: 'POST', body: { title: 'Short', url: 'https://PROMO.EXAMPLE/xyz' } })).json.error, 'url_blocked', 'case does not matter');
+  const pub = (await browser().call(publicPage, { query: { slug: 'augy' } })).json.page;
+  assert.deepEqual(pub.links.map((l) => l.title), ['Fine']);
+
+  const id = both.json.patterns.find((p) => p.value === 'promo\\.example/').id;
+  await admin.call(adminBlocklist, { method: 'POST', body: { action: 'remove-pattern', id } });
+  assert.equal((await owner.call(meLinks, { method: 'POST', body: { title: 'Short', url: 'https://promo.example/xyz' } })).status, 200);
+  const actions = fake.table('gftvonelink_audit_logs').map((r) => r.action);
+  assert.ok(actions.includes('mod.pattern_blocked') && actions.includes('mod.pattern_unblocked'));
+});
+
+test('names on the review list wait for staff approval before going live', async () => {
+  const { secret: adminSecret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const { secret: editorSecret } = await makeStaff({ username: 'ed', role: 'editor' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', adminSecret);
+  const editor = browser();
+  await staffSignIn(editor, 'ed', editorSecret);
+  const added = await admin.call(adminBlocklist, { method: 'POST', body: { action: 'add-review', value: 'furcon', reason: 'event names' } });
+  assert.equal(added.json.reviews.length, 1);
+
+  assert.deepEqual((await browser().call(slug, { query: { slug: 'sgfurcon' } })).json, { ok: true, available: true, slug: 'sgfurcon', reason: null, review: true });
+  assert.equal((await browser().call(slug, { query: { slug: 'augy' } })).json.review, false);
+
+  const owner = browser();
+  await makePage(owner, 'sgfurcon');
+  const page = fake.table('gftvonelink_pages')[0];
+  assert.equal(page.needs_review, true);
+  assert.equal((await owner.call(mePage)).json.page.awaitingReview, true, 'the owner is told');
+  assert.equal((await browser().call(publicPage, { query: { slug: 'sgfurcon' } })).json.error, 'page_in_review');
+  assert.equal((await browser().call(render, { query: { slug: 'sgfurcon' } })).status, 404);
+  assert.equal((await editor.call(adminOverview)).json.counts.awaitingReview, 1);
+  assert.equal((await editor.call(adminPages, { query: { status: 'review' } })).json.pages.length, 1);
+
+  assert.equal((await editor.call(adminPages, { method: 'POST', body: { action: 'approve', id: page.id } })).status, 200, 'editors can approve');
+  assert.equal((await browser().call(publicPage, { query: { slug: 'sgfurcon' } })).status, 200);
+  assert.equal((await editor.call(adminPages, { method: 'POST', body: { action: 'approve', id: page.id } })).json.error, 'not_in_review');
+  assert.ok(fake.table('gftvonelink_audit_logs').some((r) => r.action === 'mod.page_approved'));
+});
+
+test('links: shorteners refused, Safe Browsing checked on save and again daily', async () => {
+  const owner = browser();
+  await makePage(owner);
+  for (const url of ['https://bit.ly/abc', 'tinyurl.com/x', 'https://www.cutt.ly/y']) {
+    assert.equal((await owner.call(meLinks, { method: 'POST', body: { title: 'Short', url } })).json.error, 'url_shortener', url);
+  }
+  assert.equal((await owner.call(meLinks, { method: 'POST', body: { title: 'YouTube', url: 'https://youtu.be/abc' } })).status, 200, "a service's own short domain is fine");
+  assert.equal((await owner.call(mePage, { method: 'PATCH', body: { redirectUrl: 'https://bit.ly/abc' } })).json.error, 'url_shortener');
+
+  process.env.GOOGLE_SAFE_BROWSING_KEY = 'sb-key';
+  process.env.CRON_SECRET = 'cron-secret';
+  const bad = new Set(['https://phish.example/login']);
+  const asked = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    assert.match(String(url), /safebrowsing\.googleapis\.com\/v4\/threatMatches:find\?key=sb-key/);
+    const entries = JSON.parse(init.body).threatInfo.threatEntries.map((e) => e.url);
+    asked.push(...entries);
+    const matches = entries.filter((u) => bad.has(u)).map((u) => ({ threatType: 'SOCIAL_ENGINEERING', threat: { url: u } }));
+    return new Response(JSON.stringify(matches.length ? { matches } : {}), { status: 200 });
+  };
+  try {
+    assert.equal((await owner.call(meLinks, { method: 'POST', body: { title: 'Bad', url: 'https://phish.example/login' } })).json.error, 'url_unsafe');
+    const { links } = (await owner.call(meLinks, { method: 'POST', body: { title: 'Later', url: 'https://later.example/' } })).json;
+    await owner.call(mePage, { method: 'PATCH', body: { redirectUrl: 'https://turned.example/' } });
+
+    // Both go bad after they were added.
+    bad.add('https://later.example/');
+    bad.add('https://turned.example/');
+    const ran = await browser().call(cleanup, { headers: { authorization: 'Bearer cron-secret' } });
+    assert.equal(ran.json.unsafe, 2);
+    const later = (await owner.call(mePage)).json.page;
+    assert.equal(later.links.find((l) => l.id === links.find((x) => x.title === 'Later').id).removed, true);
+    assert.equal(later.redirectUrl, null, 'a flagged redirect is switched off');
+
+    // A lookup that fails lets the address through.
+    globalThis.fetch = async () => new Response('nope', { status: 503 });
+    assert.equal((await owner.call(meLinks, { method: 'POST', body: { title: 'Ok', url: 'https://fine.example/' } })).status, 200);
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.GOOGLE_SAFE_BROWSING_KEY;
+    delete process.env.CRON_SECRET;
+  }
+});
+
+test('links: the domain blocklists, built into an index every two weeks', async () => {
+  const owner = browser();
+  await makePage(owner);
+  const { links } = (await owner.call(meLinks, { method: 'POST', body: { title: 'Was fine', url: 'https://shop.fakestore.example/x' } })).json;
+  const { secret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', secret);
+
+  const LISTS = {
+    'https://lists.example/tif.txt': '# Title: test\n# Syntax: Domains Wildcard\n#\n*.evil.example\nmalware.example\n',
+    'https://lists.example/fake.txt': '*.fakestore.example\n*.evil.example\n',
+    'https://lists.example/gambling.txt': '*.casino.example\n',
+    'https://lists.example/nsfw.txt': '*.adult.example\n',
+    'https://lists.example/short.txt': '*.tiny.example\n',
+  };
+  process.env.DOMAIN_BLOCKLISTS = [
+    'unsafe:https://lists.example/tif.txt', 'unsafe:https://lists.example/fake.txt', 'gambling:https://lists.example/gambling.txt',
+    'adult:https://lists.example/nsfw.txt', 'shortener:https://lists.example/short.txt',
+  ].join(',');
+  process.env.CRON_SECRET = 'cron-secret';
+  forgetDomainBlocklist();
+  const fetched = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    fetched.push(String(url));
+    return new Response(LISTS[String(url)], { status: 200 });
+  };
+  try {
+    // Before any index exists, addresses get through.
+    assert.equal((await owner.call(meLinks, { method: 'POST', body: { title: 'Early', url: 'https://notyet.evil.example/' } })).status, 200);
+
+    const run = () => browser().call(cleanup, { headers: { authorization: 'Bearer cron-secret' } });
+    const first = await run();
+    assert.deepEqual(first.json.blocklist, { rebuilt: { unsafe: 3, gambling: 1, adult: 1, shortener: 1 } }, 'duplicates across lists are merged');
+    assert.equal(first.json.unsafe, 2, 'existing links on the lists are taken down');
+    const removed = (await owner.call(mePage)).json.page.links.find((l) => l.id === links[0].id);
+    assert.equal(removed.removed, true);
+    assert.match(removed.removedReason, /HaGeZi/);
+    assert.equal(fake.objects.get('gftvonelink_lists/domain-blocklist-unsafe.bin').body.length, 3 * 8, 'eight bytes a domain');
+
+    forgetDomainBlocklist();
+    const save = async (url) => (await owner.call(meLinks, { method: 'POST', body: { title: 'x', url } })).json.error;
+    assert.equal(await save('https://login.evil.example/'), 'url_unsafe');
+    assert.equal(await save('https://MALWARE.example/'), 'url_unsafe');
+    assert.equal(await save('https://www.casino.example/'), 'url_gambling');
+    assert.equal(await save('https://adult.example/'), 'url_adult');
+    assert.equal(await save('https://tiny.example/abc'), 'url_shortener');
+    assert.equal(await save('https://notevil.example/'), undefined, 'a different domain ending the same is fine');
+
+    fetched.length = 0;
+    assert.ok((await run()).json.blocklist.current, 'not rebuilt inside two weeks');
+    assert.equal(fetched.length, 0);
+
+    const info = (await admin.call(adminBlocklist)).json.threatList;
+    assert.deepEqual(info.categories, { unsafe: 3, gambling: 1, adult: 1, shortener: 1 });
+    assert.equal(info.refreshDays, 14);
+    await admin.call(adminBlocklist, { method: 'POST', body: { action: 'refresh-threat-list' } });
+    assert.equal(fetched.length, 5, 'staff can rebuild it now');
+  } finally {
+    globalThis.fetch = realFetch;
+    process.env.DOMAIN_BLOCKLISTS = 'off';
+    delete process.env.CRON_SECRET;
+    forgetDomainBlocklist();
+  }
+});
+
+test('repeated harmful addresses quarantine the page and flag the connection', async () => {
+  const owner = browser();
+  await makePage(owner);
+  fake.table('gftvonelink_blocked_domains').push({ domain: 'evil.example', reason: 'x', created_at: new Date().toISOString() });
+  forgetBlockedDomains();
+  const add = (url, ip) => owner.call(meLinks, { method: 'POST', body: { title: 'x', url }, ip });
+
+  assert.equal((await add('https://bit.ly/x')).json.error, 'url_shortener');
+  assert.equal((await add('notaurl')).json.error, 'url_invalid');
+  assert.equal(fake.table('gftvonelink_pages')[0].quarantined_at, null, 'typos and shorteners do not count');
+
+  await add('https://evil.example/1');
+  await add('https://a.evil.example/2');
+  assert.equal((await owner.call(mePage)).json.page.quarantined, false);
+  await owner.call(mePage, { method: 'PATCH', body: { redirectUrl: 'https://b.evil.example/3' } });
+  const page = fake.table('gftvonelink_pages')[0];
+  assert.ok(page.quarantined_at, 'the third quarantines it');
+  assert.equal((await owner.call(mePage)).json.page.quarantined, true, 'the owner is told');
+  assert.equal((await browser().call(publicPage, { query: { slug: 'augy' } })).json.error, 'page_in_review');
+  const report = fake.table('gftvonelink_reports').find((r) => r.page_id === page.id);
+  assert.match(report.details, /^Automatic: 3 harmful addresses/);
+
+  // Five from one connection and it is turned away for the day.
+  await add('javascript:alert(1)');
+  await add('data:text/html,hi');
+  assert.equal((await add('https://fine.example/')).json.error, 'too_many_refused_links');
+  assert.equal((await add('https://fine.example/', '198.51.100.99')).status, 200, 'other connections are not');
+  const actions = fake.table('gftvonelink_audit_logs').map((r) => r.action);
+  assert.ok(actions.includes('security.ip_flagged') && actions.includes('mod.page_quarantined'));
+  assert.equal(JSON.stringify(fake.table('gftvonelink_audit_logs')).includes('203.0.113.7'), false, 'only a hash of the address');
+
+  const { secret } = await makeStaff({ username: 'ed', role: 'editor' });
+  const editor = browser();
+  await staffSignIn(editor, 'ed', secret);
+  assert.equal((await editor.call(adminOverview)).json.counts.quarantined, 1);
+  const listed = (await editor.call(adminPages, { query: { status: 'quarantined' } })).json.pages;
+  assert.equal(listed[0].quarantineReason, page.quarantine_reason);
+  assert.equal((await editor.call(adminPages, { method: 'POST', body: { action: 'release', id: page.id } })).status, 200);
+  assert.equal((await browser().call(publicPage, { query: { slug: 'augy' } })).status, 200);
+});
+
+test('a bio holds up to 512 characters', async () => {
+  const owner = browser();
+  await makePage(owner);
+  const long = 'fox '.repeat(200);
+  const saved = (await owner.call(mePage, { method: 'PATCH', body: { bio: long } })).json.page.bio;
+  assert.equal([...saved].length, 512, 'cut at 512');
+  assert.equal(long.startsWith(saved), true);
+});
+
+test('addresses written into a bio, name or title follow the link rules', async () => {
+  const owner = browser();
+  await makePage(owner);
+  fake.table('gftvonelink_blocked_domains').push({ domain: 'evil.example', reason: 'x', created_at: new Date().toISOString() });
+  forgetBlockedDomains();
+  const bio = (text) => owner.call(mePage, { method: 'PATCH', body: { bio: text } });
+
+  for (const text of ['DM me on evil[.]example/login', 'go to evil (dot) example', 'ｅｖｉｌ。example', 'shop.evil.example']) {
+    const r = await bio(text);
+    assert.equal(r.json.error, 'text_address', text);
+    assert.equal(r.json.host, text.includes('shop') ? 'shop.evil.example' : 'evil.example');
+  }
+  assert.equal((await bio('Fox, artist. Nice to meet.you, 1.5 metres tall, v2.0 out now')).status, 200, 'text that only looks like an address is fine');
+  assert.equal((await owner.call(mePage, { method: 'PATCH', body: { displayName: 'Mika bit.ly/x' } })).json.error, 'text_address');
+  assert.equal((await owner.call(meLinks, { method: 'POST', body: { title: 'Real shop: evil.example', url: 'https://example.com' } })).json.error, 'text_address');
+  assert.ok(fake.table('gftvonelink_pages')[0].quarantined_at, 'they count towards quarantine like links');
+
+  // Text written before an address was listed is reported once, not edited.
+  const page = fake.table('gftvonelink_pages')[0];
+  page.quarantined_at = null;
+  page.bio = 'old bio: later.example';
+  fake.table('gftvonelink_blocked_domains').push({ domain: 'later.example', reason: 'x', created_at: new Date().toISOString() });
+  forgetBlockedDomains();
+  process.env.CRON_SECRET = 'cron-secret';
+  try {
+    const run = () => browser().call(cleanup, { headers: { authorization: 'Bearer cron-secret' } });
+    await run();
+    await run();
+    const reports = fake.table('gftvonelink_reports').filter((r) => r.details.includes('later.example'));
+    assert.equal(reports.length, 1, 'reported once while open');
+    assert.equal(page.bio, 'old bio: later.example', 'the text is left for staff to judge');
+  } finally {
+    delete process.env.CRON_SECRET;
+  }
+});
+
+test('testimonials: admins manage them, the home page shows the visible ones', async () => {
+  const { secret: adminSecret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const { secret: editorSecret } = await makeStaff({ username: 'ed', role: 'editor' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', adminSecret);
+  const editor = browser();
+  await staffSignIn(editor, 'ed', editorSecret);
+
+  assert.equal((await editor.call(adminTestimonials)).json.error, 'admin_only');
+  const send = (body) => admin.call(adminTestimonials, { method: 'POST', body });
+  assert.equal((await send({ action: 'add', quote: '', author: 'x' })).json.error, 'testimonial_required');
+  assert.equal((await send({ action: 'add', quote: 'Lovely', author: 'A', pageSlug: 'not a slug!' })).json.error, 'slug_invalid');
+  await send({ action: 'add', quote: 'First quote', author: 'Ann', pageSlug: 'ann' });
+  let list = (await send({ action: 'add', quote: 'Second quote', author: 'Bo' })).json.testimonials;
+  assert.deepEqual(list.map((x) => x.author), ['Ann', 'Bo']);
+  list = (await send({ action: 'move', id: list[1].id, delta: -1 })).json.testimonials;
+  assert.deepEqual(list.map((x) => x.author), ['Bo', 'Ann']);
+  await send({ action: 'update', id: list[0].id, isVisible: false });
+
+  const shown = await browser().call(publicTestimonials);
+  assert.deepEqual(shown.json.testimonials, [{ id: list[1].id, quote: 'First quote', author: 'Ann', pageSlug: 'ann' }]);
+  assert.match(shown.headers['cache-control'], /s-maxage=60/);
+  await send({ action: 'remove', id: list[1].id });
+  assert.deepEqual((await browser().call(publicTestimonials)).json.testimonials, []);
 });

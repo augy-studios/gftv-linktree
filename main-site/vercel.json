@@ -10,6 +10,12 @@
         "api/render.js": {
             "maxDuration": 15,
             "includeFiles": "{shell/profile.html,404.html}"
+        },
+        "api/cron/cleanup.js": {
+            "maxDuration": 300
+        },
+        "api/admin/blocklist.js": {
+            "maxDuration": 300
         }
     },
     "crons": [

@@ -10,8 +10,8 @@
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
-import { cleanText, sanitizeUrl, hostIsBlocked, checkIcon, isUuid, LIMITS, MAX_LINKS } from '../_lib/validate.js';
-import { limited, blockedDomains } from '../_lib/guards.js';
+import { cleanText, checkIcon, isUuid, LIMITS, MAX_LINKS } from '../_lib/validate.js';
+import { limited, checkLinkUrl, noteRefusedLink, refusedForAttempts, addressRefusedInText } from '../_lib/guards.js';
 import { requireOwner } from '../_lib/session.js';
 import { ownerLink } from '../_lib/serialize.js';
 
@@ -23,14 +23,6 @@ async function allLinks(pageId) {
   return data ?? [];
 }
 
-// { ok, url } or { ok: false, error } with the block list applied.
-async function checkUrl(input) {
-  const check = sanitizeUrl(input);
-  if (!check.ok) return check;
-  if (hostIsBlocked(check.host, await blockedDomains())) return { ok: false, error: 'url_blocked' };
-  return check;
-}
-
 export default route('me/links', async (req, res) => {
   if (guard(req, res, ['POST', 'PATCH', 'DELETE'])) return;
   const owner = await requireOwner(req, res);
@@ -39,6 +31,20 @@ export default route('me/links', async (req, res) => {
   if (!body) return;
   if (await limited(req, res, 'ownerWrite', [`page:${owner.page.id}`])) return;
   const pageId = owner.page.id;
+  // A refused address also counts towards quarantine (guards.js).
+  const refuse = async (url, input) => {
+    await noteRefusedLink(req, owner.page, url.error, input);
+    return fail(res, 400, url.error);
+  };
+  if (body.url !== undefined && (await refusedForAttempts(req, res))) return;
+  // A title is shown as the link's text, so an address in it is checked too.
+  const titleRefused = async (title) => {
+    const refused = await addressRefusedInText(title);
+    if (!refused) return false;
+    await noteRefusedLink(req, owner.page, refused.error, `https://${refused.host}/`);
+    fail(res, 400, 'text_address', { host: refused.host });
+    return true;
+  };
 
   if (req.method === 'POST' && body.action === 'reorder') {
     const ids = Array.isArray(body.ids) ? body.ids.filter(isUuid).slice(0, MAX_LINKS) : [];
@@ -49,8 +55,9 @@ export default route('me/links', async (req, res) => {
     if (existing.length >= MAX_LINKS) return fail(res, 400, 'too_many_links');
     const title = cleanText(body.title, LIMITS.title);
     if (!title) return fail(res, 400, 'title_required');
-    const url = await checkUrl(body.url);
-    if (!url.ok) return fail(res, 400, url.error);
+    if (await titleRefused(title)) return;
+    const url = await checkLinkUrl(body.url);
+    if (!url.ok) return refuse(url, body.url);
     const nextIndex = existing.reduce((max, l) => Math.max(max, l.order_index), -1) + 1;
     const { error } = await db()
       .from(T.links)
@@ -76,10 +83,11 @@ export default route('me/links', async (req, res) => {
       if (body.title !== undefined) {
         fields.title = cleanText(body.title, LIMITS.title);
         if (!fields.title) return fail(res, 400, 'title_required');
+        if (await titleRefused(fields.title)) return;
       }
       if (body.url !== undefined) {
-        const url = await checkUrl(body.url);
-        if (!url.ok) return fail(res, 400, url.error);
+        const url = await checkLinkUrl(body.url);
+        if (!url.ok) return refuse(url, body.url);
         fields.url = url.url;
       }
       if (body.icon !== undefined) fields.icon = checkIcon(body.icon);

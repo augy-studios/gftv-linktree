@@ -50,77 +50,215 @@
         </div>
     </header>
 
-    <main>
-        <section class="hero">
-            <span class="eyebrow" data-i18n="home.eyebrow">links.gftv.asia</span>
-            <h1 data-i18n="home.title">One link for everything you share</h1>
-            <p class="lede" data-i18n="home.lede">Put your socials, shop, music and more on one page, then share it with a single link or a QR code.</p>
+    <main class="home">
+        <section class="band band-hero" aria-labelledby="heroTitle">
+            <div class="band-inner hero-grid">
+                <div class="hero-copy">
+                    <span class="eyebrow-pill"><span data-icon="zap"></span><span data-i18n="home.eyebrow">links.gftv.asia</span></span>
+                    <h1 id="heroTitle"><span data-i18n="home.title-a">One link for </span><span class="hero-tail"><span class="highlight" data-i18n="home.title-b">everything</span><span data-i18n="home.title-c"> you share</span></span></h1>
+                    <p class="lede" data-i18n="home.lede">Put your socials, shop, music and more on one page, then share it with a single link or a QR code.</p>
 
-            <form class="claim" id="claimForm" novalidate>
-                <label class="visually-hidden" for="claimSlug" data-i18n="home.claim-label">Choose your page name</label>
-                <div class="slug-input">
-                    <span class="slug-host" aria-hidden="true">links.gftv.asia/</span>
-                    <input id="claimSlug" name="slug" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="32" placeholder="yourname" data-i18n-attr="placeholder:home.claim-placeholder" aria-describedby="claimStatus">
+                    <form class="claim" id="claimForm" novalidate>
+                        <label class="visually-hidden" for="claimSlug" data-i18n="home.claim-label">Choose your page name</label>
+                        <div class="slug-input">
+                            <span class="slug-host" aria-hidden="true">links.gftv.asia/</span>
+                            <input id="claimSlug" name="slug" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="32" placeholder="yourname" data-i18n-attr="placeholder:home.claim-placeholder" aria-describedby="claimStatus">
+                        </div>
+                        <button class="btn btn-pop" type="submit"><span data-i18n="home.claim-submit">Claim it</span><span data-icon="arrow-right"></span></button>
+                    </form>
+                    <p class="field-status claim-status" id="claimStatus" role="status" aria-live="polite"></p>
+                    <p class="home-signin"><span data-i18n="home.have-page">Already have a page?</span> <a class="text-link" href="/login" data-i18n="home.sign-in">Sign in</a></p>
                 </div>
-                <button class="btn btn-primary" type="submit"><span data-i18n="home.claim-submit">Claim it</span><span data-icon="arrow-right"></span></button>
-            </form>
-            <p class="field-status claim-status" id="claimStatus" role="status" aria-live="polite"></p>
-            <p class="home-signin"><span data-i18n="home.have-page">Already have a page?</span> <a class="text-link" href="/login" data-i18n="home.sign-in">Sign in</a></p>
+
+                <div class="hero-art" aria-hidden="true">
+                    <span class="orbit orbit-1" data-icon="instagram"></span>
+                    <span class="orbit orbit-2" data-icon="telegram"></span>
+                    <span class="orbit orbit-3" data-icon="youtube"></span>
+                    <span class="orbit orbit-4" data-icon="furaffinity"></span>
+                    <span class="orbit orbit-5" data-icon="kofi"></span>
+                    <div class="phone">
+                        <div class="phone-screen">
+                            <div class="demo-avatar"><span data-icon="smile"></span></div>
+                            <p class="demo-name" data-i18n="home.demo-name">Mika the Fox</p>
+                            <p class="demo-handle">links.gftv.asia/mika</p>
+                            <ul class="demo-links">
+                                <li><span data-icon="brush"></span><span data-i18n="home.demo-link-1">Commission info</span></li>
+                                <li><span data-icon="twitch"></span><span data-i18n="home.demo-link-2">Watch me stream</span></li>
+                                <li><span data-icon="telegram"></span><span data-i18n="home.demo-link-3">Sticker pack</span></li>
+                                <li><span data-icon="shop"></span><span data-i18n="home.demo-link-4">Badge shop</span></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </section>
 
-        <section class="home-section" aria-labelledby="howTitle">
-            <h2 id="howTitle" data-i18n="home.how-title">How it works</h2>
-            <ol class="how-steps">
-                <li class="glass-card how-step">
-                    <span data-icon="user"></span>
-                    <h3 data-i18n="home.how-1-title">Claim your name</h3>
-                    <p data-i18n="home.how-1-body">Pick a name for your page and set a password. No email needed.</p>
-                </li>
-                <li class="glass-card how-step">
-                    <span data-icon="link"></span>
-                    <h3 data-i18n="home.how-2-title">Add your links</h3>
-                    <p data-i18n="home.how-2-body">Add as many links as you like, put them in order, and hide any for later.</p>
-                </li>
-                <li class="glass-card how-step">
-                    <span data-icon="qr"></span>
-                    <h3 data-i18n="home.how-3-title">Share your QR</h3>
-                    <p data-i18n="home.how-3-body">Share your link anywhere, or show your QR code so people can scan it.</p>
-                </li>
-            </ol>
+        <section class="band band-share" aria-labelledby="shareTitle">
+            <div class="band-inner split">
+                <div class="split-copy">
+                    <h2 id="shareTitle" class="display" data-i18n="home.share-title">Share your OneLink anywhere you like!</h2>
+                    <p data-i18n="home.share-body">Put your link in every bio, on stream, in your con badge and on your business cards. Then let your QR code bring people at meets and conventions straight back to you.</p>
+                    <a class="btn btn-pop btn-pill" href="/register"><span data-i18n="home.cta">Get your page, free</span><span data-icon="arrow-right"></span></a>
+                </div>
+                <div class="card-stack" id="cardStack" aria-hidden="true">
+                    <div class="stack-card c-telegram"><span class="sc-avatar"></span><span class="sc-line"></span><span data-icon="telegram"></span></div>
+                    <div class="stack-card c-qr"><span class="sc-avatar"></span><span class="sc-line"></span><span data-icon="qr"></span></div>
+                    <div class="stack-card c-tiktok"><span class="sc-avatar"></span><span class="sc-line"></span><span data-icon="tiktok"></span></div>
+                    <div class="stack-card c-youtube"><span class="sc-avatar"></span><span class="sc-line"></span><span data-icon="youtube"></span></div>
+                    <div class="stack-card c-instagram"><span class="sc-avatar"></span><span class="sc-line"></span><span data-icon="instagram"></span></div>
+                    <div class="stack-pill"><span data-icon="link"></span>/yourname</div>
+                </div>
+            </div>
         </section>
 
-        <section class="home-section" aria-labelledby="safeTitle">
-            <h2 id="safeTitle" data-i18n="home.safe-title">Kept safe</h2>
-            <ul class="feature-grid">
-                <li class="glass-card feature">
-                    <span data-icon="shield"></span>
-                    <div>
-                        <h3 data-i18n="home.safe-1-title">Two-step sign in</h3>
-                        <p data-i18n="home.safe-1-body">Every page is locked with a password and an authenticator app or a passkey.</p>
+        <section class="band band-insights" aria-labelledby="insightsTitle">
+            <div class="band-inner split reverse">
+                <div class="tile-grid" id="insightTiles" aria-hidden="true">
+                    <div class="pop-tile t-clicks">
+                        <svg class="spark" viewBox="0 0 120 70" preserveAspectRatio="none"><path d="M2 60 C 16 60, 18 18, 32 22 S 48 58, 62 46 S 82 30, 92 34 S 110 8, 118 6"/></svg>
+                        <div><span class="count" data-count="43500">0</span><span class="tile-label" data-i18n="home.tile-clicks">Clicks</span></div>
                     </div>
-                </li>
-                <li class="glass-card feature">
-                    <span data-icon="lifebuoy"></span>
-                    <div>
-                        <h3 data-i18n="home.safe-2-title">Ways back in</h3>
-                        <p data-i18n="home.safe-2-body">Backup codes, and Telegram if you link it, get you back in if you lose your phone.</p>
+                    <div class="pop-tile t-sources">
+                        <span data-icon="instagram"></span>
+                        <span class="count" data-count="64" data-suffix="%">0</span>
+                        <span class="tile-label" data-i18n="home.tile-source">from Instagram</span>
                     </div>
-                </li>
-                <li class="glass-card feature">
-                    <span data-icon="flag"></span>
-                    <div>
-                        <h3 data-i18n="home.safe-3-title">Reviewed reports</h3>
-                        <p data-i18n="home.safe-3-body">Anyone can report a page or link, and the GFTV team reviews every report.</p>
+                    <div class="pop-tile t-devices">
+                        <div class="device-split"><span class="mobile"></span><span class="desktop"></span></div>
+                        <span class="count" data-count="78" data-suffix="%">0</span>
+                        <span class="tile-label" data-i18n="home.tile-devices">on phones</span>
                     </div>
-                </li>
-                <li class="glass-card feature">
-                    <span data-icon="lock"></span>
-                    <div>
-                        <h3 data-i18n="home.safe-4-title">Only web links</h3>
-                        <p data-i18n="home.safe-4-body">Links must start with http or https, and open in a new tab without passing your page on.</p>
+                    <div class="pop-tile t-visits">
+                        <div class="globe"><span class="pin"></span></div>
+                        <div>
+                            <span class="tile-place" data-i18n="home.tile-place">Singapore</span>
+                            <span class="count" data-count="960">0</span>
+                            <span class="tile-label" data-i18n="home.tile-visits">Visits</span>
+                        </div>
                     </div>
-                </li>
-            </ul>
+                </div>
+                <div class="split-copy">
+                    <h2 id="insightsTitle" class="display" data-i18n="home.insights-title">See who's visiting and keep them coming back</h2>
+                    <p data-i18n="home.insights-body">Your page counts its visits and clicks every day, and shows where visitors are, which sites sent them and what they read it on. Only daily totals are kept, never who someone is.</p>
+                    <a class="btn btn-ink btn-pill" href="/register"><span data-i18n="home.cta">Get your page, free</span><span data-icon="arrow-right"></span></a>
+                </div>
+            </div>
+        </section>
+
+        <section class="band band-how" aria-labelledby="howTitle">
+            <div class="band-inner">
+                <h2 id="howTitle" class="display center" data-i18n="home.how-title">How it works</h2>
+                <ol class="how-steps">
+                    <li class="how-step s1">
+                        <span class="step-no">1</span>
+                        <span data-icon="user"></span>
+                        <h3 data-i18n="home.how-1-title">Claim your name</h3>
+                        <p data-i18n="home.how-1-body">Pick a name for your page and set a password. No email needed.</p>
+                    </li>
+                    <li class="how-step s2">
+                        <span class="step-no">2</span>
+                        <span data-icon="link"></span>
+                        <h3 data-i18n="home.how-2-title">Add your links</h3>
+                        <p data-i18n="home.how-2-body">Add as many links as you like, put them in order, and hide any for later. Or send visitors straight to one link.</p>
+                    </li>
+                    <li class="how-step s3">
+                        <span class="step-no">3</span>
+                        <span data-icon="qr"></span>
+                        <h3 data-i18n="home.how-3-title">Share your QR</h3>
+                        <p data-i18n="home.how-3-body">Share your link anywhere, or show your QR code so people can scan it.</p>
+                    </li>
+                </ol>
+            </div>
+        </section>
+
+        <section class="band band-safe" aria-labelledby="safeTitle">
+            <div class="band-inner">
+                <h2 id="safeTitle" class="display center" data-i18n="home.safe-title">Kept safe</h2>
+                <ul class="feature-grid">
+                    <li class="feature">
+                        <span data-icon="shield"></span>
+                        <div>
+                            <h3 data-i18n="home.safe-1-title">Two-step sign in</h3>
+                            <p data-i18n="home.safe-1-body">Every page is locked with a password and an authenticator app or a passkey.</p>
+                        </div>
+                    </li>
+                    <li class="feature">
+                        <span data-icon="lifebuoy"></span>
+                        <div>
+                            <h3 data-i18n="home.safe-2-title">Ways back in</h3>
+                            <p data-i18n="home.safe-2-body">Backup codes, and Telegram if you link it, get you back in if you lose your phone.</p>
+                        </div>
+                    </li>
+                    <li class="feature">
+                        <span data-icon="flag"></span>
+                        <div>
+                            <h3 data-i18n="home.safe-3-title">Reviewed reports</h3>
+                            <p data-i18n="home.safe-3-body">Anyone can report a page or link, and the GFTV team reviews every report.</p>
+                        </div>
+                    </li>
+                    <li class="feature">
+                        <span data-icon="lock"></span>
+                        <div>
+                            <h3 data-i18n="home.safe-4-title">Links checked for you</h3>
+                            <p data-i18n="home.safe-4-body">Every link is checked against threat lists of more than two million harmful sites, again every day, and shortened links are not allowed.</p>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="band band-loved" id="lovedSection" aria-labelledby="lovedTitle" hidden>
+            <div class="band-inner">
+                <h2 id="lovedTitle" class="mega" data-i18n="home.loved-title">Loved by the community</h2>
+                <ul class="quote-row" id="quoteRow"></ul>
+            </div>
+        </section>
+
+        <section class="band band-faq" aria-labelledby="faqTitle">
+            <div class="band-inner narrow">
+                <h2 id="faqTitle" class="display center" data-i18n="home.faq-title">Questions? Answered</h2>
+                <div class="faq">
+                    <details>
+                        <summary><span data-i18n="faq.free-q">Does a page cost anything?</span><span data-icon="chevron-down"></span></summary>
+                        <p data-i18n="faq.free-a">No. Making a page and keeping it is free, with no paid tiers.</p>
+                    </details>
+                    <details>
+                        <summary><span data-i18n="faq.email-q">Do I need an email address?</span><span data-icon="chevron-down"></span></summary>
+                        <p data-i18n="faq.email-a">No. Your page is your account: its name, a password, and a second step such as an authenticator app or a passkey. Link Telegram as well if you want a way to reset a forgotten password.</p>
+                    </details>
+                    <details>
+                        <summary><span data-i18n="faq.phone-q">What if I lose my phone?</span><span data-icon="chevron-down"></span></summary>
+                        <p data-i18n="faq.phone-a">Sign in with your password and one of the ten backup codes you saved when you set up your page, or with a code sent to your linked Telegram. Then set up your new phone from Security.</p>
+                    </details>
+                    <details>
+                        <summary><span data-i18n="faq.redirect-q">Can my page go straight to one link?</span><span data-icon="chevron-down"></span></summary>
+                        <p data-i18n="faq.redirect-a">Yes. Turn on the redirect in your editor and visitors see where they are going for five seconds, with a chance to report it, and then go there. Your links are kept for when you turn it off.</p>
+                    </details>
+                    <details>
+                        <summary><span data-i18n="faq.dormant-q">What happens if I do not sign in for a while?</span><span data-icon="chevron-down"></span></summary>
+                        <p data-i18n="faq.dormant-a">Pages need a sign-in at least once a year to stay live. A page nobody has signed in to for a year is hidden until its owner signs in again. Nothing is deleted, and if you linked Telegram you get a reminder a month before.</p>
+                    </details>
+                    <details>
+                        <summary><span data-i18n="faq.stats-q">What can I see about my visitors?</span><span data-icon="chevron-down"></span></summary>
+                        <p data-i18n="faq.stats-a">Daily totals: visits, clicks, the countries visitors are in, which sites sent them and whether they used a phone, tablet or computer. Nothing that says who a visitor is is ever kept.</p>
+                    </details>
+                    <details>
+                        <summary><span data-i18n="faq.links-q">Which links are allowed?</span><span data-icon="chevron-down"></span></summary>
+                        <p data-i18n="faq.links-a">Any web address starting with http or https, except shortened links (they hide where they go) and sites on the threat lists we check against. Anyone can report a page or link, and the GFTV team reviews every report.</p>
+                    </details>
+                    <details>
+                        <summary><span data-i18n="faq.who-q">Who runs OneLink?</span><span data-icon="chevron-down"></span></summary>
+                        <p data-i18n="faq.who-a">Global Furry Television, from Singapore. Check the bar at the top of the page to see how to recognise an official GFTV site.</p>
+                    </details>
+                </div>
+            </div>
+        </section>
+
+        <section class="band band-cta" aria-labelledby="ctaTitle">
+            <div class="band-inner center">
+                <h2 id="ctaTitle" class="display" data-i18n="home.cta-title">Your corner of the internet, one link away</h2>
+                <a class="btn btn-ink btn-pill" href="/register"><span data-i18n="home.cta-claim">Claim your name</span><span data-icon="arrow-right"></span></a>
+            </div>
         </section>
     </main>
 

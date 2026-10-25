@@ -8,7 +8,7 @@ import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
 import { checkSlug, checkPassword, STALE_PENDING_MS } from '../_lib/validate.js';
 import { hashPassword } from '../_lib/crypto.js';
-import { limited, slugIsBlocked, audit } from '../_lib/guards.js';
+import { limited, slugRefusal, nameNeedsReview, audit } from '../_lib/guards.js';
 import { createChallenge } from '../_lib/session.js';
 
 export default route('auth/register', async (req, res) => {
@@ -21,7 +21,8 @@ export default route('auth/register', async (req, res) => {
   if (!slugCheck.ok) return fail(res, 400, slugCheck.error);
   const passwordCheck = checkPassword(body.password);
   if (!passwordCheck.ok) return fail(res, 400, passwordCheck.error);
-  if (await slugIsBlocked(slugCheck.slug)) return fail(res, 400, 'slug_reserved');
+  const refusal = await slugRefusal(slugCheck.slug);
+  if (refusal) return fail(res, 400, refusal);
 
   // Release this slug if somebody started on it and never finished.
   await db()
@@ -33,8 +34,13 @@ export default route('auth/register', async (req, res) => {
 
   const { data: page, error } = await db()
     .from(T.pages)
-    .insert({ slug: slugCheck.slug, password_hash: await hashPassword(body.password), status: 'pending' })
-    .select('id, slug')
+    .insert({
+      slug: slugCheck.slug,
+      password_hash: await hashPassword(body.password),
+      status: 'pending',
+      needs_review: await nameNeedsReview(slugCheck.slug),
+    })
+    .select('id, slug, needs_review')
     .single();
   if (error) {
     if (error.code === '23505') return fail(res, 409, 'slug_taken');
@@ -43,5 +49,5 @@ export default route('auth/register', async (req, res) => {
 
   const challenge = await createChallenge({ realm: 'owner', purpose: 'enrol', subjectId: page.id });
   await audit(req, { action: 'page.register', actorType: 'owner', actorId: page.id, pageId: page.id, details: { slug: page.slug } });
-  ok(res, { slug: page.slug, challenge });
+  ok(res, { slug: page.slug, challenge, review: Boolean(page.needs_review) });
 });

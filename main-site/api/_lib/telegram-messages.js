@@ -57,3 +57,25 @@ export function helpMessage() {
     'To link a page, open its editor, go to Security, and choose Link Telegram. Send /unlink here to stop receiving codes.';
   return { markdown, fallback };
 }
+
+// Sent once, a month before a page goes dormant (cron/cleanup.js).
+export function dormancyMessage({ slug, date }) {
+  const page = `links.gftv.asia/${slug}`;
+  const markdown = [
+    '## Your page is about to go to sleep',
+    '',
+    escapeMd(`Nobody has signed in to ${page} for almost a year. Pages need a sign-in at least once a year to stay live.`),
+    '',
+    richTable(['Detail'], [
+      ['Page', page],
+      ['Hidden from', date],
+    ]),
+    '',
+    'Sign in at links.gftv.asia/login before then to keep it live. If it goes to sleep, signing in brings it straight back; nothing is deleted.',
+  ].join('\n');
+  const fallback =
+    `Nobody has signed in to ${page} for almost a year. Pages need a sign-in at least once a year to stay live, ` +
+    `so it will be hidden from ${date}.\n\nSign in at links.gftv.asia/login before then to keep it live. ` +
+    'If it goes to sleep, signing in brings it straight back; nothing is deleted.';
+  return { markdown, fallback };
+}

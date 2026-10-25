@@ -7,6 +7,7 @@ import { openModal, closeModal, withBusy, toast, el, formatNumber, formatDate, e
 import { icon, iconNode } from '../icons.js';
 import { passkeysSupported, createPasskey, usePasskey, passkeyErrorCode } from '../passkeys.js';
 import { fillAvatar } from '../avatar.js';
+import { openRegexMaker } from '../regex-maker.js';
 
 const $ = (id) => document.getElementById(id);
 let staff = null;
@@ -184,6 +185,45 @@ function statusBadge(status) {
   return badge(t(`status.${status}`), status === 'banned' ? 'danger' : status === 'active' ? 'ok' : 'warn');
 }
 
+// The status, plus what keeps a live page from showing.
+function pageBadges(p) {
+  return [
+    statusBadge(p.status),
+    p.awaitingReview ? badge(t('status.review'), 'warn') : null,
+    p.quarantined ? badge(t('status.quarantined'), 'danger') : null,
+    p.dormant ? badge(t('status.dormant'), 'warn') : null,
+    p.redirectUrl ? badge(t('admin.redirects')) : null,
+  ];
+}
+
+// Any staff member can end a quarantine once they have looked.
+function releaseAction(p, after) {
+  if (!p.quarantined) return null;
+  return actionButton('admin.release', 'check', async () => {
+    try {
+      await post('/api/admin/pages', { action: 'release', id: p.id });
+      toast(t('admin.released', { slug: p.slug }));
+      after();
+    } catch (error) {
+      if (!guardSession(error)) toast(errorText(error));
+    }
+  }, 'btn-primary');
+}
+
+// Any staff member can let a name on the review list go live.
+function approveAction(p, after) {
+  if (!p.awaitingReview || p.status === 'banned') return null;
+  return actionButton('admin.approve', 'check', async () => {
+    try {
+      await post('/api/admin/pages', { action: 'approve', id: p.id });
+      toast(t('admin.approved', { slug: p.slug }));
+      after();
+    } catch (error) {
+      if (!guardSession(error)) toast(errorText(error));
+    }
+  }, 'btn-primary');
+}
+
 // The shared "give a reason" dialog. confirm, when given, is a page name the
 // staff member has to type before an action that cannot be undone.
 let reasonAction = null;
@@ -229,20 +269,28 @@ loaders.overview = async () => {
   grid.replaceChildren(...Array.from({ length: 6 }, () => el('div', { class: 'skeleton delayed stat', 'aria-hidden': 'true' }, [el('div', { class: 'value', text: ' ' }), el('div', { class: 'label', text: ' ' })])));
   try {
     const { counts } = await api('/api/admin/overview');
+    // [count, label, tab to open, page status filter to set first]
     const items = [
       ['openReports', 'admin.stat-open-reports', 'reports'],
+      ['awaitingReview', 'admin.stat-review', 'pages', 'review'],
+      ['quarantined', 'admin.stat-quarantined', 'pages', 'quarantined'],
       ['active', 'admin.stat-active'],
       ['pending', 'admin.stat-pending'],
       ['banned', 'admin.stat-banned'],
       ['links', 'admin.stat-links'],
       ['removed', 'admin.stat-removed'],
     ];
-    grid.replaceChildren(...items.map(([key, label, tab]) => {
+    grid.replaceChildren(...items.map(([key, label, tab, status]) => {
       const card = el(tab ? 'button' : 'div', { class: 'glass-card stat', type: tab ? 'button' : undefined }, [
         el('div', { class: 'value', text: formatNumber(counts[key]) }),
         el('div', { class: 'label', text: t(label) }),
       ]);
-      if (tab) card.addEventListener('click', () => selectTab($(`atab-${tab}`), true));
+      if (tab) {
+        card.addEventListener('click', () => {
+          if (status) $('pageStatus').value = status;
+          selectTab($(`atab-${tab}`), true);
+        });
+      }
       return card;
     }));
     grid.removeAttribute('aria-busy');
@@ -384,8 +432,10 @@ function pageRow(p) {
     el('div', { class: 'primary' }, [el('a', { class: 'text-link', href: `/${p.slug}`, target: '_blank', rel: 'noopener noreferrer', text: `/${p.slug}` }), p.displayName ? ` · ${p.displayName}` : '']),
     el('div', { class: 'secondary', text: t('admin.created', { when: formatDate(p.createdAt) }) }),
     p.banReason ? el('div', { class: 'secondary', text: t('admin.ban-reason', { reason: p.banReason }) }) : null,
+    p.redirectUrl ? el('div', { class: 'secondary', text: t('admin.redirects-to', { url: p.redirectUrl }) }) : null,
+    p.quarantineReason ? el('div', { class: 'secondary', text: t('admin.quarantine-reason', { reason: p.quarantineReason }) }) : null,
     el('div', { class: 'tags' }, [
-      statusBadge(p.status),
+      ...pageBadges(p),
       badge(t('admin.link-count', { count: p.linkCount, n: formatNumber(p.linkCount) })),
       p.reportCount ? badge(t('admin.report-count', { count: p.reportCount, n: formatNumber(p.reportCount) }), 'warn') : null,
       p.telegramLinked ? badge(t('factor.telegram')) : null,
@@ -393,7 +443,7 @@ function pageRow(p) {
   ]);
   return el('li', { class: 'data-row' }, [
     info,
-    el('div', { class: 'row-actions' }, [actionButton('admin.view-page', 'eye', () => openPage(p.id)), ...banActions(p, () => loaders.pages())]),
+    el('div', { class: 'row-actions' }, [approveAction(p, () => loaders.pages()), releaseAction(p, () => loaders.pages()), actionButton('admin.view-page', 'eye', () => openPage(p.id)), ...banActions(p, () => loaders.pages())].filter(Boolean)),
   ]);
 }
 
@@ -425,9 +475,11 @@ async function openPage(id) {
       el('div', { class: 'row admin-avatar-row' }, [avatar, removeAvatar]),
       el('p', { class: 'muted small', text: [p.displayName, t('admin.created', { when: formatDate(p.createdAt) })].filter(Boolean).join(' · ') }),
       p.bio ? el('pre', { text: p.bio }) : null,
-      el('div', { class: 'tags row u-mt-05' }, [statusBadge(p.status)]),
+      el('div', { class: 'tags row u-mt-05' }, pageBadges(p).filter(Boolean)),
+      p.redirectUrl ? el('p', { class: 'small', text: t('admin.redirects-to', { url: p.redirectUrl }) }) : null,
+      p.quarantineReason ? el('p', { class: 'callout danger', text: t('admin.quarantine-reason', { reason: p.quarantineReason }) }) : null,
       p.banReason ? el('p', { class: 'callout danger', text: t('admin.ban-reason', { reason: p.banReason }) }) : null,
-      el('div', { class: 'actions inline' }, [...banActions(p, () => { refresh(); loaders.pages?.(); }), deleteAction(p)].filter(Boolean)),
+      el('div', { class: 'actions inline' }, [approveAction(p, () => { refresh(); loaders.pages?.(); }), releaseAction(p, () => { refresh(); loaders.pages?.(); }), ...banActions(p, () => { refresh(); loaders.pages?.(); }), deleteAction(p)].filter(Boolean)),
       el('p', { class: 'modal-section-label', text: t('admin.tab-links') }),
       el('ul', { class: 'data-list' }, data.links.length ? data.links.map((l) => linkRow(l, refresh)) : [el('li', { class: 'empty-state', text: t('admin.empty-links') })]),
       el('p', { class: 'modal-section-label', text: t('admin.tab-reports') }),
@@ -507,15 +559,18 @@ function linkRow(l, after) {
 // Block lists (admin)
 // ---------------------------------------------------------------------------
 
+// Patterns are removed by id, names and domains by their value.
 function blockRows(items, kind) {
   return items.map((item) => el('li', { class: 'data-row' }, [
     el('div', {}, [
-      el('div', { class: 'primary', text: item.value }),
+      el('div', { class: `primary${item.id ? ' mono' : ''}`, text: item.value }),
       el('div', { class: 'secondary', text: [item.reason, formatDate(item.createdAt)].filter(Boolean).join(' · ') }),
+      item.appliesTo ? el('div', { class: 'tags' }, [badge(t(`admin.scope-${item.appliesTo}`))]) : null,
     ]),
     el('div', { class: 'row-actions' }, [actionButton('common.remove', 'trash', async () => {
       try {
-        renderBlocks(await post('/api/admin/blocklist', { action: `remove-${kind}`, value: item.value }));
+        const body = item.id ? { action: `remove-${kind}`, id: item.id } : { action: `remove-${kind}`, value: item.value };
+        renderBlocks(await post('/api/admin/blocklist', body));
       } catch (error) {
         toast(errorText(error));
       }
@@ -523,15 +578,28 @@ function blockRows(items, kind) {
   ]));
 }
 
+function renderThreatList(info) {
+  const line = $('threatListInfo');
+  $('threatListRefresh').hidden = !info || info.off;
+  if (!info || info.off) return void (line.textContent = t('admin.threat-off'));
+  // The server counts each category (harmful, gambling, adult, shortener).
+  const total = Object.values(info.categories || {}).reduce((sum, n) => sum + n, 0);
+  line.textContent = info.builtAt
+    ? t('admin.threat-info', { count: total, n: formatNumber(total), when: formatDate(info.builtAt), days: info.refreshDays })
+    : t('admin.threat-none');
+}
+
 function renderBlocks(data) {
   fill($('slugBlockList'), blockRows(data.slugs, 'slug'), 'admin.empty-blocks');
   fill($('domainBlockList'), blockRows(data.domains, 'domain'), 'admin.empty-blocks');
+  fill($('patternBlockList'), blockRows(data.patterns, 'pattern'), 'admin.empty-blocks');
+  fill($('reviewBlockList'), blockRows(data.reviews, 'review'), 'admin.empty-blocks');
+  renderThreatList(data.threatList);
 }
 
 loaders.blocks = async () => {
   if (!isAdmin()) return;
-  loading($('slugBlockList'));
-  loading($('domainBlockList'));
+  for (const id of ['slugBlockList', 'domainBlockList', 'patternBlockList', 'reviewBlockList']) loading($(id));
   try {
     renderBlocks(await api('/api/admin/blocklist'));
   } catch (error) {
@@ -539,20 +607,107 @@ loaders.blocks = async () => {
   }
 };
 
-for (const [formId, kind] of [['slugBlockForm', 'slug'], ['domainBlockForm', 'domain']]) {
+for (const [formId, kind] of [['slugBlockForm', 'slug'], ['domainBlockForm', 'domain'], ['patternBlockForm', 'pattern'], ['reviewBlockForm', 'review']]) {
   $(formId).addEventListener('submit', (e) => {
     e.preventDefault();
     const button = $(formId).querySelector('button[type="submit"]');
     withBusy(button, null, async () => {
       const value = $(`${kind}BlockValue`).value;
       const reason = $(`${kind}BlockReason`).value;
-      renderBlocks(await post('/api/admin/blocklist', { action: `add-${kind}`, value, reason }));
+      const appliesTo = kind === 'pattern' ? $('patternBlockScope').value : undefined;
+      try {
+        renderBlocks(await post('/api/admin/blocklist', { action: `add-${kind}`, value, reason, appliesTo }));
+      } catch (error) {
+        toast(errorText(error));
+        return;
+      }
       $(`${kind}BlockValue`).value = '';
       $(`${kind}BlockReason`).value = '';
       toast(t('admin.done'));
     });
   });
 }
+
+// The pattern helper fills the field it was opened from.
+$('patternBlockHelp').addEventListener('click', () => {
+  const scope = $('patternBlockScope').value === 'names' ? 'names' : 'links';
+  openRegexMaker(scope, (pattern) => { $('patternBlockValue').value = pattern; $('patternBlockValue').focus(); });
+});
+$('reviewBlockHelp').addEventListener('click', () => {
+  openRegexMaker('names', (pattern) => { $('reviewBlockValue').value = pattern; $('reviewBlockValue').focus(); });
+});
+
+// Fetching and indexing two million domains takes a little while.
+$('threatListRefresh').addEventListener('click', () => {
+  withBusy($('threatListRefresh'), null, async () => {
+    try {
+      renderBlocks(await post('/api/admin/blocklist', { action: 'refresh-threat-list' }));
+      toast(t('admin.threat-refreshed'));
+    } catch (error) {
+      toast(errorText(error));
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Testimonials (admin)
+// ---------------------------------------------------------------------------
+
+function renderTestimonials(list) {
+  fill($('testimonialList'), list.map((item, i) => {
+    const send = async (body) => {
+      try {
+        renderTestimonials((await post('/api/admin/testimonials', { id: item.id, ...body })).testimonials);
+      } catch (error) {
+        if (!guardSession(error)) toast(errorText(error));
+      }
+    };
+    const up = el('button', { class: 'icon-btn small', type: 'button', 'aria-label': t('admin.move-up'), disabled: i === 0, onclick: () => send({ action: 'move', delta: -1 }) });
+    up.innerHTML = icon('arrow-up');
+    const down = el('button', { class: 'icon-btn small', type: 'button', 'aria-label': t('admin.move-down'), disabled: i === list.length - 1, onclick: () => send({ action: 'move', delta: 1 }) });
+    down.innerHTML = icon('arrow-down');
+    return el('li', { class: `data-row${item.isVisible ? '' : ' off'}` }, [
+      el('div', {}, [
+        el('div', { class: 'primary', text: `“${item.quote}”` }),
+        el('div', { class: 'secondary', text: [item.author, item.pageSlug ? `/${item.pageSlug}` : null].filter(Boolean).join(' · ') }),
+        item.isVisible ? null : el('div', { class: 'tags' }, [badge(t('admin.hidden'))]),
+      ]),
+      el('div', { class: 'row-actions' }, [
+        up,
+        down,
+        actionButton(item.isVisible ? 'admin.hide' : 'admin.show', item.isVisible ? 'eye-off' : 'eye', () => send({ action: 'update', isVisible: !item.isVisible })),
+        actionButton('common.remove', 'trash', () => {
+          if (window.confirm(t('admin.testimonial-remove-confirm', { author: item.author }))) send({ action: 'remove' });
+        }),
+      ]),
+    ]);
+  }), 'admin.empty-testimonials');
+}
+
+loaders.testimonials = async () => {
+  if (!isAdmin()) return;
+  loading($('testimonialList'));
+  try {
+    renderTestimonials((await api('/api/admin/testimonials')).testimonials);
+  } catch (error) {
+    if (!guardSession(error)) toast(errorText(error));
+  }
+};
+
+$('testimonialForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  withBusy($('testimonialAdd'), $('testimonialError'), async () => {
+    const data = await post('/api/admin/testimonials', {
+      action: 'add',
+      quote: $('testimonialQuote').value,
+      author: $('testimonialAuthor').value,
+      pageSlug: $('testimonialPage').value,
+    });
+    renderTestimonials(data.testimonials);
+    ['testimonialQuote', 'testimonialAuthor', 'testimonialPage'].forEach((id) => { $(id).value = ''; });
+    toast(t('admin.done'));
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Audit log (admin)

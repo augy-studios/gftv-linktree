@@ -12,6 +12,13 @@ In the Supabase project that already holds the `gftvhello_` tables, open
 - `001_onelink_schema.sql`
 - `002_avatars.sql`: adds profile pictures, and creates the public
   `gftvonelink_avatars` storage bucket they are kept in
+- `003_redirects_insights_dormancy.sql`: redirect pages, visitor insights,
+  the yearly sign-in rule, blocked patterns and home page testimonials
+- `004_name_review.sql`: page names that wait for staff approval
+- `005_threat_list_bucket.sql`: the private `gftvonelink_lists` storage
+  bucket that holds the compact copy of the domain blocklists
+- `006_quarantine.sql`: pausing pages that keep trying harmful addresses
+- `007_longer_bio.sql`: lets a bio be up to 512 characters
 
 **Check:** in **Table Editor** you see the `gftvonelink_` tables, each marked
 **RLS enabled**.
@@ -74,6 +81,8 @@ Keep a copy somewhere safe outside Vercel.
    | `TELEGRAM_BOT_TOKEN` | from section 4, or leave empty for now |
    | `TELEGRAM_BOT_USERNAME` | from section 4, or leave empty for now |
    | `TELEGRAM_WEBHOOK_SECRET` | from step 2, or leave empty for now |
+   | `GOOGLE_SAFE_BROWSING_KEY` | optional; see below |
+   | `DOMAIN_BLOCKLISTS` | leave empty to use HaGeZi's lists; see below |
 
 4. **Settings > Domains:** add `links.gftv.asia` and create the DNS record
    Vercel shows (a `CNAME` for `links`).
@@ -81,7 +90,23 @@ Keep a copy somewhere safe outside Vercel.
 
 The daily cleanup (`/api/cron/cleanup`, 03:00 Singapore time) is declared in
 `vercel.json` and appears under **Settings > Cron Jobs** after the first
-production deploy.
+production deploy. Besides clearing expired rows it sends dormancy reminders,
+checks every live link again, and every 14 days fetches the domain
+blocklists afresh.
+
+**Link checks.** Every link and redirect address is checked when it is saved
+and again each day:
+
+- **HaGeZi blocklists**, on by default with nothing to set up: threat
+  intelligence, fake stores, pop-up ads, badware hosting, gambling, URL
+  shorteners and adult content, about 2.9 million domains. The first cron run
+  (or **Fetch the lists now** under Block lists in `/admin`) downloads them
+  and stores a compact copy in the `gftvonelink_lists` bucket; until then
+  links are not checked against them. `DOMAIN_BLOCKLISTS=off` switches them
+  off; `.env.example` describes using other lists.
+- **Google Safe Browsing**, optional. In Google Cloud, enable **Safe Browsing
+  API**, create an API key under **APIs & Services > Credentials**, and set it
+  as `GOOGLE_SAFE_BROWSING_KEY`. The free tier is for non-commercial use.
 
 **Check:**
 

@@ -78,7 +78,9 @@ export default route('render', async (req, res) => {
     return res.end(NOT_FOUND);
   }
 
-  const data = result.state === 'active' ? { state: 'active', page: result.page } : { state: 'banned', slug: result.slug };
+  // Banned, dormant and in-review pages get the shell with their state and
+  // nothing else.
+  const data = result.state === 'active' ? { state: 'active', page: result.page } : { state: result.state, slug: result.slug };
   let html = SHELL.replace(DATA_BLOCK, `<script type="application/json" id="pageData">${inlineJson(data)}</script>`);
   if (result.state === 'active') {
     html = html.replace(META_BLOCK, metaFor(result.page));
@@ -86,7 +88,7 @@ export default route('render', async (req, res) => {
     html = html.replace('<meta name="robots" content="index">', '<meta name="robots" content="noindex">');
   }
 
-  res.statusCode = result.state === 'active' ? 200 : 410;
+  res.statusCode = result.state === 'active' ? 200 : result.state === 'review' ? 404 : 410;
   // A few seconds at the edge, so a busy page is not a query per visit, while
   // an edit or a ban still shows within seconds.
   res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=10, stale-while-revalidate=30');

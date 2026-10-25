@@ -140,3 +140,19 @@ test('platform links build and read back their addresses', async () => {
   assert.equal(p.matchPlatform('https://example.com/augy'), null);
   assert.equal(p.matchPlatform('https://youtube.com.evil.example/@augy'), null);
 });
+
+test('addresses hidden in text are found however they are written', async () => {
+  const { addressesInText } = await import('../api/_lib/validate.js');
+  const hidden = [
+    'evil.com', 'evil [.] com', 'evil (.) com', "evil'.'com", 'evil"."com', 'evil*.*com', 'evil<dot>com', 'evil (dot) com',
+    'evil [dot] com', 'evil dot com', 'EVIL DOT COM', 'evil d0t com', 'evil·com', 'evil • com', 'evil・com', 'evil。com',
+    'ｅｖｉｌ．ｃｏｍ', 'evil . com', 'evil .com', 'evil. com', 'e v i l . c o m', 'еvil.com', 'evil{.}com', 'evil_._com',
+    'evil-.-com', 'evil|.|com', 'evil~.~com', 'hxxps://evil[.]com/x', 'evil.c0m', '3vil d0t c0m', 'DM me: evil(.)com/shop',
+  ];
+  for (const text of hidden) {
+    assert.ok(addressesInText(text).some((a) => a.host === 'evil.com'), text);
+  }
+  for (const text of ['just a normal bio', 'I am 1.5 metres tall, v2.0 out now', 'Price: 3.50', 'anecdote about dotted lines']) {
+    assert.ok(!addressesInText(text).some((a) => /evil|\.com$/.test(a.host)), text);
+  }
+});

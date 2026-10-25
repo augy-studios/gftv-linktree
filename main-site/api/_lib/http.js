@@ -15,7 +15,8 @@ const MAX_BODY_BYTES = 32 * 1024;
 export function send(res, status, body) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-store');
+  // no-store unless the route chose its own caching (public testimonials).
+  if (!res.getHeader('Cache-Control')) res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.end(JSON.stringify(body));
 }

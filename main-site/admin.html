@@ -96,6 +96,7 @@
                 <button class="tab" role="tab" id="atab-pages" aria-controls="apanel-pages" aria-selected="false" tabindex="-1"><span data-icon="user"></span><span data-i18n="admin.tab-pages">Pages</span></button>
                 <button class="tab" role="tab" id="atab-links" aria-controls="apanel-links" aria-selected="false" tabindex="-1"><span data-icon="link"></span><span data-i18n="admin.tab-links">Links</span></button>
                 <button class="tab" role="tab" id="atab-blocks" aria-controls="apanel-blocks" aria-selected="false" tabindex="-1" data-admin-only hidden><span data-icon="ban"></span><span data-i18n="admin.tab-blocks">Block lists</span></button>
+                <button class="tab" role="tab" id="atab-testimonials" aria-controls="apanel-testimonials" aria-selected="false" tabindex="-1" data-admin-only hidden><span data-icon="chat"></span><span data-i18n="admin.tab-testimonials">Testimonials</span></button>
                 <button class="tab" role="tab" id="atab-audit" aria-controls="apanel-audit" aria-selected="false" tabindex="-1" data-admin-only hidden><span data-icon="document"></span><span data-i18n="admin.tab-audit">Audit log</span></button>
                 <button class="tab" role="tab" id="atab-account" aria-controls="apanel-account" aria-selected="false" tabindex="-1"><span data-icon="key"></span><span data-i18n="admin.tab-account">My passkeys</span></button>
             </div>
@@ -129,6 +130,9 @@
                             <option value="active" data-i18n="status.active">Live</option>
                             <option value="pending" data-i18n="status.pending">Setting up</option>
                             <option value="banned" data-i18n="status.banned">Taken down</option>
+                            <option value="review" data-i18n="status.review">Awaiting approval</option>
+                            <option value="dormant" data-i18n="status.dormant">Dormant</option>
+                            <option value="quarantined" data-i18n="status.quarantined">Quarantined</option>
                         </select>
                     </label>
                     <button class="btn" type="submit"><span data-icon="search"></span><span data-i18n="admin.search">Search</span></button>
@@ -176,6 +180,61 @@
                     </form>
                     <ul class="data-list" id="domainBlockList"></ul>
                 </div>
+                <div class="panel-section">
+                    <h2 data-i18n="admin.threat-lists">Threat lists</h2>
+                    <p class="muted small" data-i18n="admin.threat-lists-body">Links are also checked against HaGeZi's threat intelligence, fake store and pop-up ad lists, and against Google Safe Browsing when its key is set. Links already on a page are checked again every day, and the lists are fetched again every two weeks.</p>
+                    <div class="factor-row u-mt-075">
+                        <p class="small" id="threatListInfo"></p>
+                        <button class="btn btn-small" type="button" id="threatListRefresh"><span data-icon="refresh"></span><span data-i18n="admin.threat-refresh">Fetch the lists now</span></button>
+                    </div>
+                </div>
+                <div class="panel-section">
+                    <h2 data-i18n="admin.blocked-patterns">Blocked patterns</h2>
+                    <p class="muted small" data-i18n="admin.blocked-patterns-body">Regular expressions, matched without regard to case. For links, any address that matches is refused and stops showing within a minute; for page names, matching names cannot be registered.</p>
+                    <form class="toolbar u-mt-075" id="patternBlockForm">
+                        <label class="field"><span class="visually-hidden" data-i18n="admin.pattern">Pattern</span><input id="patternBlockValue" type="text" class="mono" autocapitalize="none" spellcheck="false" maxlength="200" placeholder="Pattern" data-i18n-attr="placeholder:admin.pattern" required></label>
+                        <label class="field u-flex-10"><span class="visually-hidden" data-i18n="admin.applies-to">Applies to</span>
+                            <select id="patternBlockScope">
+                                <option value="links" data-i18n="admin.scope-links">Links</option>
+                                <option value="names" data-i18n="admin.scope-names">Page names</option>
+                                <option value="both" data-i18n="admin.scope-both">Both</option>
+                            </select>
+                        </label>
+                        <label class="field"><span class="visually-hidden" data-i18n="field.reason">Reason</span><input id="patternBlockReason" type="text" maxlength="500" placeholder="Reason" data-i18n-attr="placeholder:field.reason"></label>
+                        <button class="btn btn-quiet" type="button" id="patternBlockHelp"><span data-icon="help"></span><span data-i18n="regex.open">Pattern helper</span></button>
+                        <button class="btn" type="submit"><span data-icon="ban"></span><span data-i18n="admin.block">Block</span></button>
+                    </form>
+                    <ul class="data-list" id="patternBlockList"></ul>
+                </div>
+                <div class="panel-section">
+                    <h2 data-i18n="admin.review-names">Names that need approval</h2>
+                    <p class="muted small" data-i18n="admin.review-names-body">A page name that matches one of these patterns can be registered, but the page stays hidden until someone approves it under Pages, Awaiting approval.</p>
+                    <form class="toolbar u-mt-075" id="reviewBlockForm">
+                        <label class="field"><span class="visually-hidden" data-i18n="admin.pattern">Pattern</span><input id="reviewBlockValue" type="text" class="mono" autocapitalize="none" spellcheck="false" maxlength="200" placeholder="Pattern" data-i18n-attr="placeholder:admin.pattern" required></label>
+                        <label class="field"><span class="visually-hidden" data-i18n="field.reason">Reason</span><input id="reviewBlockReason" type="text" maxlength="500" placeholder="Reason" data-i18n-attr="placeholder:field.reason"></label>
+                        <button class="btn btn-quiet" type="button" id="reviewBlockHelp"><span data-icon="help"></span><span data-i18n="regex.open">Pattern helper</span></button>
+                        <button class="btn" type="submit"><span data-icon="plus"></span><span data-i18n="common.add">Add</span></button>
+                    </form>
+                    <ul class="data-list" id="reviewBlockList"></ul>
+                </div>
+            </section>
+
+            <section class="glass-card panel" role="tabpanel" id="apanel-testimonials" aria-labelledby="atab-testimonials" hidden>
+                <h2 data-i18n="admin.testimonials-title">Testimonials</h2>
+                <p class="muted small" data-i18n="admin.testimonials-body">Shown under "Loved by the community" on the home page, in this order. Only add what people actually said, with their permission. The section is hidden while none are visible.</p>
+                <form id="testimonialForm" class="u-mt-075" novalidate>
+                    <label class="field">
+                        <span data-i18n="admin.testimonial-quote">What they said</span>
+                        <textarea id="testimonialQuote" maxlength="280" rows="3" required></textarea>
+                    </label>
+                    <div class="toolbar">
+                        <label class="field"><span data-i18n="admin.testimonial-author">Their name</span><input id="testimonialAuthor" type="text" maxlength="60" required></label>
+                        <label class="field"><span data-i18n="admin.testimonial-page">Their page (optional)</span><input id="testimonialPage" type="text" autocapitalize="none" spellcheck="false" maxlength="32" placeholder="name"></label>
+                    </div>
+                    <div class="callout danger" id="testimonialError" role="alert"></div>
+                    <div class="actions inline"><button class="btn btn-primary" type="submit" id="testimonialAdd"><span data-icon="plus"></span><span data-i18n="common.add">Add</span></button></div>
+                </form>
+                <ul class="data-list u-mt-1" id="testimonialList"></ul>
             </section>
 
             <section class="glass-card panel" role="tabpanel" id="apanel-audit" aria-labelledby="atab-audit" hidden>
@@ -252,6 +311,44 @@
             <div class="actions">
                 <button class="btn btn-primary" type="submit" id="passwordSubmit"><span data-i18n="common.continue">Continue</span></button>
             </div>
+        </form>
+    </div>
+
+    <div class="modal-backdrop hidden" id="regexModal">
+        <form class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="regexTitle" id="regexForm" novalidate>
+            <div class="modal-head">
+                <h2 id="regexTitle" data-i18n="regex.title">Pattern helper</h2>
+                <button class="icon-btn small" type="button" data-close-modal="regexModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
+            </div>
+            <p class="small muted" data-i18n="regex.body">Describe what to catch and the helper writes the pattern. Upper and lower case are treated the same.</p>
+            <p class="small muted" id="regexScopeHint"></p>
+            <label class="field u-mt-075">
+                <span data-i18n="regex.mode">Catch text that</span>
+                <select id="regexMode">
+                    <option value="contains" data-i18n="regex.contains">contains</option>
+                    <option value="starts" data-i18n="regex.starts">starts with</option>
+                    <option value="ends" data-i18n="regex.ends">ends with</option>
+                    <option value="exact" data-i18n="regex.exact">is exactly</option>
+                </select>
+            </label>
+            <label class="field">
+                <span data-i18n="regex.terms">Words or phrases</span>
+                <input id="regexTerms" type="text" autocapitalize="none" spellcheck="false" maxlength="120">
+                <p class="field-hint" data-i18n="regex.terms-hint">Separate several with commas; any one of them matches.</p>
+            </label>
+            <label class="check"><input type="checkbox" id="regexLookalike"><span data-i18n="regex.lookalike">Also catch look-alike spellings (0 for o, 1 for i, 3 for e and so on)</span></label>
+            <label class="check"><input type="checkbox" id="regexSpaced"><span data-i18n="regex.spaced">Also catch letters split by dots, dashes or underscores (g.f.t.v)</span></label>
+            <div class="field u-mt-075">
+                <span class="field-label" data-i18n="regex.result">Pattern</span>
+                <code class="regex-out" id="regexOut"></code>
+            </div>
+            <label class="field">
+                <span data-i18n="regex.try">Try it</span>
+                <input id="regexTry" type="text" autocapitalize="none" spellcheck="false" placeholder="A name or address to test" data-i18n-attr="placeholder:regex.try-placeholder">
+                <p class="field-status" id="regexTryResult" role="status" aria-live="polite"></p>
+            </label>
+            <div class="callout danger" id="regexError" role="alert"></div>
+            <div class="actions"><button class="btn btn-primary" type="submit"><span data-i18n="regex.use">Use this pattern</span></button></div>
         </form>
     </div>
 

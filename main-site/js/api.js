@@ -2,11 +2,14 @@
 // and a failure always arrives as an ApiError carrying the server's code
 // (or "offline"), which ui.js turns into a sentence in the reader's language.
 
+// detail: the rest of the server's answer, for messages that name something
+// ({ host } for an address the lists refused).
 export class ApiError extends Error {
-  constructor(code, status) {
+  constructor(code, status, detail = {}) {
     super(code);
     this.code = code;
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -29,7 +32,7 @@ export async function api(path, { method = 'GET', body, keepalive = false } = {}
     /* not JSON: handled below */
   }
   if (!response.ok || !data || data.ok === false) {
-    throw new ApiError((data && data.error) || (response.status === 503 ? 'offline' : 'generic'), response.status);
+    throw new ApiError((data && data.error) || (response.status === 503 ? 'offline' : 'generic'), response.status, data || {});
   }
   return data;
 }

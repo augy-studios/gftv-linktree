@@ -1,30 +1,45 @@
-// Blocked slugs and blocked domains. Admin only.
+// Blocked slugs, domains and patterns. Admin only.
 //
-// GET                                         -> { slugs, domains }
+// GET                                         -> { slugs, domains, patterns }
 // POST { action: "add-slug", value, reason }
 // POST { action: "remove-slug", value }
 // POST { action: "add-domain", value, reason }
 // POST { action: "remove-domain", value }
+// POST { action: "add-pattern", value, appliesTo, reason }
+// POST { action: "remove-pattern", id }
+// POST { action: "add-review", value, reason }    names that need approval
+// POST { action: "remove-review", id }
+// POST { action: "refresh-threat-list" }        rebuild the domain blocklist
+//                                                index now (domain-blocklist.js)
 //
 // Blocking a slug stops it being registered; a page already on it is banned
 // separately. Blocking a domain refuses new links to it and hides existing
-// ones from visitors within a minute.
+// ones from visitors within a minute. A pattern is a regular expression
+// (validate.js checkPattern) matched without regard to case against link
+// addresses, page names, or both; for links it works like a domain block,
+// for names like a slug block.
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
-import { cleanText, normaliseSlug, normaliseDomain, LIMITS } from '../_lib/validate.js';
-import { limited, audit, forgetBlockedDomains } from '../_lib/guards.js';
+import { cleanText, normaliseSlug, normaliseDomain, checkPattern, isUuid, PATTERN_SCOPES, LIMITS } from '../_lib/validate.js';
+import { limited, audit, forgetBlockedDomains, forgetBlockedPatterns, forgetReviewPatterns } from '../_lib/guards.js';
 import { requireStaff } from '../_lib/staff.js';
+import { rebuildDomainBlocklist, domainBlocklistInfo } from '../_lib/domain-blocklist.js';
 
 async function lists() {
-  const [{ data: slugs, error }, { data: domains, error: domainError }] = await Promise.all([
+  const [{ data: slugs, error }, { data: domains, error: domainError }, { data: patterns, error: patternError }, { data: reviews, error: reviewError }] = await Promise.all([
     db().from(T.blockedSlugs).select('slug, reason, created_at').order('slug'),
     db().from(T.blockedDomains).select('domain, reason, created_at').order('domain'),
+    db().from(T.blockedPatterns).select('id, pattern, applies_to, reason, created_at').order('created_at'),
+    db().from(T.reviewPatterns).select('id, pattern, reason, created_at').order('created_at'),
   ]);
-  if (error || domainError) throw error || domainError;
+  if (error || domainError || patternError || reviewError) throw error || domainError || patternError || reviewError;
   return {
     slugs: (slugs ?? []).map((r) => ({ value: r.slug, reason: r.reason, createdAt: r.created_at })),
     domains: (domains ?? []).map((r) => ({ value: r.domain, reason: r.reason, createdAt: r.created_at })),
+    patterns: (patterns ?? []).map((r) => ({ id: r.id, value: r.pattern, appliesTo: r.applies_to, reason: r.reason, createdAt: r.created_at })),
+    reviews: (reviews ?? []).map((r) => ({ id: r.id, value: r.pattern, reason: r.reason, createdAt: r.created_at })),
+    threatList: await domainBlocklistInfo(),
   };
 }
 
@@ -72,6 +87,52 @@ export default route('admin/blocklist', async (req, res) => {
       if (error) throw error;
       forgetBlockedDomains();
       await audit(req, { action: 'mod.domain_unblocked', ...actor, details: { domain } });
+      break;
+    }
+    case 'add-pattern': {
+      const check = checkPattern(body.value);
+      if (!check.ok) return fail(res, 400, check.error);
+      const appliesTo = PATTERN_SCOPES.has(body.appliesTo) ? body.appliesTo : 'links';
+      const { error } = await db().from(T.blockedPatterns).insert({ pattern: check.pattern, applies_to: appliesTo, reason, created_by: staff.user.id });
+      if (error) {
+        if (error.code === '23505') return fail(res, 409, 'pattern_exists');
+        throw error;
+      }
+      forgetBlockedPatterns();
+      await audit(req, { action: 'mod.pattern_blocked', ...actor, details: { pattern: check.pattern, appliesTo, reason } });
+      break;
+    }
+    case 'remove-pattern': {
+      if (!isUuid(body.id)) return fail(res, 400, 'bad_request');
+      const { data, error } = await db().from(T.blockedPatterns).delete().eq('id', body.id).select('pattern');
+      if (error) throw error;
+      forgetBlockedPatterns();
+      if (data?.[0]) await audit(req, { action: 'mod.pattern_unblocked', ...actor, details: { pattern: data[0].pattern } });
+      break;
+    }
+    case 'refresh-threat-list': {
+      const result = await rebuildDomainBlocklist({ force: true });
+      await audit(req, { action: 'mod.threat_list_refreshed', ...actor, details: { categories: result.categories ?? null } });
+      break;
+    }
+    case 'add-review': {
+      const check = checkPattern(body.value);
+      if (!check.ok) return fail(res, 400, check.error);
+      const { error } = await db().from(T.reviewPatterns).insert({ pattern: check.pattern, reason, created_by: staff.user.id });
+      if (error) {
+        if (error.code === '23505') return fail(res, 409, 'pattern_exists');
+        throw error;
+      }
+      forgetReviewPatterns();
+      await audit(req, { action: 'mod.review_name_added', ...actor, details: { pattern: check.pattern, reason } });
+      break;
+    }
+    case 'remove-review': {
+      if (!isUuid(body.id)) return fail(res, 400, 'bad_request');
+      const { data, error } = await db().from(T.reviewPatterns).delete().eq('id', body.id).select('pattern');
+      if (error) throw error;
+      forgetReviewPatterns();
+      if (data?.[0]) await audit(req, { action: 'mod.review_name_removed', ...actor, details: { pattern: data[0].pattern } });
       break;
     }
     default:

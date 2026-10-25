@@ -1,6 +1,9 @@
 // Pages, for staff.
 //
-// GET ?q=&status=&offset=        a page of pages, newest first
+// GET ?q=&status=&offset=        a page of pages, newest first; status is
+//                                active, pending, banned, dormant,
+//                                review (waiting for approval) or
+//                                quarantined
 // GET ?id=                       one page with its links and reports
 // POST { action: "ban", id, reason }     admin only; signs the owner out
 // POST { action: "unban", id }           admin only
@@ -9,10 +12,15 @@
 //        to register again
 // POST { action: "remove-avatar", id, reason }   any staff; a picture is
 //                                                content, like a link
+// POST { action: "approve", id }                 any staff; lets a page whose
+//                                                name is on the review list go
+//                                                live. Refusing one is a take
+//                                                down or a delete.
+// POST { action: "release", id }                 any staff; ends a quarantine
 
 import { route, guard, readJson, ok, fail, query } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
-import { cleanText, isUuid, LIMITS } from '../_lib/validate.js';
+import { cleanText, isUuid, LIMITS, DORMANT_AFTER_DAYS } from '../_lib/validate.js';
 import { limited, audit } from '../_lib/guards.js';
 import { requireStaff } from '../_lib/staff.js';
 import { endAllOwnerSessions } from '../_lib/session.js';
@@ -20,7 +28,7 @@ import { adminPageRow, adminLinkRow, adminReportRow } from '../_lib/serialize.js
 import { deleteAvatarFile } from '../_lib/avatar.js';
 import { PAGE_SIZE, offsetOf, searchTerm, pattern } from '../_lib/admin.js';
 
-const PAGE_COLUMNS = 'id, slug, display_name, bio, avatar_path, status, ban_reason, banned_at, created_at, activated_at, telegram_chat_id';
+const PAGE_COLUMNS = 'id, slug, display_name, bio, avatar_path, status, ban_reason, banned_at, created_at, activated_at, telegram_chat_id, redirect_url, last_sign_in_at, needs_review, reviewed_at, quarantined_at, quarantine_reason';
 
 export default route('admin/pages', async (req, res) => {
   if (guard(req, res, ['GET', 'POST'])) return;
@@ -55,6 +63,12 @@ export default route('admin/pages', async (req, res) => {
       .order('created_at', { ascending: false })
       .range(offset, offset + PAGE_SIZE - 1);
     if (['active', 'pending', 'banned'].includes(status)) q = q.eq('status', status);
+    // Live, but not shown: the owner has not signed in for a year.
+    if (status === 'review') q = q.eq('needs_review', true).is('reviewed_at', null);
+    if (status === 'quarantined') q = q.not('quarantined_at', 'is', null);
+    if (status === 'dormant') {
+      q = q.eq('status', 'active').lt('last_sign_in_at', new Date(Date.now() - DORMANT_AFTER_DAYS * 86400_000).toISOString());
+    }
     if (term) q = q.or(`slug.ilike."${pattern(term)}",display_name.ilike."${pattern(term)}"`);
     const { data, error, count } = await q;
     if (error) throw error;
@@ -71,13 +85,13 @@ export default route('admin/pages', async (req, res) => {
   const body = await readJson(req, res);
   if (!body) return;
   // Taking a page down is for admins; removing a picture, like removing a
-  // link, is moderation any editor can do.
-  const staff = await requireStaff(req, res, { admin: body.action !== 'remove-avatar' });
+  // link, and approving a name are moderation any editor can do.
+  const staff = await requireStaff(req, res, { admin: !['remove-avatar', 'approve', 'release'].includes(body.action) });
   if (!staff) return;
   if (await limited(req, res, 'staffWrite', [`staff:${staff.user.id}`])) return;
   if (!isUuid(body.id)) return fail(res, 400, 'bad_request');
 
-  const { data: page, error } = await db().from(T.pages).select('id, slug, status, activated_at, avatar_path').eq('id', body.id).maybeSingle();
+  const { data: page, error } = await db().from(T.pages).select('id, slug, status, activated_at, avatar_path, needs_review, reviewed_at, quarantined_at').eq('id', body.id).maybeSingle();
   if (error) throw error;
   if (!page) return fail(res, 404, 'page_not_found');
 
@@ -112,6 +126,19 @@ export default route('admin/pages', async (req, res) => {
     if (deleteError) throw deleteError;
     await deleteAvatarFile(page.avatar_path);
     return ok(res, { deleted: true, slug: page.slug });
+  } else if (body.action === 'approve') {
+    if (!page.needs_review || page.reviewed_at) return fail(res, 409, 'not_in_review');
+    await audit(req, { action: 'mod.page_approved', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug } });
+    const { error: updateError } = await db()
+      .from(T.pages)
+      .update({ reviewed_at: new Date().toISOString(), reviewed_by: staff.user.id })
+      .eq('id', page.id);
+    if (updateError) throw updateError;
+  } else if (body.action === 'release') {
+    if (!page.quarantined_at) return fail(res, 409, 'not_quarantined');
+    await audit(req, { action: 'mod.page_released', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug } });
+    const { error: updateError } = await db().from(T.pages).update({ quarantined_at: null, quarantine_reason: null }).eq('id', page.id);
+    if (updateError) throw updateError;
   } else if (body.action === 'remove-avatar') {
     if (!page.avatar_path) return fail(res, 409, 'no_avatar');
     const reason = cleanText(body.reason, LIMITS.reason, { multiline: true });

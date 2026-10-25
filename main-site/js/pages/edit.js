@@ -1,7 +1,7 @@
-// The page editor: links, profile, sharing and security.
+// The page editor: links (or a redirect), profile, sharing, stats and security.
 
 import '../app.js';
-import { t, onChange } from '../../assets/i18n/i18n.js';
+import { t, onChange, getLocale } from '../../assets/i18n/i18n.js';
 import { api, post } from '../api.js';
 import { openModal, closeModal, withBusy, toast, copyText, el, formatNumber, formatDate, errorText, setBusy } from '../ui.js';
 import { icon, iconNode, ICON_CATEGORIES, brandTitle, guessIcon } from '../icons.js';
@@ -11,9 +11,13 @@ import { showCodes } from '../codes.js';
 import { passkeysSupported, createPasskey, passkeyErrorCode } from '../passkeys.js';
 import { fillAvatar } from '../avatar.js';
 import { editAvatar } from '../avatar-composer.js';
+import { drawColumns, fillBarList, dayLabel } from '../insights.js';
 
 const $ = (id) => document.getElementById(id);
 let page = null;
+
+// What a platform is called in the current language (platforms.js).
+const platformName = (p) => t(`platform.${p.id}`);
 
 function pageUrl() {
   return `${window.location.origin}/${page.slug}`;
@@ -58,10 +62,14 @@ function render() {
   $('pageUrl').textContent = url.replace(/^https?:\/\//, '');
   $('pageUrl').href = url;
   $('viewPage').href = url;
+  $('reviewNotice').hidden = !page.awaitingReview;
+  $('quarantineNotice').hidden = !page.quarantined;
+  renderRedirect();
   renderLinks();
   renderProfile();
   renderShare();
   renderSecurity();
+  renderStats();
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +86,8 @@ function selectTab(tab, focus = false) {
     $(other.getAttribute('aria-controls')).hidden = !on;
   }
   if (focus) tab.focus();
+  // Stats are fetched when first looked at, not with the page.
+  if (tab.id === 'tab-stats' && !stats) loadStats();
 }
 
 tabs.forEach((tab, i) => {
@@ -95,6 +105,59 @@ tabs.forEach((tab, i) => {
       e.preventDefault();
       selectTab(tabs[tabs.length - 1], true);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Redirect
+//
+// The switch opens the address field; saving it turns the redirect on.
+// Switching off a redirect that is on saves straight away.
+// ---------------------------------------------------------------------------
+
+let redirectOpen = false;
+
+function renderRedirect() {
+  const on = Boolean(page.redirectUrl);
+  const form = $('redirectForm');
+  $('redirectToggle').checked = on || redirectOpen;
+  form.hidden = !(on || redirectOpen);
+  if (on && document.activeElement !== $('redirectUrl')) $('redirectUrl').value = page.redirectUrl;
+  $('redirectState').textContent = on ? t('redirect.on', { url: page.redirectUrl.replace(/^https?:\/\//, '') }) : t('redirect.off');
+  $('redirectSave').querySelector('span').textContent = t(on ? 'redirect.update' : 'redirect.save');
+  $('redirectLinksNote').hidden = !on;
+}
+
+$('redirectToggle').addEventListener('change', (e) => {
+  $('redirectError').textContent = '';
+  if (e.target.checked) {
+    redirectOpen = true;
+    renderRedirect();
+    $('redirectUrl').focus();
+    return;
+  }
+  redirectOpen = false;
+  if (!page.redirectUrl) return renderRedirect();
+  withBusy($('redirectSave'), $('redirectError'), async () => {
+    try {
+      const data = await api('/api/me/page', { method: 'PATCH', body: { redirectUrl: '' } });
+      setPage(data.page);
+      toast(t('redirect.turned-off'));
+    } catch (error) {
+      renderRedirect();
+      throw error;
+    }
+  });
+});
+
+$('redirectForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  withBusy($('redirectSave'), $('redirectError'), async () => {
+    const data = await api('/api/me/page', { method: 'PATCH', body: { redirectUrl: $('redirectUrl').value } });
+    redirectOpen = false;
+    $('redirectUrl').blur();
+    setPage(data.page);
+    toast(t('redirect.turned-on'));
   });
 });
 
@@ -205,7 +268,7 @@ function buildLinkTypes() {
   for (const category of PLATFORM_CATEGORIES) {
     const group = el('optgroup', { label: t(`link.category-${category}`) });
     for (const p of PLATFORMS.filter((x) => x.category === category)) {
-      group.append(el('option', { value: p.id, text: p.name }));
+      group.append(el('option', { value: p.id, text: platformName(p) }));
     }
     select.append(group);
   }
@@ -218,7 +281,8 @@ function renderIconPicker() {
     const heading = el('p', { class: 'icon-category', id: `icons-${category}`, text: t(`icon.category-${category}`) });
     const grid = el('div', { class: 'icon-picker', role: 'group', 'aria-labelledby': `icons-${category}` });
     for (const name of names) {
-      const label = brandTitle(name) || t(`icon.${name}`);
+      const brand = PLATFORMS.find((p) => p.icon === name && brandTitle(name));
+      const label = brand ? platformName(brand) : brandTitle(name) || t(`icon.${name}`);
       const b = el('button', { type: 'button', 'aria-pressed': String(name === chosenIcon), 'aria-label': label, title: label });
       b.innerHTML = icon(name);
       b.addEventListener('click', () => {
@@ -263,6 +327,8 @@ function renderPlatformFields() {
   $('linkSuffix').hidden = !format.suffix;
   $('linkUsername').placeholder = format.example;
   $('linkUsernameHint').textContent = t('link.username-hint', { example: format.example });
+  $('linkFormatNote').hidden = !format.note;
+  $('linkFormatNote').textContent = format.note ? t(format.note) : '';
   updateUrlPreview();
 }
 
@@ -276,20 +342,20 @@ function updateUrlPreview() {
   }
   preview.textContent = usernameOk(format, username)
     ? t('link.will-open', { url: buildUrl(format, username) })
-    : t('link.username-invalid', { platform: platform.name });
+    : t('link.username-invalid', { platform: platformName(platform) });
   preview.classList.toggle('bad', !usernameOk(format, username));
 }
 
 function choosePlatform(id, { keepUsername = false } = {}) {
-  const previousName = platform ? platform.name : '';
+  const previousName = platform ? platformName(platform) : '';
   platform = platformById(id);
   format = platform ? platform.formats[0] : null;
   if (!keepUsername) $('linkUsername').value = '';
   // Fill the title with the platform's name, unless the owner wrote their own.
   const title = $('linkTitle');
   if (platform && (!title.value || title.value === previousName || title.value === autoTitle)) {
-    title.value = platform.name;
-    autoTitle = platform.name;
+    title.value = platformName(platform);
+    autoTitle = platformName(platform);
   }
   renderPlatformFields();
   setIconFromLink();
@@ -339,13 +405,13 @@ $('linkForm').addEventListener('submit', (e) => {
   if (platform) {
     const username = cleanUsername(format, $('linkUsername').value);
     if (!usernameOk(format, username)) {
-      $('linkError').textContent = t('link.username-invalid', { platform: platform.name });
+      $('linkError').textContent = t('link.username-invalid', { platform: platformName(platform) });
       $('linkUsername').focus();
       return;
     }
     url = buildUrl(format, username);
   }
-  const title = $('linkTitle').value.trim() || (platform ? platform.name : '');
+  const title = $('linkTitle').value.trim() || (platform ? platformName(platform) : '');
   withBusy($('linkSave'), $('linkError'), async () => {
     const body = { title, url, icon: chosenIcon };
     const data = editing
@@ -402,7 +468,7 @@ $('avatarRemove').addEventListener('click', () => {
 });
 
 function updateBioCount() {
-  $('bioCount').textContent = t('field.bio-count', { used: [...$('bio').value].length, max: 280 });
+  $('bioCount').textContent = t('field.bio-count', { used: [...$('bio').value].length, max: 512 });
 }
 $('bio').addEventListener('input', updateBioCount);
 
@@ -430,6 +496,92 @@ $('shareDownload').addEventListener('click', () => downloadQr(pageUrl(), `onelin
 $('shareNative').addEventListener('click', () => {
   navigator.share({ title: page.displayName || page.slug, url: pageUrl() }).catch(() => {});
 });
+
+// ---------------------------------------------------------------------------
+// Stats
+// ---------------------------------------------------------------------------
+
+let stats = null;
+let statsDays = 30;
+let statsSeries = 'visits';
+
+async function loadStats() {
+  const tiles = $('statsTiles');
+  tiles.setAttribute('aria-busy', 'true');
+  if (!stats) tiles.replaceChildren(...Array.from({ length: 4 }, () => el('div', { class: 'skeleton delayed stat-tile', 'aria-hidden': 'true' })));
+  try {
+    stats = await api(`/api/me/stats?days=${statsDays}`);
+    renderStats();
+  } catch (error) {
+    toast(errorText(error));
+  } finally {
+    tiles.removeAttribute('aria-busy');
+  }
+}
+
+function countryName(code) {
+  if (code === 'XX') return t('stats.unknown');
+  try {
+    return new Intl.DisplayNames([getLocale()], { type: 'region' }).of(code) || code;
+  } catch {
+    return code;
+  }
+}
+
+function tile(label, value, note) {
+  return el('div', { class: 'stat-tile' }, [
+    el('div', { class: 'value', text: value }),
+    el('div', { class: 'label', text: label }),
+    note ? el('div', { class: 'note', text: note }) : null,
+  ]);
+}
+
+function renderStats() {
+  document.querySelectorAll('#statsPeriod [data-days]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.days) === statsDays)));
+  document.querySelectorAll('#statsSeries [data-series]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.series === statsSeries)));
+  if (!stats || !page) return;
+  const { totals } = stats;
+  const rate = totals.visits > 0 ? `${Math.round((totals.clicks / totals.visits) * 100)}%` : '–';
+  const topCountry = stats.countries.find((c) => c.key !== 'XX');
+  const topSource = stats.referrers.find((r) => r.key);
+  $('statsTiles').replaceChildren(
+    tile(t('stats.visits'), formatNumber(totals.visits)),
+    tile(t('stats.clicks'), formatNumber(totals.clicks)),
+    tile(t('stats.click-rate'), rate, t('stats.click-rate-note')),
+    tile(t('stats.top-country'), topCountry ? countryName(topCountry.key) : '–', topSource ? t('stats.top-source', { site: topSource.key }) : null),
+  );
+
+  const series = statsSeries;
+  const title = t(`stats.chart-${series}`, { days: statsDays });
+  $('statsChartTitle').textContent = title;
+  drawColumns($('statsChart'), stats.daily.map((d) => ({ day: d.day, value: d[series] })), {
+    label: title,
+    caption: title,
+    describe: (p) => t(`stats.tip-${series}`, { day: dayLabel(p.day, { weekday: 'short', day: 'numeric', month: 'short' }), count: p.value, n: formatNumber(p.value) }),
+  });
+
+  fillBarList($('statsCountries'), stats.countries.map((c) => ({ label: countryName(c.key), value: c.hits })), t('stats.none'));
+  fillBarList($('statsReferrers'), stats.referrers.map((r) => ({ label: r.key || t('stats.direct'), value: r.hits })), t('stats.none'));
+  fillBarList($('statsDevices'), stats.devices.map((d) => ({ label: t(`stats.device-${d.key}`), value: d.hits })), t('stats.none'));
+  const linked = page.links.filter((l) => !l.removed && l.clicks > 0).sort((a, b) => b.clicks - a.clicks).slice(0, 5);
+  fillBarList($('statsLinks'), linked.map((l) => ({ label: l.title, value: l.clicks })), t('stats.none'));
+}
+
+$('statsPeriod').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-days]');
+  if (!b || Number(b.dataset.days) === statsDays) return;
+  statsDays = Number(b.dataset.days);
+  renderStats();
+  loadStats();
+});
+$('statsSeries').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-series]');
+  if (!b) return;
+  statsSeries = b.dataset.series;
+  renderStats();
+});
+// Columns are laid out for the chart's width, so a resize redraws them.
+new ResizeObserver(() => { if (stats && !$('panel-stats').hidden) renderStats(); }).observe($('statsChart'));
 
 // ---------------------------------------------------------------------------
 // Security
@@ -470,6 +622,10 @@ function renderSecurity() {
     : t('telegram.not-linked');
   $('telegramLink').hidden = s.telegram.linked || !s.telegramAvailable;
   $('telegramUnlink').hidden = !s.telegram.linked;
+
+  $('keepLiveState').textContent = page.dormantFrom
+    ? t('security.keep-live-until', { date: new Intl.DateTimeFormat(getLocale(), { dateStyle: 'long' }).format(new Date(page.dormantFrom)) })
+    : '';
 }
 
 // Ask for the password, then run fn(password). A wrong password keeps the
