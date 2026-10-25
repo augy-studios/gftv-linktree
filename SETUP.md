@@ -26,6 +26,9 @@ In the Supabase project that already holds the `gftvhello_` tables, open
 - `010_testimonial_submissions.sql`: testimonials sent in by page owners,
   waiting for staff approval
 - `011_email_links.sql`: lets a link be an email address (`mailto:`)
+- `012_device_bans.sql`: bans the devices used on a banned connection along
+  with it, by a hash of their fingerprint, and flags them for staff when they
+  turn up elsewhere
 
 **Check:** in **Table Editor** you see the `gftvonelink_` tables, each marked
 **RLS enabled**.
@@ -90,6 +93,8 @@ Keep a copy somewhere safe outside Vercel.
    | `TELEGRAM_WEBHOOK_SECRET` | from step 2, or leave empty for now |
    | `GOOGLE_SAFE_BROWSING_KEY` | optional; see below |
    | `DOMAIN_BLOCKLISTS` | leave empty to use HaGeZi's lists; see below |
+   | `TURNSTILE_SITE_KEY` | optional; see [TURNSTILE-SETUP.md](TURNSTILE-SETUP.md) |
+   | `TURNSTILE_SECRET_KEY` | optional; see [TURNSTILE-SETUP.md](TURNSTILE-SETUP.md) |
 
 4. **Settings > Domains:** add `links.gftv.asia` and create the DNS record
    Vercel shows (a `CNAME` for `links`).
@@ -114,6 +119,9 @@ and again each day:
 - **Google Safe Browsing**, optional. In Google Cloud, enable **Safe Browsing
   API**, create an API key under **APIs & Services > Credentials**, and set it
   as `GOOGLE_SAFE_BROWSING_KEY`. The free tier is for non-commercial use.
+
+**Turnstile**, optional: Cloudflare's "are you a person" check on sign-up
+and the report form. Set it up with [TURNSTILE-SETUP.md](TURNSTILE-SETUP.md).
 
 **Check:**
 

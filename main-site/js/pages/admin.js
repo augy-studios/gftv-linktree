@@ -639,12 +639,45 @@ function flaggedRows(items) {
   ]));
 }
 
+// Devices banned with a connection, seen on one that is not (guards.js).
+function flaggedDeviceRows(items) {
+  return items.map((item) => el('li', { class: 'data-row' }, [
+    el('div', {}, [
+      el('div', { class: 'primary mono', text: t('admin.flagged-device', { device: item.device, connection: item.connection }) }),
+      el('div', { class: 'secondary', text: [
+        t('admin.flagged-device-requests', { count: item.requests, n: formatNumber(item.requests) }),
+        t('admin.flagged-since', { when: formatDate(item.since) }),
+        item.slug ? t('admin.flagged-page', { slug: item.slug }) : null,
+      ].filter(Boolean).join(' · ') }),
+    ]),
+    el('div', { class: 'row-actions' }, [
+      actionButton('admin.unflag', 'check', async () => {
+        try {
+          renderBlocks(await post('/api/admin/blocklist', { action: 'unflag-visitor', id: item.id }));
+          toast(t('admin.device-unflagged'));
+        } catch (error) {
+          toast(errorText(error));
+        }
+      }),
+      actionButton('admin.ban-connection', 'ban', () => askReason({
+        title: t('admin.ban-connection-title', { id: item.connection }),
+        body: t('admin.ban-connection-body'),
+        run: async (reason) => {
+          renderBlocks(await post('/api/admin/blocklist', { action: 'ban-visitor', id: item.id, reason }));
+          toast(t('admin.connection-banned'));
+        },
+      }), 'btn-danger'),
+    ]),
+  ]));
+}
+
 function bannedRows(items) {
   return items.map((item) => el('li', { class: 'data-row' }, [
     el('div', {}, [
       el('div', { class: 'primary mono', text: item.id }),
       el('div', { class: 'secondary', text: [item.reason, formatDate(item.since)].filter(Boolean).join(' · ') }),
       item.slugs.length ? el('div', { class: 'secondary', text: t('admin.banned-pages', { pages: item.slugs.map((s) => `/${s}`).join(', ') }) }) : null,
+      item.devices ? el('div', { class: 'secondary', text: t('admin.banned-devices', { count: item.devices, n: formatNumber(item.devices) }) }) : null,
       el('div', { class: 'tags' }, [badge(t(item.byStaff ? 'admin.banned-by-staff' : 'admin.banned-auto'))]),
     ]),
     el('div', { class: 'row-actions' }, [actionButton('admin.unban-connection', 'check', async () => {
@@ -678,6 +711,7 @@ function fillPaged(listId, pagerId, rows, emptyKey) {
 
 function renderBlocks(data) {
   fillPaged('flaggedList', 'flaggedPager', flaggedRows(data.flagged ?? []), 'admin.empty-flagged');
+  fillPaged('flaggedDeviceList', 'flaggedDevicePager', flaggedDeviceRows(data.flaggedVisitors ?? []), 'admin.empty-flagged-devices');
   fillPaged('bannedList', 'bannedPager', bannedRows(data.banned ?? []), 'admin.empty-banned');
   fillPaged('slugBlockList', 'slugBlockPager', blockRows(data.slugs, 'slug'), 'admin.empty-blocks');
   fillPaged('domainBlockList', 'domainBlockPager', blockRows(data.domains, 'domain'), 'admin.empty-blocks');
@@ -688,7 +722,7 @@ function renderBlocks(data) {
 
 loaders.blocks = async () => {
   if (!isAdmin()) return;
-  for (const id of ['slugBlockList', 'domainBlockList', 'patternBlockList', 'reviewBlockList', 'flaggedList', 'bannedList']) loading($(id));
+  for (const id of ['slugBlockList', 'domainBlockList', 'patternBlockList', 'reviewBlockList', 'flaggedList', 'flaggedDeviceList', 'bannedList']) loading($(id));
   try {
     renderBlocks(await api('/api/admin/blocklist'));
   } catch (error) {

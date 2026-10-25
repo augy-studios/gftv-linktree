@@ -1,6 +1,7 @@
 // Sign up: name and password, then the first second factor, then backup codes.
 
 import '../app.js';
+import '../visitor.js';
 import { t } from '../../assets/i18n/i18n.js';
 import { post } from '../api.js';
 import { withBusy, errorText } from '../ui.js';
@@ -8,6 +9,7 @@ import { wireSlugCheck, normaliseSlugInput } from '../slug-check.js';
 import { qrSvg } from '../qr.js';
 import { showCodes } from '../codes.js';
 import { passkeysSupported, createPasskey, passkeyErrorCode } from '../passkeys.js';
+import { humanCheck } from '../turnstile.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -23,9 +25,13 @@ function remember(value) {
   } catch { /* not remembered */ }
 }
 
+// Turnstile, started the first time step 1 shows (turnstile.js).
+let check = null;
+
 // Focus moves to the new step's heading when the step changes, so a screen
 // reader hears where it is; not on first load, where it starts at the top.
 function step(n, { focus = true } = {}) {
+  if (n === 1) check ??= humanCheck($('humanCheck'), 'register');
   $('stepAccount').hidden = n !== 1;
   $('stepFactor').hidden = n !== 2;
   $('stepCodes').hidden = n !== 3;
@@ -57,7 +63,13 @@ $('accountForm').addEventListener('submit', (e) => {
     return;
   }
   withBusy($('accountSubmit'), error, async () => {
-    const data = await post('/api/auth/register', { slug: normaliseSlugInput(slugInput.value), password });
+    const turnstile = await check.token();
+    let data;
+    try {
+      data = await post('/api/auth/register', { slug: normaliseSlugInput(slugInput.value), password, turnstile });
+    } finally {
+      check.reset();
+    }
     remember({ slug: data.slug, challenge: data.challenge });
     $('password').value = '';
     $('passwordConfirm').value = '';

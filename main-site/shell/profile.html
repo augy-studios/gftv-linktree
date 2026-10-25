@@ -56,6 +56,10 @@
     </main>
 
     <footer class="site-footer">
+        <nav>
+            <a href="/privacy" data-i18n="footer.privacy">Privacy</a>
+            <a href="https://policy.globalfurry.tv/legal/terms" target="_blank" rel="noopener" data-i18n="footer.terms">Terms of Use</a>
+        </nav>
         <span data-i18n="footer.made">Made with</span> <span data-icon="heart"></span> <span data-i18n="footer.in">in</span>
         <a href="https://www.google.com/maps/place/Singapore" target="_blank" rel="noopener" data-i18n="footer.singapore">Singapore</a>
         <span data-i18n="footer.by">by Global Furry Television</span> &copy; 2014-<span id="currentYear"></span>.
@@ -121,6 +125,7 @@
                 <span data-i18n="report.details">Anything else we should know? (optional)</span>
                 <textarea id="reportDetails" maxlength="500" rows="3"></textarea>
             </label>
+            <div class="human-check" id="reportCheck"></div>
             <div class="callout danger" id="reportError" role="alert"></div>
             <div class="actions"><button class="btn btn-primary" type="submit" id="reportSubmit"><span data-i18n="report.submit">Send report</span></button></div>
         </form>

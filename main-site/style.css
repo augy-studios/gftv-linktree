@@ -799,6 +799,11 @@ button.text-link { padding: 0; }
 .callout:empty { display: none; }
 .callout + .callout, * + .callout { margin-top: 0.85rem; }
 
+/* Cloudflare Turnstile (js/turnstile.js). Takes no room until it is drawn,
+   and its iframe fills the form's width. */
+.human-check { margin-top: 0.85rem; }
+.human-check:empty { display: none; }
+
 /* Backup codes, shown once. */
 .codes {
   display: grid;
@@ -880,6 +885,14 @@ button.text-link { padding: 0; }
   transform: translate(-50%, 8px);
   transition: opacity var(--motion) ease, transform var(--motion) ease, visibility 0s var(--motion);
 }
+
+/* A page of text: the privacy notice. */
+.page-card.prose { max-width: 40rem; }
+.prose h2 { margin-top: 1.5rem; font-size: 1.125rem; font-weight: 600; }
+.prose p, .prose ul { margin-top: 0.6rem; line-height: 1.55; }
+.prose ul { display: grid; gap: 0.5rem; padding-inline-start: 1.25rem; list-style: disc; }
+.prose .actions { margin-top: 0.85rem; }
+#accountForm > .muted.small { margin-top: 0.85rem; }
 
 /* footer */
 .site-footer {

@@ -1,6 +1,7 @@
 // The page editor: links (or a redirect), profile, sharing, stats and security.
 
 import '../app.js';
+import '../visitor.js';
 import { t, onChange, getLocale } from '../../assets/i18n/i18n.js';
 import { api, post } from '../api.js';
 import { openModal, closeModal, withBusy, toast, copyText, el, formatNumber, formatDate, errorText, setBusy } from '../ui.js';

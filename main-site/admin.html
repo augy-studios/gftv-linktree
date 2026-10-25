@@ -197,6 +197,12 @@
                     <div class="pager" id="flaggedPager"></div>
                 </div>
                 <div class="panel-section">
+                    <h2 data-i18n="admin.flagged-devices-title">Flagged devices</h2>
+                    <p class="muted small" data-i18n="admin.flagged-devices-body">Devices banned along with a connection, seen today on a connection that is not banned. They cannot create pages, but can still sign in and edit the pages they have. Only a one-way hash of each device's fingerprint is kept, so each is shown by the start of it and of its connection's. Fingerprints are not unique, and one phone model can look like another: Unflag lifts the device's ban when it is someone else, and Ban bans this connection too.</p>
+                    <ul class="data-list u-mt-075" id="flaggedDeviceList"></ul>
+                    <div class="pager" id="flaggedDevicePager"></div>
+                </div>
+                <div class="panel-section">
                     <h2 data-i18n="admin.banned-title">Banned connections</h2>
                     <p class="muted small" data-i18n="admin.banned-body">A connection is banned when a second page is quarantined from it, or when an admin bans a flagged one. It cannot create or change pages until unbanned, but can still view pages, sign in and report. Many people can share one address (mobile networks, schools, event Wi-Fi), so lift a ban that catches someone else.</p>
                     <ul class="data-list u-mt-075" id="bannedList"></ul>
@@ -289,6 +295,10 @@
     </main>
 
     <footer class="site-footer">
+        <nav>
+            <a href="/privacy" data-i18n="footer.privacy">Privacy</a>
+            <a href="https://policy.globalfurry.tv/legal/terms" target="_blank" rel="noopener" data-i18n="footer.terms">Terms of Use</a>
+        </nav>
         <span data-i18n="footer.made">Made with</span> <span data-icon="heart"></span> <span data-i18n="footer.in">in</span>
         <a href="https://www.google.com/maps/place/Singapore" target="_blank" rel="noopener" data-i18n="footer.singapore">Singapore</a>
         <span data-i18n="footer.by">by Global Furry Television</span> &copy; 2014-<span id="currentYear"></span>.

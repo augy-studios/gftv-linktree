@@ -118,6 +118,15 @@ export function clientIp(req) {
   return forwarded || String(req.headers['x-real-ip'] || '') || req.socket?.remoteAddress || 'unknown';
 }
 
+// The device fingerprint the sign-up, sign-in and editor pages send
+// (js/visitor.js), or '' when there is none or it is not the 32 hex
+// characters FingerprintJS makes. Untrusted, like any header: only ever kept
+// as hashVisitor() of it.
+export function clientVisitor(req) {
+  const value = String(req.headers['x-olg-visitor'] || '').trim().toLowerCase();
+  return /^[0-9a-f]{32}$/.test(value) ? value : '';
+}
+
 export function readCookie(req, name) {
   const header = String(req.headers.cookie || '');
   for (const part of header.split(';')) {

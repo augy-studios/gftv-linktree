@@ -8,7 +8,7 @@ import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
 import { normaliseSlug } from '../_lib/validate.js';
 import { verifyPassword, sha256 } from '../_lib/crypto.js';
-import { limited, audit } from '../_lib/guards.js';
+import { limited, audit, noteBannedVisitor } from '../_lib/guards.js';
 import { createChallenge } from '../_lib/session.js';
 import { countPasskeys } from '../_lib/webauthn.js';
 import { telegramConfigured } from '../_lib/telegram.js';
@@ -37,6 +37,8 @@ export default route('auth/login', async (req, res) => {
     return fail(res, 401, 'invalid_credentials');
   }
   if (page.status === 'banned') return fail(res, 403, 'page_banned');
+  // A device from a banned connection still signs in; staff are told.
+  await noteBannedVisitor(req, page.id);
 
   const methods = {
     totp: Boolean(page.totp_secret),

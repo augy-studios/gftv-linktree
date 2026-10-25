@@ -2,8 +2,8 @@
 // patterns). Small, and used by almost every route.
 
 import { db, T } from './supabase.js';
-import { fail, clientIp } from './http.js';
-import { hashIp } from './crypto.js';
+import { fail, clientIp, clientVisitor } from './http.js';
+import { hashIp, hashVisitor } from './crypto.js';
 import { sanitizeUrl, addressBlocked, patternBlocks, isShortener, addressesInText, linkHost, lookupUrl } from './validate.js';
 import { unsafeUrls } from './safe-browsing.js';
 import { blocklistCategory } from './domain-blocklist.js';
@@ -55,17 +55,34 @@ export async function limited(req, res, name, subjects = []) {
   return false;
 }
 
+// The hash of the device fingerprint a request carries, or null. Only the
+// sign-up, sign-in and editor pages send one (js/visitor.js).
+export function visitorHash(req) {
+  const visitor = req ? clientVisitor(req) : '';
+  return visitor ? hashVisitor(visitor) : null;
+}
+
 // One row per security-relevant event. Details never carry a secret, a code,
-// a password or a full address.
+// a password or a full address. The device hash goes next to the address
+// hash when the request has one (migration 012), so a ban on the connection
+// can take the devices used on it too.
 export async function audit(req, { action, actorType = 'system', actorId = null, pageId = null, details = {} }) {
-  const { error } = await db().from(T.audit).insert({
+  const row = {
     action,
     actor_type: actorType,
     actor_id: actorId,
     page_id: pageId,
     details,
     ip_hash: req ? hashIp(clientIp(req)) : null,
-  });
+  };
+  const visitor = visitorHash(req);
+  if (visitor) row.visitor_hash = visitor;
+  let { error } = await db().from(T.audit).insert(row);
+  // Before migration 012 there is no visitor_hash column: keep the entry.
+  if (error && visitor) {
+    delete row.visitor_hash;
+    ({ error } = await db().from(T.audit).insert(row));
+  }
   if (error) console.error('[onelink] audit insert:', action, error.message);
 }
 
@@ -238,31 +255,87 @@ export async function refusedForAttempts(req, res) {
 }
 
 // ---------------------------------------------------------------------------
-// Banned connections (migration 009)
+// Banned connections (migration 009) and devices (migration 012)
 //
 // A second page quarantined from the same connection bans it. A banned
 // connection cannot create or change pages; it can still view, sign in and
 // report. Bans last until staff lift them.
+//
+// The devices seen on a connection (the device hash in its audit entries)
+// are banned with it, and lifted with it. A banned device on a connection
+// that is not banned is never banned automatically: device fingerprints are
+// not unique, and many phones of one model look alike. It is flagged for
+// staff for the day, and cannot create a page; it can still sign in and edit
+// one it has.
 // ---------------------------------------------------------------------------
 
 export const BAN_AFTER_PAGES = 2;
 
 // Answers 403 and returns true when this request comes from a banned
-// connection. For every route that creates or changes a page.
-export async function refusedForBan(req, res) {
+// connection, or, with newPage, from a banned device. For every route that
+// creates or changes a page; pageId is the page being changed, for staff.
+export async function refusedForBan(req, res, { newPage = false, pageId = null } = {}) {
   const { data, error } = await db().from(T.ipBans).select('ip_hash').eq('ip_hash', hashIp(clientIp(req))).maybeSingle();
   if (error) {
     console.error('[onelink] ban check:', error.message);
     return false;
   }
-  if (!data) return false;
-  fail(res, 403, 'ip_banned');
+  if (data) {
+    fail(res, 403, 'ip_banned');
+    return true;
+  }
+  if ((await noteBannedVisitor(req, pageId)) && newPage) {
+    fail(res, 403, 'visitor_banned');
+    return true;
+  }
+  return false;
+}
+
+const visitorBucket = (visitor, ip) => `badvisitor:${visitor}:${ip}`;
+
+// Whether this request's device is banned. When it is, the device and this
+// connection are flagged for staff for the day, and the first sighting goes
+// in the audit log. Never refuses anything itself, and a database error
+// counts as not banned.
+export async function noteBannedVisitor(req, pageId = null) {
+  const visitor = visitorHash(req);
+  if (!visitor) return false;
+  const { data, error } = await db().from(T.visitorBans).select('visitor_hash').eq('visitor_hash', visitor).limit(1);
+  if (error) {
+    console.error('[onelink] device ban check:', error.message);
+    return false;
+  }
+  if ((data ?? []).length === 0) return false;
+  try {
+    if ((await bump(visitorBucket(visitor, hashIp(clientIp(req))))) === 1) {
+      await audit(req, { action: 'security.visitor_flagged', actorType: 'system', pageId });
+    }
+  } catch (cause) {
+    console.error('[onelink] device flag:', cause?.message ?? cause);
+  }
   return true;
 }
 
 async function banHash(hash, { reason, pageIds = [], staffId = null }) {
   const { error } = await db().from(T.ipBans).upsert({ ip_hash: hash, reason, page_ids: pageIds, created_by: staffId });
   if (error) throw error;
+  await banVisitorsOf(hash, { reason, staffId });
+}
+
+// Ban the devices seen on a connection that has just been banned. A failure
+// here leaves the connection's ban in place.
+async function banVisitorsOf(hash, { reason, staffId }) {
+  try {
+    const { data, error } = await db().from(T.audit).select('visitor_hash').eq('ip_hash', hash).not('visitor_hash', 'is', null);
+    if (error) throw error;
+    const visitors = [...new Set((data ?? []).map((r) => r.visitor_hash))];
+    if (visitors.length === 0) return;
+    const rows = visitors.map((visitor) => ({ visitor_hash: visitor, ip_hash: hash, reason, created_by: staffId }));
+    const { error: banError } = await db().from(T.visitorBans).upsert(rows, { onConflict: 'visitor_hash,ip_hash' });
+    if (banError) throw banError;
+  } catch (cause) {
+    console.error('[onelink] device bans:', cause?.message ?? cause);
+  }
 }
 
 // After a page is quarantined: ban the connection if it is now the second.
@@ -275,10 +348,17 @@ async function banIfRepeat(req, hash) {
   await audit(req, { action: 'security.ip_banned', actorType: 'system', details: { pages: pages.length } });
 }
 
-// Banned connections, newest first: [{ id, reason, since, slugs, byStaff }].
+// Banned connections, newest first: [{ id, reason, since, slugs, byStaff,
+// devices }], devices being how many devices were banned with it.
 export async function bannedConnections() {
   const { data, error } = await db().from(T.ipBans).select('ip_hash, reason, page_ids, created_by, created_at').order('created_at', { ascending: false });
   if (error) throw error;
+  const devices = new Map();
+  if ((data ?? []).length > 0) {
+    const { data: bans, error: deviceError } = await db().from(T.visitorBans).select('ip_hash').in('ip_hash', data.map((b) => b.ip_hash));
+    if (deviceError) console.error('[onelink] device bans:', deviceError.message);
+    for (const ban of bans ?? []) devices.set(ban.ip_hash, (devices.get(ban.ip_hash) ?? 0) + 1);
+  }
   const rows = [];
   for (const ban of data ?? []) {
     let slugs = [];
@@ -287,7 +367,7 @@ export async function bannedConnections() {
       if (pageError) throw pageError;
       slugs = (pages ?? []).map((p) => p.slug);
     }
-    rows.push({ id: ban.ip_hash.slice(0, 16), reason: ban.reason, since: ban.created_at, slugs, byStaff: Boolean(ban.created_by) });
+    rows.push({ id: ban.ip_hash.slice(0, 16), reason: ban.reason, since: ban.created_at, slugs, byStaff: Boolean(ban.created_by), devices: devices.get(ban.ip_hash) ?? 0 });
   }
   return rows;
 }
@@ -302,11 +382,83 @@ export async function banFlaggedConnection(id, staffId, reason) {
   return true;
 }
 
+// Lift a connection's ban, and the bans on the devices seen on it.
 export async function unbanConnection(id) {
   if (!/^[0-9a-f]{16}$/.test(String(id))) return false;
   const { data, error } = await db().from(T.ipBans).delete().like('ip_hash', `${id}%`).select('ip_hash');
   if (error) throw error;
-  return (data ?? []).length > 0;
+  const hashes = (data ?? []).map((r) => r.ip_hash);
+  if (hashes.length === 0) return false;
+  // The table's foreign key does this too; this covers a database without it.
+  const { error: deviceError } = await db().from(T.visitorBans).delete().in('ip_hash', hashes);
+  if (deviceError) console.error('[onelink] device unban:', deviceError.message);
+  return true;
+}
+
+// Devices from a banned connection seen today on one that is not banned,
+// newest first: [{ id, device, connection, requests, since, slug }]. id is
+// the start of the device hash and then of the connection hash, as the
+// actions below take it; slug is the page it was last seen on, if any.
+export async function flaggedVisitors() {
+  const since = new Date(Date.now() - SUSPICION_WINDOW * 1000).toISOString();
+  const { data, error } = await db().from('gftvonelink_rate_limits').select('bucket, hits, window_start').like('bucket', 'badvisitor:%').gte('window_start', since);
+  if (error) throw error;
+  const rows = [];
+  for (const row of data ?? []) {
+    const [, visitor, ip] = row.bucket.split(':');
+    const { data: last, error: auditError } = await db()
+      .from(T.audit)
+      .select('page_id, created_at')
+      .eq('action', 'security.visitor_flagged')
+      .eq('visitor_hash', visitor)
+      .eq('ip_hash', ip)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (auditError) throw auditError;
+    let slug = null;
+    if (last?.[0]?.page_id) {
+      const { data: page } = await db().from(T.pages).select('slug').eq('id', last[0].page_id).maybeSingle();
+      slug = page?.slug ?? null;
+    }
+    const device = visitor.slice(0, 16);
+    const connection = ip.slice(0, 16);
+    rows.push({ id: device + connection, device, connection, requests: row.hits, since: row.window_start, slug });
+  }
+  return rows.sort((a, b) => (a.since < b.since ? 1 : -1));
+}
+
+function flaggedVisitorBuckets(id) {
+  if (!/^[0-9a-f]{32}$/.test(String(id))) return null;
+  return `badvisitor:${id.slice(0, 16)}%:${id.slice(16)}%`;
+}
+
+// Staff found the flagged device is not the banned person (one phone model
+// looks much like another): lift the flag and the device's bans, so it can
+// create pages again. Its connections stay banned. True when it was flagged.
+export async function unflagVisitor(id) {
+  const pattern = flaggedVisitorBuckets(id);
+  if (!pattern) return false;
+  const { data, error } = await db().from('gftvonelink_rate_limits').delete().like('bucket', pattern).select('bucket');
+  if (error) throw error;
+  if ((data ?? []).length === 0) return false;
+  const { error: unbanError } = await db().from(T.visitorBans).delete().like('visitor_hash', `${id.slice(0, 16)}%`);
+  if (unbanError) throw unbanError;
+  return true;
+}
+
+// Staff found it is the banned person: ban the connection it was flagged on,
+// which bans the devices seen there too. True when it was flagged.
+export async function banFlaggedVisitor(id, staffId, reason) {
+  const pattern = flaggedVisitorBuckets(id);
+  if (!pattern) return false;
+  const { data, error } = await db().from('gftvonelink_rate_limits').select('bucket').like('bucket', pattern).limit(1);
+  if (error) throw error;
+  if (!data?.[0]) return false;
+  const [, , ip] = data[0].bucket.split(':');
+  await banHash(ip, { reason: reason || 'Banned by staff: a device from a banned connection', staffId });
+  const { error: clearError } = await db().from('gftvonelink_rate_limits').delete().eq('bucket', data[0].bucket);
+  if (clearError) throw clearError;
+  return true;
 }
 
 // Connections flagged today, newest first, for staff to look at and lift:
