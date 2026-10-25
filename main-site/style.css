@@ -168,7 +168,9 @@
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; font-family: var(--font); }
-html, body { height: 100%; }
+/* Only html is held to the screen's height: body grows with the page (min-height below), or the
+   sticky header, which can't leave body, would scroll away after the first screenful. */
+html { height: 100%; }
 
 html { color-scheme: light; }
 :root[data-mode="dark"] { color-scheme: dark; }
