@@ -3,6 +3,7 @@ import { browser, leaks, ORIGIN } from './harness.js';
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import bcrypt from 'bcryptjs';
 import { useTestClient } from '../api/_lib/supabase.js';
 import { createFakeDb } from './fake-db.js';
@@ -39,6 +40,7 @@ import publicTestimonials from '../api/public/testimonials.js';
 import adminTestimonials from '../api/admin/testimonials.js';
 import publicInsights from '../api/public/insights.js';
 import meTestimonial from '../api/me/testimonial.js';
+import publicTurnstile from '../api/public/turnstile.js';
 
 let fake;
 beforeEach(() => {
@@ -50,13 +52,14 @@ beforeEach(() => {
 });
 
 // A page set up the way a person would: register, authenticator, codes.
-async function makePage(b, name = 'augy', password = 'correct horse battery') {
-  const reg = await b.call(register, { method: 'POST', body: { slug: name, password } });
+// from: { ip, headers } for the requests, when a test needs them.
+async function makePage(b, name = 'augy', password = 'correct horse battery', from = {}) {
+  const reg = await b.call(register, { method: 'POST', body: { slug: name, password }, ...from });
   assert.equal(reg.status, 200, reg.body);
-  const start = await b.call(enrol, { method: 'POST', body: { challenge: reg.json.challenge, action: 'totp-start' } });
+  const start = await b.call(enrol, { method: 'POST', body: { challenge: reg.json.challenge, action: 'totp-start' }, ...from });
   assert.equal(start.status, 200, start.body);
   assert.match(start.json.uri, /^otpauth:\/\/totp\//);
-  const done = await b.call(enrol, { method: 'POST', body: { challenge: reg.json.challenge, action: 'totp-finish', code: totpAt(start.json.secret) } });
+  const done = await b.call(enrol, { method: 'POST', body: { challenge: reg.json.challenge, action: 'totp-finish', code: totpAt(start.json.secret) }, ...from });
   assert.equal(done.status, 200, done.body);
   return { secret: start.json.secret, codes: done.json.backupCodes, password };
 }
@@ -1128,4 +1131,218 @@ test('testimonials: admins manage them, the home page shows the visible ones', a
   assert.match(shown.headers['cache-control'], /s-maxage=60/);
   await send({ action: 'remove', id: list[1].id });
   assert.deepEqual((await browser().call(publicTestimonials)).json.testimonials, []);
+});
+
+// ---------------------------------------------------------------------------
+// Device fingerprints (migration 012)
+// ---------------------------------------------------------------------------
+
+const DEVICE = '0123456789abcdef0123456789abcdef';
+const fromDevice = (ip, visitor = DEVICE) => ({ ip, headers: { 'x-olg-visitor': visitor } });
+const saltedHash = (value) => createHash('sha256').update(`test-salt:${value}`).digest('hex');
+
+// Two pages quarantined from one connection and device, which bans both.
+// Returns each page's authenticator secret, by name.
+async function banConnectionAndDevice(from) {
+  const secrets = {};
+  fake.table('gftvonelink_blocked_domains').push({ domain: 'evil.example', reason: 'x', created_at: new Date().toISOString() });
+  forgetBlockedDomains();
+  for (const name of ['first', 'second']) {
+    fake.table('gftvonelink_rate_limits').filter((r) => r.bucket.startsWith('badlink:ip:')).forEach((r) => { r.hits = 0; });
+    const b = browser();
+    secrets[name] = (await makePage(b, name, undefined, from)).secret;
+    for (const n of [1, 2, 3]) await b.call(meLinks, { method: 'POST', body: { title: 'x', url: `https://evil.example/${n}` }, ...from });
+  }
+  assert.equal(fake.table('gftvonelink_ip_bans').length, 1);
+  return secrets;
+}
+
+test('a device id is kept only as a salted hash, and never sent back', async () => {
+  const owner = browser();
+  await makePage(owner, 'augy', undefined, fromDevice('203.0.113.7'));
+  const row = fake.table('gftvonelink_audit_logs').find((r) => r.action === 'page.register');
+  assert.equal(row.visitor_hash, saltedHash(DEVICE));
+  assert.equal(JSON.stringify(fake.tables).includes(DEVICE), false, 'the id itself is stored nowhere');
+
+  // Untrusted input: anything not shaped like a FingerprintJS id is ignored.
+  await browser().call(register, { method: 'POST', body: { slug: 'other', password: 'correct horse battery' }, headers: { 'x-olg-visitor': 'x'.repeat(32) } });
+  assert.equal(fake.table('gftvonelink_audit_logs').find((r) => r.details.slug === 'other').visitor_hash, null);
+
+  const { secret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', secret);
+  assert.deepEqual(leaks((await admin.call(adminAudit)).json), []);
+  assert.deepEqual(leaks((await admin.call(adminBlocklist)).json), []);
+  assert.deepEqual(leaks((await owner.call(mePage, fromDevice('203.0.113.7'))).json), []);
+
+  // The daily cleanup clears device hashes from entries older than 30 days.
+  process.env.CRON_SECRET = 'cron-secret';
+  try {
+    row.created_at = new Date(Date.now() - 31 * 86400_000).toISOString();
+    const ran = await browser().call(cleanup, { headers: { authorization: 'Bearer cron-secret' } });
+    assert.equal(ran.json.removed.visitorHashes, 1);
+    assert.equal(row.visitor_hash, null);
+    assert.ok(fake.table('gftvonelink_audit_logs').some((r) => r.visitor_hash), 'newer entries keep theirs');
+  } finally {
+    delete process.env.CRON_SECRET;
+  }
+});
+
+test('a banned device on a new connection is flagged: no new page, but sign-in and editing still work', async () => {
+  const secrets = await banConnectionAndDevice(fromDevice('203.0.113.66'));
+  const bans = fake.table('gftvonelink_visitor_bans');
+  assert.equal(bans.length, 1, 'the device seen on the connection is banned with it');
+  assert.equal(bans[0].visitor_hash, saltedHash(DEVICE));
+  assert.equal(bans[0].ip_hash, fake.table('gftvonelink_ip_bans')[0].ip_hash);
+
+  const elsewhere = fromDevice('198.51.100.20');
+  assert.equal((await browser().call(register, { method: 'POST', body: { slug: 'third', password: 'correct horse battery' }, ...elsewhere })).json.error, 'visitor_banned');
+  assert.equal(fake.table('gftvonelink_ip_bans').length, 1, 'never banned automatically');
+  assert.ok(fake.table('gftvonelink_audit_logs').some((r) => r.action === 'security.visitor_flagged'));
+  assert.equal((await browser().call(register, { method: 'POST', body: { slug: 'third', password: 'correct horse battery' }, ip: '198.51.100.21' })).status, 200, 'other devices are not affected');
+
+  // The owner of an existing page signs in and edits from the new connection.
+  const owner = browser();
+  const step = await owner.call(login, { method: 'POST', body: { slug: 'second', password: 'correct horse battery' }, ...elsewhere });
+  assert.equal(step.status, 200);
+  const signedIn = await owner.call(verify, { method: 'POST', body: { challenge: step.json.challenge, method: 'totp', code: totpAt(secrets.second) }, ...elsewhere });
+  assert.equal(signedIn.status, 200, signedIn.body);
+  assert.equal((await owner.call(meLinks, { method: 'POST', body: { title: 'ok', url: 'https://fine.example' }, ...elsewhere })).status, 200);
+  assert.equal((await owner.call(mePage, { method: 'PATCH', body: { bio: 'hi' }, ...elsewhere })).status, 200);
+
+  // Staff see it by the start of the device and connection hashes.
+  const { secret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', secret);
+  const data = (await admin.call(adminBlocklist)).json;
+  assert.deepEqual(leaks(data), []);
+  assert.equal(data.flaggedVisitors.length, 1);
+  const [flagged] = data.flaggedVisitors;
+  assert.match(flagged.id, /^[0-9a-f]{32}$/);
+  assert.equal(flagged.device, saltedHash(DEVICE).slice(0, 16));
+  assert.ok(flagged.requests >= 3);
+  assert.equal(data.banned[0].devices, 1);
+
+  // Unflag: it is someone else. The device's ban goes; the connection's stays.
+  const lifted = await admin.call(adminBlocklist, { method: 'POST', body: { action: 'unflag-visitor', id: flagged.id } });
+  assert.deepEqual(lifted.json.flaggedVisitors, []);
+  assert.equal(fake.table('gftvonelink_visitor_bans').length, 0);
+  assert.equal(fake.table('gftvonelink_ip_bans').length, 1);
+  assert.ok(fake.table('gftvonelink_audit_logs').some((r) => r.action === 'mod.visitor_unflagged'));
+  assert.equal((await browser().call(register, { method: 'POST', body: { slug: 'fourth', password: 'correct horse battery' }, ...elsewhere })).status, 200);
+  assert.equal((await admin.call(adminBlocklist, { method: 'POST', body: { action: 'unflag-visitor', id: flagged.id } })).json.error, 'not_flagged_visitor');
+});
+
+test('staff can ban a flagged device\'s connection, and unbanning a connection lifts its devices', async () => {
+  await banConnectionAndDevice(fromDevice('203.0.113.66'));
+  const elsewhere = fromDevice('198.51.100.30');
+  assert.equal((await browser().call(register, { method: 'POST', body: { slug: 'third', password: 'correct horse battery' }, ...elsewhere })).json.error, 'visitor_banned');
+
+  const { secret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', secret);
+  const [flagged] = (await admin.call(adminBlocklist)).json.flaggedVisitors;
+  const banned = await admin.call(adminBlocklist, { method: 'POST', body: { action: 'ban-visitor', id: flagged.id, reason: 'same person' } });
+  assert.deepEqual(banned.json.flaggedVisitors, []);
+  assert.equal(banned.json.banned.length, 2);
+  const second = banned.json.banned.find((b) => b.id === flagged.connection);
+  assert.equal(second.byStaff, true);
+  assert.equal(second.devices, 1);
+  assert.equal(fake.table('gftvonelink_visitor_bans').length, 2, 'one row per device and connection');
+  assert.ok(fake.table('gftvonelink_audit_logs').some((r) => r.action === 'mod.visitor_banned'));
+  assert.equal((await browser().call(register, { method: 'POST', body: { slug: 'third', password: 'correct horse battery' }, ...elsewhere })).json.error, 'ip_banned');
+
+  // Lifting one connection's ban leaves the device banned through the other.
+  await admin.call(adminBlocklist, { method: 'POST', body: { action: 'unban-connection', id: flagged.connection } });
+  assert.equal(fake.table('gftvonelink_visitor_bans').length, 1);
+  assert.equal((await browser().call(register, { method: 'POST', body: { slug: 'third', password: 'correct horse battery' }, ...fromDevice('198.51.100.31') })).json.error, 'visitor_banned');
+  const first = (await admin.call(adminBlocklist)).json.banned[0];
+  await admin.call(adminBlocklist, { method: 'POST', body: { action: 'unban-connection', id: first.id } });
+  assert.equal(fake.table('gftvonelink_visitor_bans').length, 0);
+  assert.equal((await browser().call(register, { method: 'POST', body: { slug: 'third', password: 'correct horse battery' }, ...fromDevice('198.51.100.32') })).status, 200);
+});
+
+// ---------------------------------------------------------------------------
+// Cloudflare Turnstile, and where the fingerprint library loads
+// ---------------------------------------------------------------------------
+
+test('Turnstile: skipped until both keys are set, then sign-up and reports need a passed check', async () => {
+  const owner = browser();
+  await makePage(owner);
+  let n = 0;
+  const signUp = (turnstile) => browser().call(register, { method: 'POST', body: { slug: `t${(n += 1)}x`, password: 'correct horse battery', turnstile }, ip: `198.51.100.${100 + n}` });
+  const sendReport = (turnstile) => browser().call(report, { method: 'POST', body: { slug: 'augy', reason: 'spam', turnstile }, ip: `198.51.100.${200 + (n += 1)}` });
+
+  assert.equal((await browser().call(publicTurnstile)).json.siteKey, null);
+  assert.equal((await signUp()).status, 200, 'no keys: nothing checked');
+  process.env.TURNSTILE_SECRET_KEY = 'test-secret';
+  assert.equal((await signUp()).status, 200, 'a secret without a site key is not enforced');
+
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  process.env.TURNSTILE_SITE_KEY = 'test-site-key';
+  // Cloudflare's answer, by token: good-<action> passes for that action.
+  globalThis.fetch = async (url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push({ url: String(url), body });
+    if (body.response === 'unreachable') throw new Error('network down');
+    const [verdict, action] = body.response.split('-');
+    return new Response(JSON.stringify(verdict === 'good' ? { success: true, action } : { success: false, 'error-codes': ['invalid-input-response'] }));
+  };
+  try {
+    assert.equal((await browser().call(publicTurnstile)).json.siteKey, 'test-site-key');
+
+    assert.equal((await signUp()).json.error, 'human_check_failed', 'no token');
+    assert.equal(calls.length, 0, 'a missing token is refused without asking Cloudflare');
+    assert.equal((await signUp('bad-register')).json.error, 'human_check_failed');
+    assert.equal(calls[0].url, 'https://challenges.cloudflare.com/turnstile/v0/siteverify');
+    assert.equal(calls[0].body.secret, 'test-secret');
+    assert.match(calls[0].body.remoteip, /^198\.51\.100\./);
+    assert.equal((await signUp('good-report')).json.error, 'human_check_failed', 'a token from the report form does not count');
+    assert.equal((await signUp('good-register')).status, 200);
+
+    assert.equal((await sendReport()).json.error, 'human_check_failed');
+    assert.equal((await sendReport('bad-report')).json.error, 'human_check_failed');
+    assert.equal((await sendReport('good-report')).status, 200);
+
+    // Cloudflare out of reach: let it through, as the other outside checks do.
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      assert.equal((await signUp('unreachable')).status, 200);
+    } finally {
+      console.warn = warn;
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.TURNSTILE_SITE_KEY;
+    delete process.env.TURNSTILE_SECRET_KEY;
+  }
+});
+
+test('the fingerprint library loads on sign-up, sign-in, reset and the editor, and nowhere else', async () => {
+  const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+  const vendor = '/js/vendor/fingerprintjs.js';
+  for (const page of ['register', 'login', 'reset', 'edit']) {
+    assert.ok(read(`${page}.html`).includes(vendor), page);
+    assert.match(read(`js/pages/${page}.js`), /^import '\.\.\/visitor\.js';$/m, page);
+  }
+  for (const page of ['index.html', '404.html', 'shell/profile.html', 'admin.html', 'privacy.html']) {
+    assert.equal(read(page).includes('fingerprintjs'), false, page);
+  }
+  for (const script of ['home', 'profile', 'notfound', 'admin', 'privacy']) {
+    assert.equal(read(`js/pages/${script}.js`).includes('visitor.js'), false, script);
+  }
+  // Nothing the public pages import pulls it in either.
+  for (const shared of ['app.js', 'api.js', 'ui.js', 'turnstile.js']) {
+    assert.equal(/import [^;]*visitor\.js/.test(read(`js/${shared}`)), false, shared);
+  }
+
+  // The page a visitor actually gets.
+  const owner = browser();
+  await makePage(owner);
+  const html = await browser().call(render, { query: { slug: 'augy' } });
+  assert.equal(html.status, 200);
+  assert.equal(html.body.includes('fingerprintjs'), false);
+  assert.equal(html.body.includes('challenges.cloudflare.com'), false, 'Turnstile waits for the report form');
 });

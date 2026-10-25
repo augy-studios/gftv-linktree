@@ -60,7 +60,7 @@ export function browser() {
 // Every field name that must never reach a browser.
 export const SECRET_FIELDS = [
   'password_hash', 'totp_secret', 'telegram_chat_id', 'code_hash', 'token_hash',
-  'pending_totp_secret', 'telegram_code_hash', 'public_key', 'reporter_hash', 'ip_hash', 'email',
+  'pending_totp_secret', 'telegram_code_hash', 'public_key', 'reporter_hash', 'ip_hash', 'visitor_hash', 'email',
 ];
 
 export function leaks(value) {

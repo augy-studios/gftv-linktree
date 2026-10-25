@@ -14,6 +14,7 @@ build step, plus Node serverless functions under `api/`. Setup is in the
 | `/reset` | `reset.html` | `js/pages/reset.js` |
 | `/edit` | `edit.html` | `js/pages/edit.js` |
 | `/admin` | `admin.html` | `js/pages/admin.js` |
+| `/privacy` | `privacy.html` | `js/pages/privacy.js` |
 | `/<slug>` | `shell/profile.html`, served by `api/render.js` | `js/pages/profile.js` |
 | anything else | `404.html` | `js/pages/notfound.js` |
 
@@ -25,6 +26,11 @@ every path this site uses is on the reserved-name list in
 
 Every page shares the same head, official bar, header, theme modal and footer.
 Change them on every page together.
+
+`/privacy` is OneLink's own notice under GFTV's Privacy Statement and Terms
+of Use (policy.globalfurry.tv), saying what OneLink keeps and for how long.
+Change it with any change to what is collected or how long it is kept, in
+every locale.
 
 ## GFTV specifications
 
@@ -52,7 +58,7 @@ the browser shows `error.<code>` from the locale file.
 | Route | Who | What |
 | --- | --- | --- |
 | `GET /api/slug?slug=` | anyone | Is this name free? |
-| `POST /api/auth/register` | anyone | Name and password. Returns a setup challenge; the page stays private until a second factor is set up. |
+| `POST /api/auth/register` | anyone | Name, password and Turnstile token. Returns a setup challenge; the page stays private until a second factor is set up. |
 | `POST /api/auth/enrol` | setup challenge | First authenticator or passkey. Activates the page, returns ten backup codes, signs in. |
 | `POST /api/auth/login` | anyone | Password step. Returns a challenge and the second factors this page can use. |
 | `POST /api/auth/verify` | login challenge | Authenticator, passkey, backup code or Telegram code. Signs in. |
@@ -63,7 +69,8 @@ the browser shows `error.<code>` from the locale file.
 | `POST /api/me/security` | owner | Second factors, backup codes, Telegram, password, sign out elsewhere, delete page. Asks for the password again. |
 | `GET /api/public/page` | anyone | A page as visitors see it. |
 | `POST /api/public/click` | anyone | Count a click. |
-| `POST /api/public/report` | anyone | Report a page or link. |
+| `POST /api/public/report` | anyone | Report a page or link, with a Turnstile token. |
+| `GET /api/public/turnstile` | anyone | The Turnstile site key, or null. |
 | `POST /api/telegram/webhook` | Telegram | Bot updates, checked against `TELEGRAM_WEBHOOK_SECRET`. Replies with the help message (rich) and one-line confirmations (plain). |
 | `/api/admin/*` | staff | `auth`, `passkeys`, `overview`, `pages`, `links`, `reports`, `blocklist` (admin), `audit` (admin). |
 | `GET /api/cron/cleanup` | Vercel Cron | Sweeps expired rows. |
@@ -77,7 +84,21 @@ the browser shows `error.<code>` from the locale file.
 - **No request signing.** Writes need the site's own `Origin` and a JSON body,
   on top of SameSite cookies.
 - **Secrets at rest**: passwords bcrypt; owners' TOTP secrets AES-256-GCM with
-  `TOTP_ENCRYPTION_KEY`; IP addresses only as salted hashes.
+  `TOTP_ENCRYPTION_KEY`; IP addresses and device fingerprints only as salted
+  hashes.
+- **Device fingerprints**, on the sign-up, sign-in, reset and editor pages
+  only (`js/visitor.js`, FingerprintJS 5.3.0 vendored in `js/vendor/`, MIT,
+  monitoring off). `api.js` sends the id as `X-OLG-Visitor`, waiting at most
+  1.5 seconds for it. The server keeps only a salted hash, next to the address
+  hash in the audit log, and clears it there after 30 days. Banning a
+  connection bans the devices seen on it (migration 012); a banned device on
+  another connection is flagged for staff and cannot create a page, but is
+  never banned automatically. Public pages, the home page, 404 and `/admin`
+  never load it, and a test checks that.
+- **Turnstile** (Cloudflare) on sign-up and the report form, checked by
+  `api/_lib/turnstile.js` once `TURNSTILE_SITE_KEY` and
+  `TURNSTILE_SECRET_KEY` are both set. On a public page its script loads
+  only when the report form opens. See `TURNSTILE-SETUP.md`.
 - **Rate limits** on every sensitive route, shared across instances through a
   table (`gftvonelink_rate_hit`).
 - **Links** are `http` or `https` only. Other schemes are refused, not
@@ -85,7 +106,7 @@ the browser shows `error.<code>` from the locale file.
 - **Data minimisation**: no route sends a database row as it came back.
   `api/_lib/serialize.js` builds each answer from a list of allowed fields, per
   audience. Password hashes, TOTP secrets, code and token hashes, Telegram chat
-  ids, staff emails and reporter hashes have no serializer, so they cannot
+  ids, staff emails, reporter hashes and device hashes have no serializer, so they cannot
   reach a browser. The tests check every answer for those field names.
 - **Staff** accounts are read from `gftvhello_users` on every request, so a
   role removed on gftv.asia stops working here at once. Staff backup codes are
