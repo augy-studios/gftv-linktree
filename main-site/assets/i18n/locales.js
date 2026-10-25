@@ -4,10 +4,14 @@
 // then add the file to the service worker precache and bump its version.
 import en from './en.json' with { type: 'json' };
 import zh from './zh.json' with { type: 'json' };
+import ms from './ms.json' with { type: 'json' };
+import ta from './ta.json' with { type: 'json' };
 
-export const locales = { en, zh };
+export const locales = { en, zh, ms, ta };
 
 export const registry = [
   { code: 'en', name: 'English', dir: 'ltr' },
   { code: 'zh', name: '华文', dir: 'ltr' },
+  { code: 'ms', name: 'Bahasa Melayu', dir: 'ltr' },
+  { code: 'ta', name: 'தமிழ்', dir: 'ltr' },
 ];
