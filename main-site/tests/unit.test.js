@@ -1,7 +1,7 @@
 import './harness.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkSlug, sanitizeUrl, hostIsBlocked, normaliseDomain, cleanText, checkPassword } from '../api/_lib/validate.js';
+import { checkSlug, sanitizeUrl, hostIsBlocked, normaliseDomain, cleanText, checkPassword, linkHost, lookupUrl, addressBlocked } from '../api/_lib/validate.js';
 import { generateBackupCodes, hashCode, findMatchingCode, encryptSecret, decryptSecret, verifyPassword, hashPassword, parseEncryptionKey } from '../api/_lib/crypto.js';
 import { generateTotpSecret, verifyTotp, totpAt } from '../api/_lib/totp.js';
 import { inlineJson } from '../api/render.js';
@@ -28,6 +28,29 @@ test('URLs: only http and https, nothing smuggled', () => {
   assert.equal(sanitizeUrl('https://gftv.asia@evil.example').error, 'url_credentials');
   assert.equal(sanitizeUrl('https://localhost').ok, false);
   assert.equal(sanitizeUrl('https://nodot').ok, false);
+});
+
+test('email links: one plain address, and only where asked for', () => {
+  assert.equal(sanitizeUrl('mailto:Hello@Example.COM', { mail: true }).url, 'mailto:Hello@example.com');
+  assert.equal(sanitizeUrl('hello@example.com', { mail: true }).url, 'mailto:hello@example.com');
+  assert.equal(sanitizeUrl('MAILTO:a+b@mail.example.co', { mail: true }).host, 'mail.example.co');
+  assert.equal(sanitizeUrl('https://example.com', { mail: true }).ok, true);
+  assert.equal(sanitizeUrl('example.com/@name', { mail: true }).url, 'https://example.com/@name');
+  for (const bad of [
+    'mailto:a@b.co?subject=x', 'mailto:a@b.co?bcc=c@d.co', 'mailto:a@b.co,c@d.co', 'mailto:', 'mailto:a', 'mailto:a@localhost',
+    'mailto:%61@b.co', 'mailto:"a"@b.co', 'mailto:a@b.co%0Abcc:c@d.co', 'mailto:<a@b.co>', 'mailto:a@-b.co', 'mailto:a@b.c',
+  ]) {
+    assert.equal(sanitizeUrl(bad, { mail: true }).error, 'mail_invalid', bad);
+  }
+  assert.equal(sanitizeUrl('mailto:a@b.co').error, 'url_scheme', 'a redirect is never an email address');
+  assert.equal(sanitizeUrl('javascript:alert(1)', { mail: true }).error, 'url_scheme_link');
+  assert.equal(sanitizeUrl('java\tscript:alert(1)', { mail: true }).ok, false);
+  assert.equal(linkHost('mailto:a@Evil.Example'), 'evil.example');
+  assert.equal(linkHost('https://www.example.com/x'), 'www.example.com');
+  assert.equal(lookupUrl('mailto:a@b.co'), 'https://b.co/');
+  assert.equal(lookupUrl('https://b.co/x'), 'https://b.co/x');
+  assert.equal(addressBlocked('mailto:a@x.evil.example', { domains: ['evil.example'] }), true);
+  assert.equal(addressBlocked('mailto:a@fine.example', { domains: ['evil.example'] }), false);
 });
 
 test('blocked domains match subdomains only', () => {
@@ -124,7 +147,7 @@ test('platform links build and read back their addresses', async () => {
     for (const format of platform.formats) {
       const url = p.buildUrl(format, format.example);
       assert.ok(p.usernameOk(format, format.example), `${platform.id}/${format.id} example passes its own pattern`);
-      assert.match(url, /^https:\/\//);
+      assert.match(url, /^(https:\/\/|mailto:)/);
       if (format.prefix !== 'https://' || format.suffix) {
         const back = p.matchPlatform(url);
         assert.equal(back?.platform.id, platform.id, url);
@@ -139,6 +162,13 @@ test('platform links build and read back their addresses', async () => {
   assert.equal(p.usernameOk(yt.formats[1], 'UC123'), false, 'channel IDs are 24 characters starting UC');
   assert.equal(p.matchPlatform('https://example.com/augy'), null);
   assert.equal(p.matchPlatform('https://youtube.com.evil.example/@augy'), null);
+
+  const { EMAIL_PATTERN } = await import('../api/_lib/validate.js');
+  assert.equal(p.EMAIL, EMAIL_PATTERN, 'the browser and the server agree on email addresses');
+  const email = p.platformById('email').formats[0];
+  assert.equal(p.cleanUsername(email, ' mailto:you@example.com '), 'you@example.com');
+  assert.equal(p.matchPlatform('mailto:you@example.com')?.platform.id, 'email');
+  assert.equal(p.usernameOk(email, 'you@example.com?subject=hi'), false);
 });
 
 test('addresses hidden in text are found however they are written', async () => {

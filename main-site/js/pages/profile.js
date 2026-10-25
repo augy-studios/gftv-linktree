@@ -83,7 +83,8 @@ function render() {
     const a = el('a', {
       class: 'glass-card link-btn',
       href: link.url,
-      target: '_blank',
+      // An email link hands over to the mail app; a new tab would stay empty.
+      target: link.url.startsWith('mailto:') ? null : '_blank',
       rel: 'noopener noreferrer nofollow',
     }, [iconNode(link.icon), el('span', { class: 'link-title', text: link.title })]);
     a.addEventListener('click', () => {

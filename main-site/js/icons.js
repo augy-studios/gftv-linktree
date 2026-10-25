@@ -155,6 +155,7 @@ const HOST_ICONS = [
 ];
 
 export function guessIcon(url) {
+  if (/^mailto:|^[^\s/:@]+@[^\s/:@]+$/i.test(String(url).trim())) return 'mail';
   try {
     const host = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).hostname.toLowerCase().replace(/^www\./, '');
     for (const [pattern, name] of HOST_ICONS) if (pattern.test(host)) return name;

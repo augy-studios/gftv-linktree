@@ -324,9 +324,13 @@ function renderPlatformFields() {
   formatSelect.replaceChildren(...platform.formats.map((x) => el('option', { value: x.id, text: t(`link.format-${x.id}`) })));
   formatSelect.value = format.id;
   $('linkFormatField').hidden = platform.formats.length < 2;
-  $('linkPrefix').textContent = format.prefix.replace(/^https:\/\/(www\.)?/, '');
+  // mailto: means nothing to most people, so an email address shows no start.
+  $('linkPrefix').textContent = format.prefix.replace(/^(https:\/\/(www\.)?|mailto:)/, '');
   $('linkSuffix').textContent = format.suffix;
   $('linkSuffix').hidden = !format.suffix;
+  $('linkUsernameLabel').setAttribute('data-i18n', format.label);
+  $('linkUsernameLabel').textContent = t(format.label);
+  $('linkUsername').inputMode = format.inputmode;
   $('linkUsername').placeholder = format.example;
   $('linkUsernameHint').textContent = t('link.username-hint', { example: format.example });
   $('linkFormatNote').hidden = !format.note;
@@ -344,7 +348,7 @@ function updateUrlPreview() {
   }
   preview.textContent = usernameOk(format, username)
     ? t('link.will-open', { url: buildUrl(format, username) })
-    : t('link.username-invalid', { platform: platformName(platform) });
+    : t(format.invalid, { platform: platformName(platform) });
   preview.classList.toggle('bad', !usernameOk(format, username));
 }
 
@@ -407,7 +411,7 @@ $('linkForm').addEventListener('submit', (e) => {
   if (platform) {
     const username = cleanUsername(format, $('linkUsername').value);
     if (!usernameOk(format, username)) {
-      $('linkError').textContent = t('link.username-invalid', { platform: platformName(platform) });
+      $('linkError').textContent = t(format.invalid, { platform: platformName(platform) });
       $('linkUsername').focus();
       return;
     }

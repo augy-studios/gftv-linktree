@@ -4,7 +4,7 @@
 import { db, T } from './supabase.js';
 import { fail, clientIp } from './http.js';
 import { hashIp } from './crypto.js';
-import { sanitizeUrl, addressBlocked, patternBlocks, isShortener, addressesInText } from './validate.js';
+import { sanitizeUrl, addressBlocked, patternBlocks, isShortener, addressesInText, linkHost, lookupUrl } from './validate.js';
 import { unsafeUrls } from './safe-browsing.js';
 import { blocklistCategory } from './domain-blocklist.js';
 
@@ -123,19 +123,21 @@ export async function blockLists() {
 }
 
 // A link or redirect address an owner is saving: { ok, url, host } or
-// { ok: false, error }. Refused: generic shorteners (validate.js), anything
-// on the staff block lists, any domain on the HaGeZi blocklists
+// { ok: false, error }. { mail: true } lets it be an email address, for
+// links but never a redirect. Refused: generic shorteners (validate.js),
+// anything on the staff block lists, any domain on the HaGeZi blocklists
 // (domain-blocklist.js: harmful sites, gambling, adult, piracy, shorteners), and
 // anything Google Safe Browsing lists, when that check is switched on
-// (safe-browsing.js).
-export async function checkLinkUrl(input) {
-  const check = sanitizeUrl(input);
+// (safe-browsing.js). An email address is checked by its domain.
+export async function checkLinkUrl(input, { mail = false } = {}) {
+  const check = sanitizeUrl(input, { mail });
   if (!check.ok) return check;
-  if (isShortener(check.host)) return { ok: false, error: 'url_shortener' };
+  if (!check.mail && isShortener(check.host)) return { ok: false, error: 'url_shortener' };
   if (addressBlocked(check.url, await blockLists())) return { ok: false, error: 'url_blocked' };
   const listed = await blocklistCategory(check.host);
   if (listed) return { ok: false, error: LIST_ERRORS[listed] };
-  if ((await unsafeUrls([check.url])).has(check.url)) return { ok: false, error: 'url_unsafe' };
+  const probe = lookupUrl(check.url);
+  if ((await unsafeUrls([probe])).has(probe)) return { ok: false, error: 'url_unsafe' };
   return check;
 }
 
@@ -206,7 +208,7 @@ export async function slugRefusal(slug) {
 // save addresses until the day is up. Typos and shortened links do not count.
 // ---------------------------------------------------------------------------
 
-export const SUSPICIOUS_LINK_ERRORS = new Set(['url_unsafe', 'url_blocked', 'url_gambling', 'url_adult', 'url_piracy', 'url_scheme', 'url_credentials']);
+export const SUSPICIOUS_LINK_ERRORS = new Set(['url_unsafe', 'url_blocked', 'url_gambling', 'url_adult', 'url_piracy', 'url_scheme', 'url_scheme_link', 'url_credentials']);
 export const QUARANTINE_AFTER = 3;
 export const IP_FLAG_AFTER = 5;
 const SUSPICION_WINDOW = 86400;
@@ -359,13 +361,7 @@ export async function resetRefusedLinks(pageId) {
 // Count a refused address. Returns { quarantined } so the route can say so.
 export async function noteRefusedLink(req, page, error, url) {
   if (!SUSPICIOUS_LINK_ERRORS.has(error)) return { quarantined: false };
-  const host = (() => {
-    try {
-      return new URL(url).hostname;
-    } catch {
-      return String(url ?? '').slice(0, 80);
-    }
-  })();
+  const host = linkHost(url) || String(url ?? '').slice(0, 80);
   let quarantined = false;
   try {
     const [pageHits, ipHits] = await Promise.all([bump(`badlink:page:${page.id}`), bump(ipBucket(req))]);

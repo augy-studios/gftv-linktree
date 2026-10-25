@@ -25,6 +25,7 @@ In the Supabase project that already holds the `gftvhello_` tables, open
   pages
 - `010_testimonial_submissions.sql`: testimonials sent in by page owners,
   waiting for staff approval
+- `011_email_links.sql`: lets a link be an email address (`mailto:`)
 
 **Check:** in **Table Editor** you see the `gftvonelink_` tables, each marked
 **RLS enabled**.

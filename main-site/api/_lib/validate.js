@@ -33,10 +33,20 @@ export function checkSlug(input) {
   return { ok: true, slug };
 }
 
-// http and https only. A bare domain gets https:// in front, the way people
-// type addresses. Anything with another scheme (javascript:, data:, file:,
-// mailto:, intent: and the rest) is refused, never rewritten.
-export function sanitizeUrl(input) {
+// A plain email address. No display name, nothing percent-encoded, and no
+// ?subject=, ?bcc= or other headers, which could write the message for the
+// visitor or copy it to someone else. js/platforms.js has the same pattern;
+// the tests check they agree.
+export const EMAIL_PATTERN = '[A-Za-z0-9._+-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z]{2,24}';
+const EMAIL = new RegExp(`^${EMAIL_PATTERN}$`);
+
+// http and https only, and with { mail: true } (links, not redirects) an
+// email address as well. A bare domain gets https:// in front, and with mail
+// a bare email address gets mailto:, the way people type them. Anything with
+// another scheme (javascript:, data:, file:, intent: and the rest) is
+// refused, never rewritten. host is the web address's host, or the email
+// address's domain.
+export function sanitizeUrl(input, { mail = false } = {}) {
   let raw = String(input ?? '').trim();
   if (raw === '' || raw.length > 2048) return { ok: false, error: 'url_invalid' };
   // Control characters and whitespace are how scheme filters get dodged
@@ -44,9 +54,10 @@ export function sanitizeUrl(input) {
   if (/[\u0000- \u007f-\u009f]/.test(raw)) return { ok: false, error: 'url_invalid' };
 
   const scheme = raw.match(/^([a-z][a-z0-9+.-]*):/i);
+  const name = scheme ? scheme[1].toLowerCase() : null;
+  if (mail && (name === 'mailto' || (!scheme && raw.includes('@') && !raw.includes('/')))) return sanitizeMail(raw);
   if (scheme) {
-    const name = scheme[1].toLowerCase();
-    if (name !== 'http' && name !== 'https') return { ok: false, error: 'url_scheme' };
+    if (name !== 'http' && name !== 'https') return { ok: false, error: mail ? 'url_scheme_link' : 'url_scheme' };
   } else {
     raw = `https://${raw.replace(/^\/+/, '')}`;
   }
@@ -66,6 +77,33 @@ export function sanitizeUrl(input) {
   }
   if (url.href.length > 2048) return { ok: false, error: 'url_invalid' };
   return { ok: true, url: url.href, host };
+}
+
+// mailto: and one address, the domain in lower case.
+function sanitizeMail(raw) {
+  const address = raw.replace(/^mailto:/i, '');
+  if (address.length > 254 || !EMAIL.test(address)) return { ok: false, error: 'mail_invalid' };
+  const at = address.lastIndexOf('@');
+  const host = address.slice(at + 1).toLowerCase();
+  return { ok: true, url: `mailto:${address.slice(0, at)}@${host}`, host, mail: true };
+}
+
+// Where a saved link leads: an email address's domain, or a web address's
+// host. '' when it is neither.
+export function linkHost(url) {
+  const value = String(url ?? '');
+  if (/^mailto:/i.test(value)) return value.slice(value.lastIndexOf('@') + 1).toLowerCase();
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return '';
+  }
+}
+
+// The address Safe Browsing is asked about for a link: the link itself, or
+// for an email address, its domain's home page.
+export function lookupUrl(url) {
+  return /^mailto:/i.test(url) ? `https://${linkHost(url)}/` : url;
 }
 
 // Web addresses written into text (a bio, a display name, a link title),
@@ -190,14 +228,11 @@ export function patternBlocks(text, patterns, scope) {
 }
 
 // An address against both staff lists ({ domains, patterns }). An address
-// that does not parse counts as blocked, since it cannot be checked.
+// that does not parse counts as blocked, since it cannot be checked. An
+// email address is blocked by its domain.
 export function addressBlocked(url, { domains = [], patterns = [] } = {}) {
-  let host;
-  try {
-    host = new URL(url).hostname;
-  } catch {
-    return true;
-  }
+  const host = linkHost(url);
+  if (!host) return true;
   return hostIsBlocked(host, domains) || patternBlocks(url, patterns, 'links');
 }
 

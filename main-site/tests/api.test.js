@@ -590,6 +590,26 @@ test('a page can redirect instead of listing links', async () => {
   assert.equal(off.json.page.redirectUrl, null);
 });
 
+test('a link can be an email address, but a redirect cannot', async () => {
+  const owner = browser();
+  await makePage(owner);
+  const saved = await owner.call(meLinks, { method: 'POST', body: { title: 'Mail me', url: 'Me@Example.COM', icon: 'mail' } });
+  assert.equal(saved.json.links[0].url, 'mailto:Me@example.com');
+  assert.equal((await owner.call(meLinks, { method: 'POST', body: { title: 'x', url: 'mailto:me@example.com?bcc=them@example.net' } })).json.error, 'mail_invalid');
+  assert.equal((await owner.call(meLinks, { method: 'POST', body: { title: 'x', url: 'javascript:alert(1)' } })).json.error, 'url_scheme_link');
+  assert.equal((await owner.call(mePage, { method: 'PATCH', body: { redirectUrl: 'mailto:me@example.com' } })).json.error, 'url_scheme');
+
+  let pub = (await browser().call(publicPage, { query: { slug: 'augy' } })).json.page;
+  assert.equal(pub.links[0].url, 'mailto:Me@example.com');
+
+  // The block lists reach an email address through its domain.
+  fake.table('gftvonelink_blocked_domains').push({ domain: 'example.com', reason: 'x', created_at: new Date().toISOString() });
+  forgetBlockedDomains();
+  pub = (await browser().call(publicPage, { query: { slug: 'augy' } })).json.page;
+  assert.equal(pub.links.length, 0);
+  assert.equal((await owner.call(meLinks, { method: 'POST', body: { title: 'x', url: 'mailto:other@mail.example.com' } })).json.error, 'url_blocked');
+});
+
 test('a page goes dormant after a year without a sign-in, and a sign-in brings it back', async () => {
   const owner = browser();
   const { secret, password } = await makePage(owner);

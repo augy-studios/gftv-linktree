@@ -15,7 +15,7 @@ import { route, send } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
 import { optionalEnv } from '../_lib/env.js';
 import { safeEqual } from '../_lib/crypto.js';
-import { DORMANT_AFTER_DAYS, DORMANCY_WARNING_DAYS, dormantFrom } from '../_lib/validate.js';
+import { DORMANT_AFTER_DAYS, DORMANCY_WARNING_DAYS, dormantFrom, linkHost, lookupUrl } from '../_lib/validate.js';
 import { sendRichTelegram, telegramConfigured } from '../_lib/telegram.js';
 import { dormancyMessage } from '../_lib/telegram-messages.js';
 import { unsafeUrls, safeBrowsingConfigured } from '../_lib/safe-browsing.js';
@@ -32,14 +32,6 @@ const LISTED_REASONS = {
   shortener: 'A shortened link (HaGeZi shortener list); use the full address',
 };
 
-function hostOf(url) {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return '';
-  }
-}
-
 // Live links either list now catches are removed the way staff remove one
 // (the owner sees why and cannot edit it back), and a flagged redirect is
 // switched off so the page shows its links instead. Recorded as the system.
@@ -50,11 +42,11 @@ async function recheckAddresses() {
     db().from(T.pages).select('id, slug, redirect_url').not('redirect_url', 'is', null).limit(5000),
   ]);
   if (error || pageError) throw error || pageError;
-  const flagged = await unsafeUrls([...(links ?? []).map((l) => l.url), ...(pages ?? []).map((p) => p.redirect_url)]);
+  const flagged = await unsafeUrls([...(links ?? []).map((l) => l.url), ...(pages ?? []).map((p) => p.redirect_url)].map(lookupUrl));
   // Why a url should go, or null to keep it.
   const verdict = async (url) => {
-    if (flagged.has(url)) return UNSAFE_REASON;
-    const listed = await blocklistCategory(hostOf(url));
+    if (flagged.has(lookupUrl(url))) return UNSAFE_REASON;
+    const listed = await blocklistCategory(linkHost(url));
     return listed ? LISTED_REASONS[listed] : null;
   };
   let removed = 0;

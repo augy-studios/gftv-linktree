@@ -12,9 +12,13 @@
 // and in Chinese the name the service is known by there where it has one
 // (小红书, 领英, 电报), the brand otherwise. Format labels are under
 // link.format-<id>, and a format's note (opts.note) is a locale key shown
-// under the username field when that format is chosen.
+// under the username field when that format is chosen. opts.label and
+// opts.invalid replace the username field's name and its "does not look
+// right" message, for a format that takes something other than a username.
 
 const USER = '[A-Za-z0-9._-]{1,64}';
+// The same as validate.js EMAIL_PATTERN; the tests check they agree.
+export const EMAIL = '[A-Za-z0-9._+-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z]{2,24}';
 
 const f = (id, prefix, opts = {}) => ({
   id,
@@ -24,6 +28,9 @@ const f = (id, prefix, opts = {}) => ({
   example: opts.example || 'yourname',
   strip: opts.strip ?? /^@/,
   note: opts.note || null,
+  label: opts.label || 'link.username',
+  invalid: opts.invalid || 'link.username-invalid',
+  inputmode: opts.inputmode || 'text',
 });
 
 export const PLATFORMS = [
@@ -70,6 +77,7 @@ export const PLATFORMS = [
   { id: 'youtubemusic', name: 'YouTube Music', icon: 'youtubemusic', category: 'audio', formats: [f('channel', 'https://music.youtube.com/channel/', { pattern: 'UC[A-Za-z0-9_-]{22}', example: 'UCxxxxxxxxxxxxxxxxxxxxxx', strip: /^$/ })] },
 
   // messaging
+  { id: 'email', name: 'Email', icon: 'mail', category: 'messaging', formats: [f('address', 'mailto:', { pattern: EMAIL, example: 'you@example.com', strip: /^mailto:/i, label: 'link.email-address', invalid: 'link.email-invalid', inputmode: 'email' })] },
   { id: 'telegram', name: 'Telegram', icon: 'telegram', category: 'messaging', formats: [f('profile', 'https://t.me/', { pattern: '[A-Za-z0-9_]{4,32}' })] },
   {
     id: 'discord', name: 'Discord', icon: 'discord', category: 'messaging',

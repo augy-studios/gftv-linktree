@@ -57,7 +57,7 @@ export default route('me/links', async (req, res) => {
     const title = cleanText(body.title, LIMITS.title);
     if (!title) return fail(res, 400, 'title_required');
     if (await titleRefused(title)) return;
-    const url = await checkLinkUrl(body.url);
+    const url = await checkLinkUrl(body.url, { mail: true });
     if (!url.ok) return refuse(url, body.url);
     const nextIndex = existing.reduce((max, l) => Math.max(max, l.order_index), -1) + 1;
     const { error } = await db()
@@ -87,7 +87,7 @@ export default route('me/links', async (req, res) => {
         if (await titleRefused(fields.title)) return;
       }
       if (body.url !== undefined) {
-        const url = await checkLinkUrl(body.url);
+        const url = await checkLinkUrl(body.url, { mail: true });
         if (!url.ok) return refuse(url, body.url);
         fields.url = url.url;
       }
