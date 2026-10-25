@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <!--OLG:META-->
+    <title>OneLink GFTV</title>
+    <meta name="description" content="One page for all your links, with a QR code to share it.">
+    <!--/OLG:META-->
+    <meta name="robots" content="index">
+
+    <meta name="theme-color" content="#ffffff">
+    <script src="/js/prepaint.js"></script>
+
+    <link rel="preload" href="/assets/fonts/ProximaNova-Regular.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/OLG-180.png">
+
+    <!-- Google tag (gtag.js), public pages only -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-FMCYFTFPEL"></script>
+    <script src="/js/analytics.js"></script>
+
+    <script type="module" src="/assets/i18n/boot.js"></script>
+</head>
+
+<body>
+    <script src="/js/official-bar.js"></script>
+
+    <header class="site-header">
+        <a class="brand" href="/">
+            <img src="/OLG-192.png" alt="" width="32" height="32">
+            <span data-i18n="site.name">OneLink GFTV</span>
+        </a>
+        <div class="header-actions">
+            <div data-language-switcher></div>
+            <button class="icon-btn" type="button" id="themeBtn" aria-label="Theme" aria-haspopup="dialog" aria-controls="themeModal">
+                <span data-icon="sun"></span>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <article class="profile" id="profile" aria-busy="true">
+            <div class="profile-skeleton delayed" id="profileSkeleton" aria-hidden="true">
+                <div class="skeleton sk-avatar"></div>
+                <div class="skeleton sk-line u-narrow"></div>
+                <div class="skeleton sk-link"></div>
+                <div class="skeleton sk-link"></div>
+                <div class="skeleton sk-link"></div>
+            </div>
+            <span class="visually-hidden" role="status" id="profileStatus" data-i18n="common.loading">Loading</span>
+        </article>
+    </main>
+
+    <footer class="site-footer">
+        <span data-i18n="footer.made">Made with</span> <span data-icon="heart"></span> <span data-i18n="footer.in">in</span>
+        <a href="https://www.google.com/maps/place/Singapore" target="_blank" rel="noopener" data-i18n="footer.singapore">Singapore</a>
+        <span data-i18n="footer.by">by Global Furry Television</span> &copy; 2014-<span id="currentYear"></span>.
+        <span data-i18n="footer.rights">All rights reserved.</span>
+    </footer>
+
+    <div class="modal-backdrop hidden" id="themeModal">
+        <div class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="themeModalTitle">
+            <div class="modal-head">
+                <h2 id="themeModalTitle" data-i18n="theme.title">Theme</h2>
+                <button class="icon-btn small" type="button" data-close-modal="themeModal" aria-label="Close" data-i18n-attr="aria-label:common.close">
+                    <span data-icon="close"></span>
+                </button>
+            </div>
+            <p class="modal-section-label" data-i18n="theme.mode-label">Mode</p>
+            <div class="mode-toggle" id="modeToggle">
+                <button class="mode-btn" type="button" data-mode="light" aria-pressed="false"><span data-icon="sun"></span><span data-i18n="theme.mode.light">Light</span></button>
+                <button class="mode-btn" type="button" data-mode="dark" aria-pressed="false"><span data-icon="moon"></span><span data-i18n="theme.mode.dark">Dark</span></button>
+                <button class="mode-btn mode-btn-wide" type="button" data-mode="time" aria-pressed="false"><span data-icon="clock"></span><span data-i18n="theme.mode.time">Time-based</span></button>
+            </div>
+            <p class="mode-note" id="modeNote" hidden></p>
+            <p class="modal-section-label" data-i18n="theme.color-label">Colour theme</p>
+            <div class="swatch-grid" id="swatchGrid"></div>
+        </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="shareModal">
+        <div class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
+            <div class="modal-head">
+                <h2 id="shareTitle" data-i18n="share.title">Share this page</h2>
+                <button class="icon-btn small" type="button" data-close-modal="shareModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
+            </div>
+            <div class="qr-code" id="shareQr"></div>
+            <p class="u-center muted small" id="shareUrl"></p>
+            <div class="actions">
+                <button class="btn btn-primary" type="button" id="shareCopy"><span data-icon="copy"></span><span data-i18n="share.copy-link">Copy link</span></button>
+                <button class="btn" type="button" id="shareDownload"><span data-icon="download"></span><span data-i18n="share.download-qr">Download QR</span></button>
+                <button class="btn" type="button" id="shareNative" hidden><span data-icon="share"></span><span data-i18n="share.share">Share</span></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="reportModal">
+        <form class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="reportTitle" id="reportForm" novalidate>
+            <div class="modal-head">
+                <h2 id="reportTitle" data-i18n="report.title">Report</h2>
+                <button class="icon-btn small" type="button" data-close-modal="reportModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
+            </div>
+            <p class="small muted" id="reportWhat"></p>
+            <label class="field u-mt-075">
+                <span data-i18n="report.reason">What is wrong?</span>
+                <select id="reportReason" required>
+                    <option value="scam" data-i18n="report.reason-scam">Scam or phishing</option>
+                    <option value="malware" data-i18n="report.reason-malware">Malware or a harmful download</option>
+                    <option value="impersonation" data-i18n="report.reason-impersonation">Pretending to be someone else</option>
+                    <option value="spam" data-i18n="report.reason-spam">Spam</option>
+                    <option value="abuse" data-i18n="report.reason-abuse">Harassment or hate</option>
+                    <option value="adult" data-i18n="report.reason-adult">Adult content without a warning</option>
+                    <option value="other" data-i18n="report.reason-other">Something else</option>
+                </select>
+            </label>
+            <label class="field">
+                <span data-i18n="report.details">Anything else we should know? (optional)</span>
+                <textarea id="reportDetails" maxlength="500" rows="3"></textarea>
+            </label>
+            <div class="callout danger" id="reportError" role="alert"></div>
+            <div class="actions"><button class="btn btn-primary" type="submit" id="reportSubmit"><span data-i18n="report.submit">Send report</span></button></div>
+        </form>
+    </div>
+
+    <script type="application/json" id="pageData">{"state":"shell"}</script>
+    <script src="/js/vendor/qrcode.js"></script>
+    <script type="module" src="/js/pages/profile.js"></script>
+</body>
+
+</html>

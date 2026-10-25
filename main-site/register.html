@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title data-i18n="register.meta-title">Create your page | OneLink GFTV</title>
+    <meta name="description" content="One page for all your links, with a QR code to share it." data-i18n-attr="content:meta.description">
+    <meta name="robots" content="index">
+
+    <meta name="theme-color" content="#ffffff">
+    <script src="/js/prepaint.js"></script>
+
+    <link rel="preload" href="/assets/fonts/ProximaNova-Regular.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/OLG-180.png">
+
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Create your page | OneLink GFTV">
+    <meta property="og:site_name" content="OneLink GFTV">
+    <meta property="og:description" content="One page for all your links, with a QR code to share it.">
+    <meta property="og:url" content="https://links.gftv.asia/register">
+    <link rel="canonical" href="https://links.gftv.asia/register">
+    <meta property="og:image" content="https://links.gftv.asia/OLG-main.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content="https://links.gftv.asia/OLG-main.png">
+
+    <script type="module" src="/assets/i18n/boot.js"></script>
+</head>
+
+<body>
+    <script src="/js/official-bar.js"></script>
+
+    <header class="site-header">
+        <a class="brand" href="/">
+            <img src="/OLG-192.png" alt="" width="32" height="32">
+            <span data-i18n="site.name">OneLink GFTV</span>
+        </a>
+        <div class="header-actions">
+            <div data-language-switcher></div>
+            <button class="icon-btn" type="button" id="themeBtn" aria-label="Theme" aria-haspopup="dialog" aria-controls="themeModal">
+                <span data-icon="sun"></span>
+            </button>
+        </div>
+    </header>
+
+    <main class="center">
+        <ol class="steps" aria-hidden="true"><li id="step1"></li><li id="step2"></li><li id="step3"></li></ol>
+
+        <section class="glass-card page-card" id="stepAccount">
+            <div class="page-head">
+                <h1 data-i18n="register.title">Create your page</h1>
+                <p data-i18n="register.lede">Choose a name for your page and a password.</p>
+            </div>
+            <form id="accountForm" novalidate>
+                <div class="field">
+                    <label for="slug" data-i18n="field.slug">Page name</label>
+                    <div class="slug-input">
+                        <span class="slug-host" aria-hidden="true">links.gftv.asia/</span>
+                        <input id="slug" name="slug" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32" required aria-describedby="slugStatus slugHint">
+                    </div>
+                    <p class="field-status" id="slugStatus" role="status" aria-live="polite"></p>
+                    <p class="field-hint" id="slugHint" data-i18n="field.slug-hint">2 to 32 characters: lowercase letters, numbers and dashes.</p>
+                </div>
+                <label class="field">
+                    <span data-i18n="field.password">Password</span>
+                    <input id="password" type="password" autocomplete="new-password" minlength="10" required aria-describedby="passwordHint">
+                    <p class="field-hint" id="passwordHint" data-i18n="field.password-hint">At least 10 characters. A few words together is easy to remember and hard to guess.</p>
+                </label>
+                <label class="field">
+                    <span data-i18n="field.password-confirm">Type it again</span>
+                    <input id="passwordConfirm" type="password" autocomplete="new-password" required>
+                </label>
+                <div class="callout danger" id="accountError" role="alert"></div>
+                <div class="actions">
+                    <button class="btn btn-primary" type="submit" id="accountSubmit"><span data-i18n="common.continue">Continue</span></button>
+                </div>
+            </form>
+            <p class="muted small u-mt-1 u-center"><span data-i18n="register.have-page">Already have a page?</span> <a class="text-link" href="/login" data-i18n="home.sign-in">Sign in</a></p>
+        </section>
+
+        <section class="glass-card page-card" id="stepFactor" hidden>
+            <div class="page-head">
+                <h1 data-i18n="register.factor-title">Lock your page</h1>
+                <p data-i18n="register.factor-lede">Editing needs a second step after your password. Choose one; you can add the other later.</p>
+            </div>
+            <div class="segmented" role="group" aria-label="Second step" data-i18n-attr="aria-label:register.factor-group">
+                <button type="button" data-factor="totp" aria-pressed="true"><span data-icon="smartphone"></span><span data-i18n="factor.totp">Authenticator app</span></button>
+                <button type="button" data-factor="passkey" aria-pressed="false"><span data-icon="fingerprint"></span><span data-i18n="factor.passkey">Passkey</span></button>
+            </div>
+
+            <div id="totpSetup">
+                <p class="small" data-i18n="totp.scan">Scan this with Google Authenticator or any authenticator app, then enter the six digit code it shows.</p>
+                <div class="qr-code small" id="totpQr" aria-busy="true"><div class="skeleton u-qr-sk"></div></div>
+                <details class="small">
+                    <summary class="text-link" data-i18n="totp.manual">Can't scan? Enter this key instead</summary>
+                    <code class="secret" id="totpSecret"></code>
+                </details>
+                <form id="totpForm" novalidate>
+                    <label class="field u-mt-1">
+                        <span data-i18n="field.code">Six digit code</span>
+                        <input class="code-input" id="totpCode" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" required>
+                    </label>
+                    <div class="callout danger" id="totpError" role="alert"></div>
+                    <div class="actions">
+                        <button class="btn btn-primary" type="submit" id="totpSubmit"><span data-i18n="totp.confirm">Confirm and finish</span></button>
+                    </div>
+                </form>
+            </div>
+
+            <div id="passkeySetup" hidden>
+                <p class="small" data-i18n="passkey.explain">A passkey uses your phone or computer's screen lock, fingerprint or face to confirm it is you. Nothing to type.</p>
+                <p class="callout warn" id="passkeyUnsupported" hidden data-i18n="passkey.unsupported">This browser cannot create passkeys. Use an authenticator app instead.</p>
+                <div class="callout danger" id="passkeyError" role="alert"></div>
+                <div class="actions">
+                    <button class="btn btn-primary" type="button" id="passkeyCreate"><span data-icon="fingerprint"></span><span data-i18n="passkey.create">Create a passkey</span></button>
+                </div>
+            </div>
+        </section>
+
+        <section class="glass-card page-card" id="stepCodes" hidden>
+            <div class="page-head">
+                <h1 data-i18n="codes.title">Save your backup codes</h1>
+                <p data-i18n="codes.lede">Each code works once, in place of your authenticator or passkey. Keep them somewhere safe, away from your phone.</p>
+            </div>
+            <ul class="codes" id="backupCodes" aria-label="Backup codes" data-i18n-attr="aria-label:codes.list-label"></ul>
+            <div class="actions inline">
+                <button class="btn btn-small" type="button" id="codesCopy"><span data-icon="copy"></span><span data-i18n="common.copy">Copy</span></button>
+                <button class="btn btn-small" type="button" id="codesDownload"><span data-icon="download"></span><span data-i18n="codes.download">Download</span></button>
+            </div>
+            <label class="check u-mt-1">
+                <input type="checkbox" id="codesSaved">
+                <span data-i18n="codes.saved">I have saved these codes</span>
+            </label>
+            <div class="actions">
+                <a class="btn btn-primary" href="/edit" id="codesDone" aria-disabled="true"><span data-i18n="register.go-editor">Go to my page editor</span></a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <span data-i18n="footer.made">Made with</span> <span data-icon="heart"></span> <span data-i18n="footer.in">in</span>
+        <a href="https://www.google.com/maps/place/Singapore" target="_blank" rel="noopener" data-i18n="footer.singapore">Singapore</a>
+        <span data-i18n="footer.by">by Global Furry Television</span> &copy; 2014-<span id="currentYear"></span>.
+        <span data-i18n="footer.rights">All rights reserved.</span>
+    </footer>
+
+    <div class="modal-backdrop hidden" id="themeModal">
+        <div class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="themeModalTitle">
+            <div class="modal-head">
+                <h2 id="themeModalTitle" data-i18n="theme.title">Theme</h2>
+                <button class="icon-btn small" type="button" data-close-modal="themeModal" aria-label="Close" data-i18n-attr="aria-label:common.close">
+                    <span data-icon="close"></span>
+                </button>
+            </div>
+            <p class="modal-section-label" data-i18n="theme.mode-label">Mode</p>
+            <div class="mode-toggle" id="modeToggle">
+                <button class="mode-btn" type="button" data-mode="light" aria-pressed="false"><span data-icon="sun"></span><span data-i18n="theme.mode.light">Light</span></button>
+                <button class="mode-btn" type="button" data-mode="dark" aria-pressed="false"><span data-icon="moon"></span><span data-i18n="theme.mode.dark">Dark</span></button>
+                <button class="mode-btn mode-btn-wide" type="button" data-mode="time" aria-pressed="false"><span data-icon="clock"></span><span data-i18n="theme.mode.time">Time-based</span></button>
+            </div>
+            <p class="mode-note" id="modeNote" hidden></p>
+            <p class="modal-section-label" data-i18n="theme.color-label">Colour theme</p>
+            <div class="swatch-grid" id="swatchGrid"></div>
+        </div>
+    </div>
+
+    <script src="/js/vendor/qrcode.js"></script>
+    <script type="module" src="/js/pages/register.js"></script>
+</body>
+
+</html>

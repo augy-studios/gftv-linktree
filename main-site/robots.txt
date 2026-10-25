@@ -1,5 +1,12 @@
 # www.robotstxt.org/
 
-# Allow crawling of all content, including search engine robots
 User-agent: *
 Allow: /
+Disallow: /api/
+Disallow: /edit
+Disallow: /admin
+Disallow: /login
+Disallow: /register
+Disallow: /reset
+Disallow: /shell/
+Disallow: /assets/i18n/

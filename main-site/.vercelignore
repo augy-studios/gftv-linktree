@@ -1,0 +1,5 @@
+# Not served: tests, local tooling and docs.
+tests/
+scripts/
+README.md
+.env*

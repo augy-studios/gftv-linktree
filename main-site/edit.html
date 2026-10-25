@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title data-i18n="edit.meta-title">Your page | OneLink GFTV</title>
+    <meta name="description" content="One page for all your links, with a QR code to share it." data-i18n-attr="content:meta.description">
+    <meta name="robots" content="noindex">
+
+    <meta name="theme-color" content="#ffffff">
+    <script src="/js/prepaint.js"></script>
+
+    <link rel="preload" href="/assets/fonts/ProximaNova-Regular.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/OLG-180.png">
+
+    <script type="module" src="/assets/i18n/boot.js"></script>
+</head>
+
+<body>
+    <script src="/js/official-bar.js"></script>
+
+    <header class="site-header">
+        <a class="brand" href="/">
+            <img src="/OLG-192.png" alt="" width="32" height="32">
+            <span data-i18n="site.name">OneLink GFTV</span>
+        </a>
+        <div class="header-actions">
+            <button class="icon-btn" type="button" id="signOut" aria-label="Sign out" data-i18n-attr="aria-label:edit.sign-out" hidden>
+                <span data-icon="logout"></span>
+            </button>
+            <div data-language-switcher></div>
+            <button class="icon-btn" type="button" id="themeBtn" aria-label="Theme" aria-haspopup="dialog" aria-controls="themeModal">
+                <span data-icon="sun"></span>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <div class="editor">
+            <div id="editorLoading" class="stack" aria-busy="true">
+                <span class="visually-hidden" role="status" data-i18n="common.loading">Loading</span>
+                <div class="skeleton delayed u-h-3"></div>
+                <div class="skeleton delayed u-h-16"></div>
+            </div>
+
+            <div id="editorSignedOut" class="glass-card page-card u-mx-auto" hidden>
+                <div class="page-head">
+                    <h1 data-i18n="edit.signed-out-title">You are signed out</h1>
+                    <p data-i18n="edit.signed-out-body">Sign in to edit your page.</p>
+                </div>
+                <div class="actions"><a class="btn btn-primary" href="/login" data-i18n="home.sign-in">Sign in</a></div>
+            </div>
+
+            <div id="editorBanned" class="glass-card page-card u-mx-auto" hidden>
+                <div class="page-head">
+                    <h1 data-i18n="edit.banned-title">This page has been taken down</h1>
+                    <p data-i18n="edit.banned-body">The GFTV team has taken this page down and it cannot be edited.</p>
+                </div>
+            </div>
+
+            <div id="editorReady" hidden>
+                <div class="editor-head">
+                    <div>
+                        <h1 data-i18n="edit.title">Your page</h1>
+                        <a class="url text-link" id="pageUrl" href="/" target="_blank" rel="noopener"></a>
+                    </div>
+                    <a class="btn btn-small" id="viewPage" href="/" target="_blank" rel="noopener"><span data-icon="external"></span><span data-i18n="edit.view">View</span></a>
+                </div>
+
+                <div class="tabs glass-card" role="tablist" aria-label="Editor sections" data-i18n-attr="aria-label:edit.tabs">
+                    <button class="tab" role="tab" id="tab-links" aria-controls="panel-links" aria-selected="true"><span data-icon="list"></span><span data-i18n="edit.tab-links">Links</span></button>
+                    <button class="tab" role="tab" id="tab-profile" aria-controls="panel-profile" aria-selected="false" tabindex="-1"><span data-icon="user"></span><span data-i18n="edit.tab-profile">Profile</span></button>
+                    <button class="tab" role="tab" id="tab-share" aria-controls="panel-share" aria-selected="false" tabindex="-1"><span data-icon="qr"></span><span data-i18n="edit.tab-share">Share</span></button>
+                    <button class="tab" role="tab" id="tab-security" aria-controls="panel-security" aria-selected="false" tabindex="-1"><span data-icon="shield"></span><span data-i18n="edit.tab-security">Security</span></button>
+                </div>
+
+                <section class="glass-card panel" role="tabpanel" id="panel-links" aria-labelledby="tab-links">
+                    <div class="row between u-mb-085">
+                        <h2 class="u-m-0" data-i18n="edit.links-title">Links</h2>
+                        <button class="btn btn-primary btn-small" type="button" id="addLink"><span data-icon="plus"></span><span data-i18n="edit.add-link">Add link</span></button>
+                    </div>
+                    <ul class="edit-links" id="linkList"></ul>
+                    <p class="empty-state" id="linksEmpty" hidden data-i18n="edit.links-empty">No links yet. Add your first one.</p>
+                </section>
+
+                <section class="glass-card panel" role="tabpanel" id="panel-profile" aria-labelledby="tab-profile" hidden>
+                    <h2 data-i18n="edit.profile-title">Profile</h2>
+                    <form id="profileForm" novalidate>
+                        <label class="field">
+                            <span data-i18n="field.display-name">Display name</span>
+                            <input id="displayName" type="text" maxlength="60" autocomplete="nickname">
+                            <p class="field-hint" data-i18n="field.display-name-hint">Shown at the top of your page. Leave empty to show your page name.</p>
+                        </label>
+                        <label class="field">
+                            <span data-i18n="field.bio">Bio</span>
+                            <textarea id="bio" maxlength="280" rows="4"></textarea>
+                            <p class="field-hint" id="bioCount" aria-live="polite"></p>
+                        </label>
+                        <div class="callout danger" id="profileError" role="alert"></div>
+                        <div class="actions inline">
+                            <button class="btn btn-primary" type="submit" id="profileSave"><span data-i18n="common.save">Save</span></button>
+                        </div>
+                    </form>
+                </section>
+
+                <section class="glass-card panel" role="tabpanel" id="panel-share" aria-labelledby="tab-share" hidden>
+                    <h2 data-i18n="edit.share-title">Share your page</h2>
+                    <p class="muted small" data-i18n="edit.share-body">Print it, put it on a poster, or show it on your phone for people to scan.</p>
+                    <div class="qr-code" id="shareQr"></div>
+                    <div class="actions inline u-justify-center">
+                        <button class="btn" type="button" id="shareCopy"><span data-icon="copy"></span><span data-i18n="share.copy-link">Copy link</span></button>
+                        <button class="btn" type="button" id="shareDownload"><span data-icon="download"></span><span data-i18n="share.download-qr">Download QR</span></button>
+                        <button class="btn" type="button" id="shareNative" hidden><span data-icon="share"></span><span data-i18n="share.share">Share</span></button>
+                    </div>
+                </section>
+
+                <div role="tabpanel" id="panel-security" aria-labelledby="tab-security" hidden>
+                    <section class="glass-card panel">
+                        <h2 data-i18n="security.factors-title">Second step</h2>
+                        <p class="muted small" data-i18n="security.factors-body">You need at least one of these to sign in. Having both means losing one does not lock you out.</p>
+                        <div class="panel-section">
+                            <div class="factor-row">
+                                <div class="what"><span data-icon="smartphone"></span><div><span data-i18n="factor.totp">Authenticator app</span><small id="totpState"></small></div></div>
+                                <div class="row">
+                                    <button class="btn btn-small" type="button" id="totpAdd" hidden><span data-i18n="security.set-up">Set up</span></button>
+                                    <button class="btn btn-small btn-quiet" type="button" id="totpRemove" hidden><span data-i18n="common.remove">Remove</span></button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="panel-section">
+                            <div class="factor-row">
+                                <div class="what"><span data-icon="fingerprint"></span><div><span data-i18n="factor.passkeys">Passkeys</span><small id="passkeyState"></small></div></div>
+                                <button class="btn btn-small" type="button" id="passkeyAdd"><span data-i18n="security.add-passkey">Add a passkey</span></button>
+                            </div>
+                            <ul class="passkey-list" id="passkeyList"></ul>
+                        </div>
+                    </section>
+
+                    <section class="glass-card panel">
+                        <h2 data-i18n="security.recovery-title">Ways back in</h2>
+                        <div class="panel-section">
+                            <div class="factor-row">
+                                <div class="what"><span data-icon="key"></span><div><span data-i18n="factor.backup-codes">Backup codes</span><small id="codesState"></small></div></div>
+                                <button class="btn btn-small" type="button" id="codesRegenerate"><span data-i18n="security.new-codes">Make new codes</span></button>
+                            </div>
+                        </div>
+                        <div class="panel-section" id="telegramSection">
+                            <div class="factor-row">
+                                <div class="what"><span data-icon="send"></span><div><span data-i18n="factor.telegram">Telegram</span><small id="telegramState"></small></div></div>
+                                <div class="row">
+                                    <button class="btn btn-small" type="button" id="telegramLink" hidden><span data-i18n="telegram.link">Link Telegram</span></button>
+                                    <button class="btn btn-small btn-quiet" type="button" id="telegramUnlink" hidden><span data-i18n="telegram.unlink">Unlink</span></button>
+                                </div>
+                            </div>
+                            <p class="field-hint" data-i18n="telegram.why">With Telegram linked, you can sign in with a code sent there, and reset a forgotten password.</p>
+                        </div>
+                    </section>
+
+                    <section class="glass-card panel">
+                        <h2 data-i18n="security.account-title">Password and devices</h2>
+                        <div class="panel-section">
+                            <div class="factor-row">
+                                <div class="what"><span data-icon="lock"></span><span data-i18n="field.password">Password</span></div>
+                                <button class="btn btn-small" type="button" id="passwordChange"><span data-i18n="security.change-password">Change password</span></button>
+                            </div>
+                        </div>
+                        <div class="panel-section">
+                            <div class="factor-row">
+                                <div class="what"><span data-icon="logout"></span><span data-i18n="security.other-devices">Other devices</span></div>
+                                <button class="btn btn-small" type="button" id="sessionsEnd"><span data-i18n="security.sign-out-others">Sign out everywhere else</span></button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="glass-card panel">
+                        <h2 data-i18n="security.danger-title">Delete page</h2>
+                        <p class="muted small" data-i18n="security.danger-body">This deletes your page, its links and its sign-in methods for good. The name becomes free for someone else.</p>
+                        <div class="actions inline">
+                            <button class="btn btn-danger btn-small" type="button" id="pageDelete"><span data-icon="trash"></span><span data-i18n="security.delete">Delete my page</span></button>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="site-footer">
+        <span data-i18n="footer.made">Made with</span> <span data-icon="heart"></span> <span data-i18n="footer.in">in</span>
+        <a href="https://www.google.com/maps/place/Singapore" target="_blank" rel="noopener" data-i18n="footer.singapore">Singapore</a>
+        <span data-i18n="footer.by">by Global Furry Television</span> &copy; 2014-<span id="currentYear"></span>.
+        <span data-i18n="footer.rights">All rights reserved.</span>
+    </footer>
+
+    <div class="modal-backdrop hidden" id="themeModal">
+        <div class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="themeModalTitle">
+            <div class="modal-head">
+                <h2 id="themeModalTitle" data-i18n="theme.title">Theme</h2>
+                <button class="icon-btn small" type="button" data-close-modal="themeModal" aria-label="Close" data-i18n-attr="aria-label:common.close">
+                    <span data-icon="close"></span>
+                </button>
+            </div>
+            <p class="modal-section-label" data-i18n="theme.mode-label">Mode</p>
+            <div class="mode-toggle" id="modeToggle">
+                <button class="mode-btn" type="button" data-mode="light" aria-pressed="false"><span data-icon="sun"></span><span data-i18n="theme.mode.light">Light</span></button>
+                <button class="mode-btn" type="button" data-mode="dark" aria-pressed="false"><span data-icon="moon"></span><span data-i18n="theme.mode.dark">Dark</span></button>
+                <button class="mode-btn mode-btn-wide" type="button" data-mode="time" aria-pressed="false"><span data-icon="clock"></span><span data-i18n="theme.mode.time">Time-based</span></button>
+            </div>
+            <p class="mode-note" id="modeNote" hidden></p>
+            <p class="modal-section-label" data-i18n="theme.color-label">Colour theme</p>
+            <div class="swatch-grid" id="swatchGrid"></div>
+        </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="linkModal">
+        <form class="modal wide glass-card" role="dialog" aria-modal="true" aria-labelledby="linkModalTitle" id="linkForm" novalidate>
+            <div class="modal-head">
+                <h2 id="linkModalTitle" data-i18n="link.add-title">Add a link</h2>
+                <button class="icon-btn small" type="button" data-close-modal="linkModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
+            </div>
+            <label class="field">
+                <span data-i18n="field.link-url">Address</span>
+                <input id="linkUrl" type="url" inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false" maxlength="2048" placeholder="https://" required>
+            </label>
+            <label class="field">
+                <span data-i18n="field.link-title">Title</span>
+                <input id="linkTitle" type="text" maxlength="80" required>
+            </label>
+            <div class="field">
+                <span id="iconLabel" data-i18n="field.link-icon">Icon</span>
+                <div class="icon-picker" id="iconPicker" role="group" aria-labelledby="iconLabel"></div>
+            </div>
+            <div class="callout danger" id="linkError" role="alert"></div>
+            <div class="actions">
+                <button class="btn btn-primary" type="submit" id="linkSave"><span data-i18n="common.save">Save</span></button>
+            </div>
+        </form>
+    </div>
+
+    <div class="modal-backdrop hidden" id="passwordModal">
+        <form class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="passwordModalTitle" id="passwordForm" novalidate>
+            <div class="modal-head">
+                <h2 id="passwordModalTitle" data-i18n="confirm.title">Confirm it is you</h2>
+                <button class="icon-btn small" type="button" data-close-modal="passwordModal" aria-label="Close" data-i18n-attr="aria-label:common.close">
+                    <span data-icon="close"></span>
+                </button>
+            </div>
+            <p class="muted small" data-i18n="confirm.body">Enter your password to make this change.</p>
+            <label class="field u-mt-1">
+                <span data-i18n="field.password">Password</span>
+                <input type="password" id="confirmPassword" autocomplete="current-password" required>
+            </label>
+            <div class="callout danger" id="passwordError" role="alert"></div>
+            <div class="actions">
+                <button class="btn btn-primary" type="submit" id="passwordSubmit"><span data-i18n="common.continue">Continue</span></button>
+            </div>
+        </form>
+    </div>
+
+    <div class="modal-backdrop hidden" id="totpModal">
+        <form class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="totpModalTitle" id="totpForm" novalidate>
+            <div class="modal-head">
+                <h2 id="totpModalTitle" data-i18n="factor.totp">Authenticator app</h2>
+                <button class="icon-btn small" type="button" data-close-modal="totpModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
+            </div>
+            <p class="small" data-i18n="totp.scan">Scan this with Google Authenticator or any authenticator app, then enter the six digit code it shows.</p>
+            <div class="qr-code small" id="totpQr"></div>
+            <details class="small">
+                <summary class="text-link" data-i18n="totp.manual">Can't scan? Enter this key instead</summary>
+                <code class="secret" id="totpSecret"></code>
+            </details>
+            <label class="field u-mt-1">
+                <span data-i18n="field.code">Six digit code</span>
+                <input class="code-input" id="totpCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
+            </label>
+            <div class="callout danger" id="totpError" role="alert"></div>
+            <div class="actions"><button class="btn btn-primary" type="submit" id="totpSubmit"><span data-i18n="common.confirm">Confirm</span></button></div>
+        </form>
+    </div>
+
+    <div class="modal-backdrop hidden" id="codesModal">
+        <div class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="codesModalTitle">
+            <div class="modal-head">
+                <h2 id="codesModalTitle" data-i18n="codes.title">Save your backup codes</h2>
+                <button class="icon-btn small" type="button" data-close-modal="codesModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
+            </div>
+            <p class="small" data-i18n="codes.replaced">Your old codes no longer work. Each of these works once.</p>
+            <ul class="codes" id="backupCodes" aria-label="Backup codes" data-i18n-attr="aria-label:codes.list-label"></ul>
+            <div class="actions inline">
+                <button class="btn btn-small" type="button" id="codesCopy"><span data-icon="copy"></span><span data-i18n="common.copy">Copy</span></button>
+                <button class="btn btn-small" type="button" id="codesDownload"><span data-icon="download"></span><span data-i18n="codes.download">Download</span></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="telegramModal">
+        <div class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="telegramModalTitle">
+            <div class="modal-head">
+                <h2 id="telegramModalTitle" data-i18n="telegram.link">Link Telegram</h2>
+                <button class="icon-btn small" type="button" data-close-modal="telegramModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
+            </div>
+            <p class="small" data-i18n="telegram.steps">Open the bot and press Start. This link works once and expires in 10 minutes. Come back here when the bot says you are linked.</p>
+            <div class="actions">
+                <a class="btn btn-primary" id="telegramOpen" href="https://t.me/" target="_blank" rel="noopener noreferrer"><span data-icon="send"></span><span data-i18n="telegram.open">Open Telegram</span></a>
+                <button class="btn" type="button" id="telegramDone"><span data-i18n="telegram.done">I have pressed Start</span></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="changePasswordModal">
+        <form class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="changePasswordTitle" id="changePasswordForm" novalidate>
+            <div class="modal-head">
+                <h2 id="changePasswordTitle" data-i18n="security.change-password">Change password</h2>
+                <button class="icon-btn small" type="button" data-close-modal="changePasswordModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
+            </div>
+            <label class="field">
+                <span data-i18n="field.current-password">Current password</span>
+                <input id="currentPassword" type="password" autocomplete="current-password" required>
+            </label>
+            <label class="field">
+                <span data-i18n="field.new-password">New password</span>
+                <input id="changeNewPassword" type="password" autocomplete="new-password" minlength="10" required>
+                <p class="field-hint" data-i18n="field.password-hint">At least 10 characters. A few words together is easy to remember and hard to guess.</p>
+            </label>
+            <label class="field">
+                <span data-i18n="field.password-confirm">Type it again</span>
+                <input id="changeNewPasswordConfirm" type="password" autocomplete="new-password" required>
+            </label>
+            <div class="callout danger" id="changePasswordError" role="alert"></div>
+            <div class="actions"><button class="btn btn-primary" type="submit" id="changePasswordSubmit"><span data-i18n="common.save">Save</span></button></div>
+        </form>
+    </div>
+
+    <div class="modal-backdrop hidden" id="deleteModal">
+        <form class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="deleteTitle" id="deleteForm" novalidate>
+            <div class="modal-head">
+                <h2 id="deleteTitle" data-i18n="security.delete">Delete my page</h2>
+                <button class="icon-btn small" type="button" data-close-modal="deleteModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
+            </div>
+            <p class="small" data-i18n="security.danger-body">This deletes your page, its links and its sign-in methods for good. The name becomes free for someone else.</p>
+            <label class="field u-mt-1">
+                <span id="deleteConfirmLabel"></span>
+                <input id="deleteConfirmSlug" type="text" autocapitalize="none" spellcheck="false" required>
+            </label>
+            <label class="field">
+                <span data-i18n="field.password">Password</span>
+                <input id="deletePassword" type="password" autocomplete="current-password" required>
+            </label>
+            <div class="callout danger" id="deleteError" role="alert"></div>
+            <div class="actions"><button class="btn btn-danger" type="submit" id="deleteSubmit"><span data-i18n="security.delete-forever">Delete forever</span></button></div>
+        </form>
+    </div>
+
+    <script src="/js/vendor/qrcode.js"></script>
+    <script type="module" src="/js/pages/edit.js"></script>
+</body>
+
+</html>

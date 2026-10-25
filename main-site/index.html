@@ -1,61 +1,157 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" dir="ltr">
 
 <head>
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-FMCYFTFPEL"></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-
-        function gtag() {
-            dataLayer.push(arguments);
-        }
-        gtag('js', new Date());
-
-        gtag('config', 'G-FMCYFTFPEL');
-    </script>
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9715826188316382"
-        crossorigin="anonymous"></script>
-
-    <link rel="manifest" href="/manifest.json" />
-
     <meta charset="utf-8">
-    <title>OneLink GFTV | UwU Apps</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="A simple gftvlinktree app; view live gftvlinktree at a glance!">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title data-i18n="home.meta-title">OneLink GFTV</title>
+    <meta name="description" content="One page for all your links, with a QR code to share it." data-i18n-attr="content:meta.description">
+    <meta name="robots" content="index">
+
+    <meta name="theme-color" content="#ffffff">
+    <script src="/js/prepaint.js"></script>
+
+    <link rel="preload" href="/assets/fonts/ProximaNova-Regular.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/OLG-180.png">
 
     <meta property="og:type" content="website">
-    <meta property="og:title" content="OneLink GFTV | UwU Apps" />
-    <meta property="og:site_name" content="UwU Apps" />
-    <meta property="og:description" content="A simple gftvlinktree app; view live gftvlinktree at a glance!" />
-
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Jua">
-    <link rel="stylesheet" href="/style.css">
-    <meta name="theme-color" content="#ccffcc" />
-
-    <!-- Embed Image -->
-    <link rel="apple-touch-icon" href="/OLG-main.png">
-    <link rel="icon" href="/favicon.ico">
-    <link rel="shortcut icon" href="/favicon.ico">
+    <meta property="og:title" content="OneLink GFTV">
+    <meta property="og:site_name" content="OneLink GFTV">
+    <meta property="og:description" content="One page for all your links, with a QR code to share it.">
+    <meta property="og:url" content="https://links.gftv.asia/">
+    <link rel="canonical" href="https://links.gftv.asia/">
+    <meta property="og:image" content="https://links.gftv.asia/OLG-main.png">
     <meta name="twitter:card" content="summary">
-    <meta name="twitter:image:src" content="/OLG-main.png">
-    <meta property="og:image" content="/OLG-main.png" />
+    <meta name="twitter:image" content="https://links.gftv.asia/OLG-main.png">
 
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <script defer="" src="https://use.fontawesome.com/releases/v6.5.2/js/all.js"></script>
+    <!-- Google tag (gtag.js), public pages only -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-FMCYFTFPEL"></script>
+    <script src="/js/analytics.js"></script>
+
+    <script type="module" src="/assets/i18n/boot.js"></script>
 </head>
 
 <body>
-    OneLink GFTV
+    <script src="/js/official-bar.js"></script>
 
-    <script src="/script.js"></script>
+    <header class="site-header">
+        <a class="brand" href="/">
+            <img src="/OLG-192.png" alt="" width="32" height="32">
+            <span data-i18n="site.name">OneLink GFTV</span>
+        </a>
+        <div class="header-actions">
+            <div data-language-switcher></div>
+            <button class="icon-btn" type="button" id="themeBtn" aria-label="Theme" aria-haspopup="dialog" aria-controls="themeModal">
+                <span data-icon="sun"></span>
+            </button>
+        </div>
+    </header>
 
-    <script>
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('/sw.js');
-        }
-    </script>
-    
+    <main>
+        <section class="hero">
+            <span class="eyebrow" data-i18n="home.eyebrow">links.gftv.asia</span>
+            <h1 data-i18n="home.title">One link for everything you share</h1>
+            <p class="lede" data-i18n="home.lede">Put your socials, shop, music and more on one page, then share it with a single link or a QR code.</p>
+
+            <form class="claim" id="claimForm" novalidate>
+                <label class="visually-hidden" for="claimSlug" data-i18n="home.claim-label">Choose your page name</label>
+                <div class="slug-input">
+                    <span class="slug-host" aria-hidden="true">links.gftv.asia/</span>
+                    <input id="claimSlug" name="slug" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="32" placeholder="yourname" data-i18n-attr="placeholder:home.claim-placeholder" aria-describedby="claimStatus">
+                </div>
+                <button class="btn btn-primary" type="submit"><span data-i18n="home.claim-submit">Claim it</span><span data-icon="arrow-right"></span></button>
+            </form>
+            <p class="field-status claim-status" id="claimStatus" role="status" aria-live="polite"></p>
+            <p class="home-signin"><span data-i18n="home.have-page">Already have a page?</span> <a class="text-link" href="/login" data-i18n="home.sign-in">Sign in</a></p>
+        </section>
+
+        <section class="home-section" aria-labelledby="howTitle">
+            <h2 id="howTitle" data-i18n="home.how-title">How it works</h2>
+            <ol class="how-steps">
+                <li class="glass-card how-step">
+                    <span data-icon="user"></span>
+                    <h3 data-i18n="home.how-1-title">Claim your name</h3>
+                    <p data-i18n="home.how-1-body">Pick a name for your page and set a password. No email needed.</p>
+                </li>
+                <li class="glass-card how-step">
+                    <span data-icon="link"></span>
+                    <h3 data-i18n="home.how-2-title">Add your links</h3>
+                    <p data-i18n="home.how-2-body">Add as many links as you like, put them in order, and hide any for later.</p>
+                </li>
+                <li class="glass-card how-step">
+                    <span data-icon="qr"></span>
+                    <h3 data-i18n="home.how-3-title">Share your QR</h3>
+                    <p data-i18n="home.how-3-body">Share your link anywhere, or show your QR code so people can scan it.</p>
+                </li>
+            </ol>
+        </section>
+
+        <section class="home-section" aria-labelledby="safeTitle">
+            <h2 id="safeTitle" data-i18n="home.safe-title">Kept safe</h2>
+            <ul class="feature-grid">
+                <li class="glass-card feature">
+                    <span data-icon="shield"></span>
+                    <div>
+                        <h3 data-i18n="home.safe-1-title">Two-step sign in</h3>
+                        <p data-i18n="home.safe-1-body">Every page is locked with a password and an authenticator app or a passkey.</p>
+                    </div>
+                </li>
+                <li class="glass-card feature">
+                    <span data-icon="key"></span>
+                    <div>
+                        <h3 data-i18n="home.safe-2-title">Ways back in</h3>
+                        <p data-i18n="home.safe-2-body">Backup codes, and Telegram if you link it, get you back in if you lose your phone.</p>
+                    </div>
+                </li>
+                <li class="glass-card feature">
+                    <span data-icon="flag"></span>
+                    <div>
+                        <h3 data-i18n="home.safe-3-title">Reviewed reports</h3>
+                        <p data-i18n="home.safe-3-body">Anyone can report a page or link, and the GFTV team reviews every report.</p>
+                    </div>
+                </li>
+                <li class="glass-card feature">
+                    <span data-icon="lock"></span>
+                    <div>
+                        <h3 data-i18n="home.safe-4-title">Only web links</h3>
+                        <p data-i18n="home.safe-4-body">Links must start with http or https, and open in a new tab without passing your page on.</p>
+                    </div>
+                </li>
+            </ul>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <span data-i18n="footer.made">Made with</span> <span data-icon="heart"></span> <span data-i18n="footer.in">in</span>
+        <a href="https://www.google.com/maps/place/Singapore" target="_blank" rel="noopener" data-i18n="footer.singapore">Singapore</a>
+        <span data-i18n="footer.by">by Global Furry Television</span> &copy; 2014-<span id="currentYear"></span>.
+        <span data-i18n="footer.rights">All rights reserved.</span>
+    </footer>
+
+    <div class="modal-backdrop hidden" id="themeModal">
+        <div class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="themeModalTitle">
+            <div class="modal-head">
+                <h2 id="themeModalTitle" data-i18n="theme.title">Theme</h2>
+                <button class="icon-btn small" type="button" data-close-modal="themeModal" aria-label="Close" data-i18n-attr="aria-label:common.close">
+                    <span data-icon="close"></span>
+                </button>
+            </div>
+            <p class="modal-section-label" data-i18n="theme.mode-label">Mode</p>
+            <div class="mode-toggle" id="modeToggle">
+                <button class="mode-btn" type="button" data-mode="light" aria-pressed="false"><span data-icon="sun"></span><span data-i18n="theme.mode.light">Light</span></button>
+                <button class="mode-btn" type="button" data-mode="dark" aria-pressed="false"><span data-icon="moon"></span><span data-i18n="theme.mode.dark">Dark</span></button>
+                <button class="mode-btn mode-btn-wide" type="button" data-mode="time" aria-pressed="false"><span data-icon="clock"></span><span data-i18n="theme.mode.time">Time-based</span></button>
+            </div>
+            <p class="mode-note" id="modeNote" hidden></p>
+            <p class="modal-section-label" data-i18n="theme.color-label">Colour theme</p>
+            <div class="swatch-grid" id="swatchGrid"></div>
+        </div>
+    </div>
+
+    <script type="module" src="/js/pages/home.js"></script>
 </body>
 
 </html>

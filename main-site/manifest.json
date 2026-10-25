@@ -1,43 +1,53 @@
 {
-    "name": "OneLink GFTV by UwU Apps",
-    "short_name": "OneLink GFTV",
-    "description": "A simple gftvlinktree app; view live gftvlinktree at a glance!",
-    "icons": [{
-            "src": "OLG-192.png",
-            "type": "image/png",
-            "sizes": "192x192"
-        },
-        {
-            "src": "OLG-512.png",
-            "type": "image/png",
-            "sizes": "512x512"
-        }
-    ],
-    "screenshots": [{
-            "src": "/images/screenshot_1.png",
-            "type": "image/png",
-            "sizes": "1080x2340",
-            "form_factor": "narrow"
-        },
-        {
-            "src": "/images/screenshot_2.png",
-            "type": "image/png",
-            "sizes": "1920x1080",
-            "form_factor": "wide"
-        }
-    ],
-    "start_url": "/",
-    "theme_color": "#cfc",
-    "background_color": "#cfc",
-    "display": "standalone",
-    "display_override": ["fullscreen", "minimal-ui", "window-controls-overlay"],
-    "orientation": "any",
+    "name": "OneLink GFTV",
+    "short_name": "OneLink",
+    "description": "One page for all your links, with a QR code to share it.",
     "id": "gftvlinktree",
-    "dir": "ltr",
+    "start_url": "/",
     "scope": "/",
+    "display": "standalone",
+    "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+    "orientation": "any",
+    "theme_color": "#ffffff",
+    "background_color": "#ffffff",
+    "dir": "ltr",
     "lang": "en",
+    "icons": [
+        {
+            "src": "/OLG-192.png",
+            "type": "image/png",
+            "sizes": "192x192",
+            "purpose": "any"
+        },
+        {
+            "src": "/OLG-512.png",
+            "type": "image/png",
+            "sizes": "512x512",
+            "purpose": "any"
+        },
+        {
+            "src": "/OLG-192.png",
+            "type": "image/png",
+            "sizes": "192x192",
+            "purpose": "maskable"
+        },
+        {
+            "src": "/OLG-512.png",
+            "type": "image/png",
+            "sizes": "512x512",
+            "purpose": "maskable"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Edit my page",
+            "short_name": "Edit",
+            "url": "/edit",
+            "icons": [{ "src": "/OLG-192.png", "sizes": "192x192", "type": "image/png" }]
+        }
+    ],
     "categories": [
-        "entertainment",
+        "social",
         "lifestyle",
         "utilities"
     ]

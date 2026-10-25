@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title data-i18n="admin.meta-title">Staff dashboard | OneLink GFTV</title>
+    <meta name="description" content="One page for all your links, with a QR code to share it." data-i18n-attr="content:meta.description">
+    <meta name="robots" content="noindex, nofollow">
+
+    <meta name="theme-color" content="#ffffff">
+    <script src="/js/prepaint.js"></script>
+
+    <link rel="preload" href="/assets/fonts/ProximaNova-Regular.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="apple-touch-icon" href="/OLG-180.png">
+
+    <script type="module" src="/assets/i18n/boot.js"></script>
+</head>
+
+<body>
+    <script src="/js/official-bar.js"></script>
+
+    <header class="site-header">
+        <a class="brand" href="/">
+            <img src="/OLG-192.png" alt="" width="32" height="32">
+            <span data-i18n="site.name">OneLink GFTV</span>
+        </a>
+        <div class="header-actions">
+            <button class="icon-btn" type="button" id="staffSignOut" aria-label="Sign out" data-i18n-attr="aria-label:edit.sign-out" hidden>
+                <span data-icon="logout"></span>
+            </button>
+            <div data-language-switcher></div>
+            <button class="icon-btn" type="button" id="themeBtn" aria-label="Theme" aria-haspopup="dialog" aria-controls="themeModal">
+                <span data-icon="sun"></span>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <div id="adminLoading" class="stack u-narrow" aria-busy="true">
+            <span class="visually-hidden" role="status" data-i18n="common.loading">Loading</span>
+            <div class="skeleton delayed u-h-14"></div>
+        </div>
+
+        <section class="glass-card page-card u-my-auto" id="staffLogin" hidden>
+            <div class="page-head">
+                <span class="eyebrow" data-i18n="admin.eyebrow">GFTV staff</span>
+                <h1 data-i18n="admin.login-title">Staff sign in</h1>
+                <p data-i18n="admin.login-lede">Sign in with your GFTV account. Admins and editors only.</p>
+            </div>
+            <form id="staffPasswordForm" novalidate>
+                <label class="field">
+                    <span data-i18n="field.staff-identifier">Username or email</span>
+                    <input id="staffIdentifier" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+                </label>
+                <label class="field">
+                    <span data-i18n="field.password">Password</span>
+                    <input id="staffPassword" type="password" autocomplete="current-password" required>
+                </label>
+                <div class="callout danger" id="staffPasswordError" role="alert"></div>
+                <div class="actions"><button class="btn btn-primary" type="submit" id="staffPasswordSubmit"><span data-i18n="common.continue">Continue</span></button></div>
+            </form>
+            <form id="staffCodeForm" novalidate hidden>
+                <div class="segmented" role="group" id="staffMethods" aria-label="Second step" data-i18n-attr="aria-label:register.factor-group">
+                    <button type="button" data-method="totp" aria-pressed="false" hidden><span data-icon="smartphone"></span><span data-i18n="factor.totp">Authenticator app</span></button>
+                    <button type="button" data-method="passkey" aria-pressed="false" hidden><span data-icon="fingerprint"></span><span data-i18n="factor.passkey">Passkey</span></button>
+                    <button type="button" data-method="backup" aria-pressed="false" hidden><span data-icon="key"></span><span data-i18n="factor.backup">Backup code</span></button>
+                </div>
+                <label class="field" id="staffCodeField">
+                    <span id="staffCodeLabel" data-i18n="field.code">Six digit code</span>
+                    <input class="code-input" id="staffCode" type="text" autocomplete="one-time-code" autocapitalize="none" spellcheck="false">
+                </label>
+                <div class="actions" id="staffPasskeyRow" hidden>
+                    <button class="btn btn-primary" type="button" id="staffPasskeyUse"><span data-icon="fingerprint"></span><span data-i18n="passkey.use">Use my passkey</span></button>
+                </div>
+                <div class="callout danger" id="staffCodeError" role="alert"></div>
+                <div class="actions" id="staffCodeSubmitRow"><button class="btn btn-primary" type="submit" id="staffCodeSubmit"><span data-i18n="login.submit">Sign in</span></button></div>
+            </form>
+        </section>
+
+        <div class="admin" id="dashboard" hidden>
+            <div class="admin-head">
+                <div>
+                    <span class="eyebrow" data-i18n="admin.eyebrow">GFTV staff</span>
+                    <h1 data-i18n="admin.title">Moderation</h1>
+                </div>
+                <p class="muted small" id="staffWho"></p>
+            </div>
+
+            <div class="tabs glass-card" role="tablist" aria-label="Dashboard sections" data-i18n-attr="aria-label:admin.tabs">
+                <button class="tab" role="tab" id="atab-overview" aria-controls="apanel-overview" aria-selected="true"><span data-icon="chart"></span><span data-i18n="admin.tab-overview">Overview</span></button>
+                <button class="tab" role="tab" id="atab-reports" aria-controls="apanel-reports" aria-selected="false" tabindex="-1"><span data-icon="flag"></span><span data-i18n="admin.tab-reports">Reports</span></button>
+                <button class="tab" role="tab" id="atab-pages" aria-controls="apanel-pages" aria-selected="false" tabindex="-1"><span data-icon="user"></span><span data-i18n="admin.tab-pages">Pages</span></button>
+                <button class="tab" role="tab" id="atab-links" aria-controls="apanel-links" aria-selected="false" tabindex="-1"><span data-icon="link"></span><span data-i18n="admin.tab-links">Links</span></button>
+                <button class="tab" role="tab" id="atab-blocks" aria-controls="apanel-blocks" aria-selected="false" tabindex="-1" data-admin-only hidden><span data-icon="ban"></span><span data-i18n="admin.tab-blocks">Block lists</span></button>
+                <button class="tab" role="tab" id="atab-audit" aria-controls="apanel-audit" aria-selected="false" tabindex="-1" data-admin-only hidden><span data-icon="document"></span><span data-i18n="admin.tab-audit">Audit log</span></button>
+                <button class="tab" role="tab" id="atab-account" aria-controls="apanel-account" aria-selected="false" tabindex="-1"><span data-icon="fingerprint"></span><span data-i18n="admin.tab-account">My passkeys</span></button>
+            </div>
+
+            <section class="glass-card panel" role="tabpanel" id="apanel-overview" aria-labelledby="atab-overview">
+                <div class="stat-grid" id="stats" aria-busy="true"></div>
+            </section>
+
+            <section class="glass-card panel" role="tabpanel" id="apanel-reports" aria-labelledby="atab-reports" hidden>
+                <div class="toolbar">
+                    <label class="field"><span class="visually-hidden" data-i18n="admin.filter-status">Status</span>
+                        <select id="reportStatus">
+                            <option value="open" data-i18n="admin.report-open">Open</option>
+                            <option value="resolved" data-i18n="admin.report-resolved">Resolved</option>
+                            <option value="dismissed" data-i18n="admin.report-dismissed">Dismissed</option>
+                        </select>
+                    </label>
+                </div>
+                <ul class="data-list" id="reportList"></ul>
+                <div class="pager" id="reportPager"></div>
+            </section>
+
+            <section class="glass-card panel" role="tabpanel" id="apanel-pages" aria-labelledby="atab-pages" hidden>
+                <form class="toolbar" id="pageSearch" role="search">
+                    <label class="field"><span class="visually-hidden" data-i18n="admin.search">Search</span>
+                        <input id="pageQuery" type="search" placeholder="Search pages" data-i18n-attr="placeholder:admin.search-pages">
+                    </label>
+                    <label class="field u-flex-10"><span class="visually-hidden" data-i18n="admin.filter-status">Status</span>
+                        <select id="pageStatus">
+                            <option value="" data-i18n="admin.status-any">Any status</option>
+                            <option value="active" data-i18n="status.active">Live</option>
+                            <option value="pending" data-i18n="status.pending">Setting up</option>
+                            <option value="banned" data-i18n="status.banned">Taken down</option>
+                        </select>
+                    </label>
+                    <button class="btn" type="submit"><span data-icon="search"></span><span data-i18n="admin.search">Search</span></button>
+                </form>
+                <ul class="data-list" id="pageList"></ul>
+                <div class="pager" id="pagePager"></div>
+            </section>
+
+            <section class="glass-card panel" role="tabpanel" id="apanel-links" aria-labelledby="atab-links" hidden>
+                <form class="toolbar" id="linkSearch" role="search">
+                    <label class="field"><span class="visually-hidden" data-i18n="admin.search">Search</span>
+                        <input id="linkQuery" type="search" placeholder="Search titles and addresses" data-i18n-attr="placeholder:admin.search-links">
+                    </label>
+                    <label class="field u-flex-10"><span class="visually-hidden" data-i18n="admin.filter-status">Status</span>
+                        <select id="linkState">
+                            <option value="" data-i18n="admin.status-any">Any status</option>
+                            <option value="live" data-i18n="admin.link-live">Not removed</option>
+                            <option value="removed" data-i18n="admin.link-removed">Removed</option>
+                        </select>
+                    </label>
+                    <button class="btn" type="submit"><span data-icon="search"></span><span data-i18n="admin.search">Search</span></button>
+                </form>
+                <ul class="data-list" id="adminLinkList"></ul>
+                <div class="pager" id="linkPager"></div>
+            </section>
+
+            <section class="glass-card panel" role="tabpanel" id="apanel-blocks" aria-labelledby="atab-blocks" hidden>
+                <div class="panel-section">
+                    <h2 data-i18n="admin.blocked-slugs">Blocked page names</h2>
+                    <p class="muted small" data-i18n="admin.blocked-slugs-body">Nobody can register these. A page already using one is not affected; take it down from Pages.</p>
+                    <form class="toolbar u-mt-075" id="slugBlockForm">
+                        <label class="field"><span class="visually-hidden" data-i18n="field.slug">Page name</span><input id="slugBlockValue" type="text" autocapitalize="none" spellcheck="false" placeholder="name" data-i18n-attr="placeholder:admin.slug-placeholder" required></label>
+                        <label class="field"><span class="visually-hidden" data-i18n="field.reason">Reason</span><input id="slugBlockReason" type="text" maxlength="500" placeholder="Reason" data-i18n-attr="placeholder:field.reason"></label>
+                        <button class="btn" type="submit"><span data-icon="ban"></span><span data-i18n="admin.block">Block</span></button>
+                    </form>
+                    <ul class="data-list" id="slugBlockList"></ul>
+                </div>
+                <div class="panel-section">
+                    <h2 data-i18n="admin.blocked-domains">Blocked domains</h2>
+                    <p class="muted small" data-i18n="admin.blocked-domains-body">Links to these domains, and any subdomain of them, cannot be added and stop showing within a minute.</p>
+                    <form class="toolbar u-mt-075" id="domainBlockForm">
+                        <label class="field"><span class="visually-hidden" data-i18n="admin.domain">Domain</span><input id="domainBlockValue" type="text" autocapitalize="none" spellcheck="false" placeholder="example.com" required></label>
+                        <label class="field"><span class="visually-hidden" data-i18n="field.reason">Reason</span><input id="domainBlockReason" type="text" maxlength="500" placeholder="Reason" data-i18n-attr="placeholder:field.reason"></label>
+                        <button class="btn" type="submit"><span data-icon="ban"></span><span data-i18n="admin.block">Block</span></button>
+                    </form>
+                    <ul class="data-list" id="domainBlockList"></ul>
+                </div>
+            </section>
+
+            <section class="glass-card panel" role="tabpanel" id="apanel-audit" aria-labelledby="atab-audit" hidden>
+                <div class="toolbar">
+                    <label class="field u-flex-14"><span class="visually-hidden" data-i18n="admin.filter-action">Action</span>
+                        <select id="auditFilter">
+                            <option value="" data-i18n="admin.audit-all">Everything</option>
+                            <option value="mod." data-i18n="admin.audit-mod">Moderation</option>
+                            <option value="staff." data-i18n="admin.audit-staff">Staff sign in</option>
+                            <option value="login." data-i18n="admin.audit-login">Owner sign in</option>
+                            <option value="security." data-i18n="admin.audit-security">Owner security</option>
+                            <option value="recover." data-i18n="admin.audit-recover">Password resets</option>
+                            <option value="page." data-i18n="admin.audit-page">Pages created</option>
+                            <option value="report." data-i18n="admin.audit-report">Reports</option>
+                        </select>
+                    </label>
+                </div>
+                <ul class="data-list" id="auditList"></ul>
+                <div class="pager" id="auditPager"></div>
+            </section>
+
+            <section class="glass-card panel" role="tabpanel" id="apanel-account" aria-labelledby="atab-account" hidden>
+                <h2 data-i18n="admin.passkeys-title">Passkeys for this site</h2>
+                <p class="muted small" data-i18n="admin.passkeys-body">A passkey added here signs you in to this dashboard only. Your authenticator app and backup codes are managed on gftv.asia.</p>
+                <ul class="passkey-list" id="staffPasskeyList"></ul>
+                <div class="actions inline u-mt-075">
+                    <button class="btn btn-small" type="button" id="staffPasskeyAdd"><span data-icon="plus"></span><span data-i18n="security.add-passkey">Add a passkey</span></button>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer class="site-footer">
+        <span data-i18n="footer.made">Made with</span> <span data-icon="heart"></span> <span data-i18n="footer.in">in</span>
+        <a href="https://www.google.com/maps/place/Singapore" target="_blank" rel="noopener" data-i18n="footer.singapore">Singapore</a>
+        <span data-i18n="footer.by">by Global Furry Television</span> &copy; 2014-<span id="currentYear"></span>.
+        <span data-i18n="footer.rights">All rights reserved.</span>
+    </footer>
+
+    <div class="modal-backdrop hidden" id="themeModal">
+        <div class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="themeModalTitle">
+            <div class="modal-head">
+                <h2 id="themeModalTitle" data-i18n="theme.title">Theme</h2>
+                <button class="icon-btn small" type="button" data-close-modal="themeModal" aria-label="Close" data-i18n-attr="aria-label:common.close">
+                    <span data-icon="close"></span>
+                </button>
+            </div>
+            <p class="modal-section-label" data-i18n="theme.mode-label">Mode</p>
+            <div class="mode-toggle" id="modeToggle">
+                <button class="mode-btn" type="button" data-mode="light" aria-pressed="false"><span data-icon="sun"></span><span data-i18n="theme.mode.light">Light</span></button>
+                <button class="mode-btn" type="button" data-mode="dark" aria-pressed="false"><span data-icon="moon"></span><span data-i18n="theme.mode.dark">Dark</span></button>
+                <button class="mode-btn mode-btn-wide" type="button" data-mode="time" aria-pressed="false"><span data-icon="clock"></span><span data-i18n="theme.mode.time">Time-based</span></button>
+            </div>
+            <p class="mode-note" id="modeNote" hidden></p>
+            <p class="modal-section-label" data-i18n="theme.color-label">Colour theme</p>
+            <div class="swatch-grid" id="swatchGrid"></div>
+        </div>
+    </div>
+
+    <div class="modal-backdrop hidden" id="passwordModal">
+        <form class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="passwordModalTitle" id="passwordForm" novalidate>
+            <div class="modal-head">
+                <h2 id="passwordModalTitle" data-i18n="confirm.title">Confirm it is you</h2>
+                <button class="icon-btn small" type="button" data-close-modal="passwordModal" aria-label="Close" data-i18n-attr="aria-label:common.close">
+                    <span data-icon="close"></span>
+                </button>
+            </div>
+            <p class="muted small" data-i18n="confirm.body">Enter your password to make this change.</p>
+            <label class="field u-mt-1">
+                <span data-i18n="field.password">Password</span>
+                <input type="password" id="confirmPassword" autocomplete="current-password" required>
+            </label>
+            <div class="callout danger" id="passwordError" role="alert"></div>
+            <div class="actions">
+                <button class="btn btn-primary" type="submit" id="passwordSubmit"><span data-i18n="common.continue">Continue</span></button>
+            </div>
+        </form>
+    </div>
+
+    <div class="modal-backdrop hidden" id="reasonModal">
+        <form class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="reasonTitle" id="reasonForm" novalidate>
+            <div class="modal-head">
+                <h2 id="reasonTitle"></h2>
+                <button class="icon-btn small" type="button" data-close-modal="reasonModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
+            </div>
+            <p class="small muted" id="reasonBody"></p>
+            <label class="field u-mt-075">
+                <span id="reasonLabel" data-i18n="field.reason">Reason</span>
+                <textarea id="reasonText" maxlength="500" rows="3"></textarea>
+            </label>
+            <label class="check" id="reasonRemoveRow" hidden>
+                <input type="checkbox" id="reasonRemoveLink">
+                <span data-i18n="admin.also-remove">Also remove the reported link</span>
+            </label>
+            <div class="callout danger" id="reasonError" role="alert"></div>
+            <div class="actions"><button class="btn btn-primary" type="submit" id="reasonSubmit"><span data-i18n="common.confirm">Confirm</span></button></div>
+        </form>
+    </div>
+
+    <div class="modal-backdrop hidden" id="pageModal">
+        <div class="modal wide glass-card" role="dialog" aria-modal="true" aria-labelledby="pageModalTitle">
+            <div class="modal-head">
+                <h2 id="pageModalTitle"></h2>
+                <button class="icon-btn small" type="button" data-close-modal="pageModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
+            </div>
+            <div id="pageModalBody"></div>
+        </div>
+    </div>
+
+    <script type="module" src="/js/pages/admin.js"></script>
+</body>
+
+</html>
