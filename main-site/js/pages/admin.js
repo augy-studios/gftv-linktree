@@ -628,12 +628,30 @@ function flaggedRows(items) {
   ]));
 }
 
+// Each block list shows five at a time with its own pager, and keeps its
+// place when an entry is added or removed (or steps back a page when its
+// last entry goes).
+const BLOCKS_PER_PAGE = 5;
+const blockOffsets = {};
+
+function fillPaged(listId, pagerId, rows, emptyKey) {
+  const total = rows.length;
+  let offset = blockOffsets[listId] || 0;
+  if (offset >= total) offset = Math.max(0, Math.floor((total - 1) / BLOCKS_PER_PAGE) * BLOCKS_PER_PAGE);
+  blockOffsets[listId] = offset;
+  fill($(listId), rows.slice(offset, offset + BLOCKS_PER_PAGE), emptyKey);
+  pager($(pagerId), { total, offset, pageSize: BLOCKS_PER_PAGE }, (next) => {
+    blockOffsets[listId] = next;
+    fillPaged(listId, pagerId, rows, emptyKey);
+  });
+}
+
 function renderBlocks(data) {
-  fill($('flaggedList'), flaggedRows(data.flagged ?? []), 'admin.empty-flagged');
-  fill($('slugBlockList'), blockRows(data.slugs, 'slug'), 'admin.empty-blocks');
-  fill($('domainBlockList'), blockRows(data.domains, 'domain'), 'admin.empty-blocks');
-  fill($('patternBlockList'), blockRows(data.patterns, 'pattern'), 'admin.empty-blocks');
-  fill($('reviewBlockList'), blockRows(data.reviews, 'review'), 'admin.empty-blocks');
+  fillPaged('flaggedList', 'flaggedPager', flaggedRows(data.flagged ?? []), 'admin.empty-flagged');
+  fillPaged('slugBlockList', 'slugBlockPager', blockRows(data.slugs, 'slug'), 'admin.empty-blocks');
+  fillPaged('domainBlockList', 'domainBlockPager', blockRows(data.domains, 'domain'), 'admin.empty-blocks');
+  fillPaged('patternBlockList', 'patternBlockPager', blockRows(data.patterns, 'pattern'), 'admin.empty-blocks');
+  fillPaged('reviewBlockList', 'reviewBlockPager', blockRows(data.reviews, 'review'), 'admin.empty-blocks');
   renderThreatList(data.threatList);
 }
 
