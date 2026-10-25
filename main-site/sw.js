@@ -19,7 +19,7 @@
 // visitor's saved pages. A page that has been taken down or deleted is
 // dropped from the saved copies the next time it is fetched.
 
-const VERSION = '2026-10-26.1';
+const VERSION = '2026-10-26.2';
 const PREFIX = 'gftv-onelink-';
 const CACHE = PREFIX + VERSION;
 const SAVED_PAGES = 'onelink-saved-pages-v1';
@@ -51,10 +51,15 @@ const PRECACHE = [
   '/assets/i18n/locales.js',
   '/assets/i18n/switcher.js',
   '/assets/i18n/boot.js',
+  // The locale files are imported statically in locales.js, so they are
+  // precached here too. The service worker does not know which locale the
+  // user will pick, so it saves them all.
   '/assets/i18n/en.json',
   '/assets/i18n/zh.json',
   '/assets/i18n/ms.json',
   '/assets/i18n/ta.json',
+  '/assets/i18n/tl.json',
+  '/assets/i18n/id.json',
   '/js/prepaint.js',
   '/js/official-bar.js',
   '/js/analytics.js',
