@@ -87,14 +87,18 @@ function sparkPath(daily) {
 
 function fillTiles(animate) {
   const d = insights;
+  // Whichever of phone, computer or tablet is used most, as a share of every
+  // device (unknown ones included in the total, never shown as the winner).
   const devices = Object.values(d.devices).reduce((a, b) => a + b, 0);
-  const mobile = devices > 0 ? Math.round((d.devices.mobile / devices) * 100) : null;
+  const top = ['mobile', 'desktop', 'tablet'].reduce((best, k) => (d.devices[k] > d.devices[best] ? k : best), 'mobile');
+  const share = devices > 0 && d.devices[top] > 0 ? Math.round((d.devices[top] / devices) * 100) : null;
   $('tileSpark').setAttribute('d', sparkPath(d.daily));
   countTo($('tileClicks'), d.clicks, '', animate);
   countTo($('tileVisits'), d.visits, '', animate);
-  if (mobile === null) $('tileMobile').textContent = '–';
-  else countTo($('tileMobile'), mobile, '%', animate);
-  $('tileMobileBar').style.setProperty('--mobile', `${mobile ?? 0}%`);
+  if (share === null) $('tileDevice').textContent = '–';
+  else countTo($('tileDevice'), share, '%', animate);
+  $('tileDeviceLabel').textContent = t(`home.tile-device-${top}`);
+  $('tileDeviceBar').style.setProperty('--mobile', `${share ?? 0}%`);
   // The top referring site once there is one; the number of live pages until then.
   if (d.referrer) {
     $('tileSourceIcon').innerHTML = icon(SITE_ICONS[d.referrer.key] || 'globe');

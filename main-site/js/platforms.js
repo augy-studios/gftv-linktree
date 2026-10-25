@@ -74,10 +74,12 @@ export const PLATFORMS = [
   {
     id: 'discord', name: 'Discord', icon: 'discord', category: 'messaging',
     formats: [
-      f('invite', 'https://discord.gg/', { pattern: '[A-Za-z0-9-]{2,32}', example: 'abc123', strip: /^(https?:\/\/)?(discord\.gg\/|discord\.com\/invite\/)/ }),
-      // Discord profile links only work with the numeric user ID, never the
-      // username, so this format says so and how to find the ID.
-      f('userid', 'https://discord.com/users/', { pattern: '[0-9]{17,20}', example: '723403569260134401', strip: /^$/, note: 'link.note-discord-user' }),
+      // A server is an invite, at either of Discord's two addresses for one; a
+      // person is their numeric user ID (never the username), which the note
+      // says and explains how to find.
+      f('invite', 'https://discord.gg/', { pattern: '[A-Za-z0-9-]{2,32}', example: 'abc123', strip: /^(https?:\/\/)?(discord\.gg\/|discord\.com\/invite\/)/, note: 'link.note-discord-invite' }),
+      f('invite-com', 'https://discord.com/invite/', { pattern: '[A-Za-z0-9-]{2,32}', example: 'abc123', strip: /^(https?:\/\/)?(discord\.gg\/|discord\.com\/invite\/)/, note: 'link.note-discord-invite' }),
+      f('userid', 'https://discord.com/users/', { pattern: '[0-9]{17,20}', example: '723403569260134401', strip: /^(https?:\/\/)?discord\.com\/users\//, note: 'link.note-discord-user' }),
     ],
   },
   { id: 'whatsapp', name: 'WhatsApp', icon: 'whatsapp', category: 'messaging', formats: [f('number', 'https://wa.me/', { pattern: '[0-9]{7,15}', example: '6591234567', strip: /^\+|[\s-]/g })] },
