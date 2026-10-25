@@ -863,6 +863,10 @@ button.text-link { padding: 0; }
   text-align: center;
   font-size: 0.8125rem;
   color: var(--text-light);
+  /* No highlight from the triple-click that opens /admin (see app.js). */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 .site-footer svg { display: inline-block; width: 13px; height: 13px; vertical-align: -2px; color: var(--link); }
 .site-footer a { font-weight: 600; }
