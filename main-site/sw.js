@@ -13,7 +13,7 @@
 // origins (Google Analytics). Public pages at /<slug> are network first, so a
 // visitor always sees the owner's latest links when online.
 
-const VERSION = '2026-10-25.2';
+const VERSION = '2026-10-25.3';
 const PREFIX = 'gftv-onelink-';
 const CACHE = PREFIX + VERSION;
 
@@ -53,6 +53,7 @@ const PRECACHE = [
   '/js/qr.js',
   '/js/codes.js',
   '/js/slug-check.js',
+  '/js/password-toggle.js',
   '/js/vendor/qrcode.js',
   '/js/pages/home.js',
   '/js/pages/register.js',

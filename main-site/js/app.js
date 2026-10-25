@@ -18,6 +18,7 @@ import {
 import { icon, hydrateIcons } from './icons.js';
 import { openModal, wireModals } from './ui.js';
 import { initUpdateBar } from './update-bar.js';
+import { initPasswordToggles } from './password-toggle.js';
 
 function hour(h) {
   return `${String(h).padStart(2, '0')}:00`;
@@ -145,4 +146,5 @@ wireModals();
 wireTheme();
 wireStickyHeader();
 wireFooterYear();
+initPasswordToggles();
 initUpdateBar();

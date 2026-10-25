@@ -81,6 +81,8 @@
   "field.password": "密码",
   "field.password-hint": "至少 10 个字符。把几个词连在一起，好记又难猜。",
   "field.password-confirm": "再输入一次",
+  "password.show": "显示密码",
+  "password.hide": "隐藏密码",
   "field.current-password": "当前密码",
   "field.new-password": "新密码",
   "field.code": "六位数验证码",

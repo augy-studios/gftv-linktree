@@ -664,6 +664,28 @@ button.text-link { padding: 0; }
 .field input::placeholder, .field textarea::placeholder { color: var(--text-muted-strong); opacity: 1; }
 .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--focus-ring); }
 .field-hint { margin-top: 0.3rem; font-size: 0.8125rem; color: var(--text-muted); }
+
+/* Password fields with an eye button to show what is typed. */
+.password-field { position: relative; }
+.password-field input { padding-inline-end: 3rem; }
+.password-reveal {
+  position: absolute;
+  top: 50%;
+  inset-inline-end: 0.25rem;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted-strong);
+  transition: background-color var(--motion) ease, color var(--motion) ease;
+}
+.password-reveal:hover { background: var(--surface-hover); color: var(--text); }
+.password-reveal svg { width: 20px; height: 20px; }
+/* Hide the browser's own reveal control (Edge), so there is only one eye. */
+.password-field input::-ms-reveal { display: none; }
 .field-status { margin-top: 0.3rem; font-size: 0.875rem; font-weight: 600; min-height: 1.3em; }
 .field-status.ok { color: var(--ok); }
 .field-status.bad { color: var(--danger); }

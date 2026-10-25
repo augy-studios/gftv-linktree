@@ -81,6 +81,8 @@
   "field.password": "Password",
   "field.password-hint": "At least 10 characters. A few words together is easy to remember and hard to guess.",
   "field.password-confirm": "Type it again",
+  "password.show": "Show password",
+  "password.hide": "Hide password",
   "field.current-password": "Current password",
   "field.new-password": "New password",
   "field.code": "Six digit code",
