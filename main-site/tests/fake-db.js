@@ -1,14 +1,23 @@
 // An in-memory stand-in for the supabase-js client, covering the query
 // builder calls the API makes, with the schema's unique constraints, foreign
-// key cascades and RPC functions from migrations/001 to 012. Enough to drive every
+// key cascades and RPC functions from migrations/001 to 013. Enough to drive every
 // route end to end in tests; not a general PostgREST.
 
 import { randomUUID } from 'node:crypto';
 
 const now = () => new Date().toISOString();
 
+// created_at for an insert: never the same twice, so "newest first" has one
+// answer even when a test inserts two rows in the same millisecond, as
+// Postgres's microsecond timestamps all but always do.
+let lastStamp = 0;
+const stamp = () => {
+  lastStamp = Math.max(Date.now(), lastStamp + 1);
+  return new Date(lastStamp).toISOString();
+};
+
 const DEFAULTS = {
-  gftvonelink_pages: () => ({ display_name: '', bio: '', avatar_path: null, totp_secret: null, telegram_chat_id: null, telegram_username: null, status: 'pending', ban_reason: null, banned_at: null, banned_by: null, password_changed_at: now(), activated_at: null, updated_at: now(), redirect_url: null, last_sign_in_at: now(), dormancy_warned_at: null, needs_review: false, reviewed_at: null, reviewed_by: null, quarantined_at: null, quarantine_reason: null }),
+  gftvonelink_pages: () => ({ display_name: '', bio: '', avatar_path: null, totp_secret: null, telegram_chat_id: null, telegram_username: null, status: 'pending', ban_reason: null, banned_at: null, banned_by: null, password_changed_at: now(), activated_at: null, updated_at: now(), redirect_url: null, last_sign_in_at: now(), dormancy_warned_at: null, needs_review: false, reviewed_at: null, reviewed_by: null, quarantined_at: null, quarantine_reason: null, links_cap: null }),
   gftvonelink_links: () => ({ order_index: 0, icon: 'link', click_count: 0, is_active: true, removed_at: null, removed_by: null, removed_reason: null, updated_at: now() }),
   gftvonelink_passkeys: () => ({ counter: 0, transports: null, label: null, last_used_at: null }),
   gftvonelink_staff_passkeys: () => ({ counter: 0, transports: null, label: null, last_used_at: null }),
@@ -20,11 +29,12 @@ const DEFAULTS = {
   gftvonelink_audit_logs: () => ({ details: {}, actor_type: 'system', actor_id: null, page_id: null, ip_hash: null, visitor_hash: null }),
   gftvonelink_blocked_patterns: () => ({ applies_to: 'links', reason: null }),
   gftvonelink_review_patterns: () => ({ reason: null }),
+  gftvonelink_link_cap_requests: () => ({ status: 'pending', granted_cap: null, review_note: null, reviewed_by: null, reviewed_at: null }),
   gftvonelink_testimonials: () => ({ page_slug: null, is_visible: true, order_index: 0, updated_at: now(), page_id: null, status: 'approved', consented_at: null, reviewed_by: null, reviewed_at: null }),
 };
 
 // A list for a primary key over several columns.
-const PRIMARY = { gftvonelink_blocked_slugs: 'slug', gftvonelink_blocked_domains: 'domain', gftvonelink_rate_limits: 'bucket', gftvonelink_ip_bans: 'ip_hash', gftvonelink_visitor_bans: ['visitor_hash', 'ip_hash'] };
+const PRIMARY = { gftvonelink_blocked_slugs: 'slug', gftvonelink_blocked_domains: 'domain', gftvonelink_rate_limits: 'bucket', gftvonelink_ip_bans: 'ip_hash', gftvonelink_visitor_bans: ['visitor_hash', 'ip_hash'], gftvonelink_settings: 'key' };
 const UNIQUE = {
   gftvonelink_pages: ['slug'],
   gftvonelink_passkeys: ['credential_id'],
@@ -39,6 +49,21 @@ const UNIQUE = {
   gftvonelink_testimonials: ['page_id'],
 };
 
+// Unique indexes with a where clause: one open link limit request per page.
+const PARTIAL_UNIQUE = {
+  gftvonelink_link_cap_requests: [{ column: 'page_id', where: (r) => r.status === 'pending' }],
+};
+
+// The link limit trigger from migration 013: the page's own limit, else the
+// links_cap setting, else 20; removed links do not count.
+function overLinkCap(table, row) {
+  const page = table('gftvonelink_pages').find((p) => p.id === row.page_id);
+  const setting = table('gftvonelink_settings').find((r) => r.key === 'links_cap');
+  const cap = page?.links_cap ?? (typeof setting?.value === 'number' ? setting.value : null) ?? 20;
+  const used = table('gftvonelink_links').filter((l) => l.page_id === row.page_id && !l.removed_at).length;
+  return used >= cap;
+}
+
 // child table -> [{ column, parent, onDelete }]
 const FKS = {
   gftvonelink_links: [{ column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' }],
@@ -48,6 +73,7 @@ const FKS = {
   gftvonelink_telegram_links: [{ column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' }],
   gftvonelink_page_stats: [{ column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' }],
   gftvonelink_testimonials: [{ column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' }],
+  gftvonelink_link_cap_requests: [{ column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' }],
   gftvonelink_reports: [
     { column: 'page_id', parent: 'gftvonelink_pages', onDelete: 'cascade' },
     { column: 'link_id', parent: 'gftvonelink_links', onDelete: 'set null' },
@@ -126,6 +152,10 @@ export function createFakeDb() {
     for (const col of UNIQUE[name] || []) {
       if (row[col] === undefined || row[col] === null) continue;
       if (table(name).some((r) => r !== ignore && r[col] === row[col])) return true;
+    }
+    for (const { column, where } of PARTIAL_UNIQUE[name] || []) {
+      if (!where(row)) continue;
+      if (table(name).some((r) => r !== ignore && where(r) && r[column] === row[column])) return true;
     }
     return false;
   }
@@ -220,7 +250,7 @@ export function createFakeDb() {
             const existing = table(name).find((r) => [].concat(pk).every((c) => r[c] === values[c]));
             if (existing) { Object.assign(existing, values); made.push(existing); continue; }
           }
-          const row = { ...(DEFAULTS[name]?.() ?? {}), created_at: now(), ...values };
+          const row = { ...(DEFAULTS[name]?.() ?? {}), created_at: stamp(), ...values };
           if (pk === 'id' && !row.id) row.id = randomUUID();
           for (const fk of FKS[name] || []) {
             if (row[fk.column] && !table(fk.parent).some((p) => p.id === row[fk.column])) {
@@ -228,6 +258,7 @@ export function createFakeDb() {
             }
           }
           if (violates(name, row)) return { data: null, error: { code: '23505', message: 'duplicate key' } };
+          if (name === 'gftvonelink_links' && overLinkCap(table, row)) return { data: null, error: { code: 'P0001', message: 'too_many_links' } };
           table(name).push(row);
           made.push(row);
         }

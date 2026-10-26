@@ -28,6 +28,9 @@ export const LIMITS = Object.freeze({
   staffWrite: [240, 60],
   visit: [120, 60],
   ownerRead: [120, 60],
+  // Asking for a higher link limit, per page and per connection. Only one
+  // can be open at a time anyway; this stops ask, withdraw, ask again.
+  capRequest: [10, 86400],
 });
 
 // Count one hit for each subject and answer 429 if any is over. Returns true

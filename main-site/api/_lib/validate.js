@@ -308,7 +308,9 @@ export function checkIcon(value) {
 // slug to the next person who asks for it.
 export const STALE_PENDING_MS = 3600_000;
 
-export const MAX_LINKS = 50;
+// The most links any page can be allowed, whatever an admin sets. Each page's
+// actual limit is lower (link-cap.js, migration 013), 20 by default.
+export const MAX_LINKS = 200;
 export const LIMITS = Object.freeze({ displayName: 60, bio: 512, title: 80, reportDetails: 500, reason: 500, label: 60, quote: 280, author: 60 });
 
 // A page whose owner has not signed in for this long stops being shown until

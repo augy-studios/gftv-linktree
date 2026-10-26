@@ -10,12 +10,24 @@ async function count(table, apply) {
   return n ?? 0;
 }
 
+// Requests for more links are for admins. Before migration 013 there is no
+// such table, and the card is left out rather than the whole overview failing.
+async function pendingLinkCaps(staff) {
+  if (staff.user.is_admin !== true) return undefined;
+  try {
+    return await count(T.linkCapRequests, (q) => q.eq('status', 'pending'));
+  } catch (cause) {
+    console.error('[onelink] overview link caps:', cause?.message ?? cause);
+    return undefined;
+  }
+}
+
 export default route('admin/overview', async (req, res) => {
   if (guard(req, res, ['GET'])) return;
   const staff = await requireStaff(req, res);
   if (!staff) return;
 
-  const [active, pending, banned, links, removed, openReports, awaitingReview, quarantined, pendingTestimonials] = await Promise.all([
+  const [active, pending, banned, links, removed, openReports, awaitingReview, quarantined, pendingTestimonials, linkCapRequests] = await Promise.all([
     count(T.pages, (q) => q.eq('status', 'active')),
     count(T.pages, (q) => q.eq('status', 'pending')),
     count(T.pages, (q) => q.eq('status', 'banned')),
@@ -25,10 +37,11 @@ export default route('admin/overview', async (req, res) => {
     count(T.pages, (q) => q.eq('needs_review', true).is('reviewed_at', null).neq('status', 'banned')),
     count(T.pages, (q) => q.not('quarantined_at', 'is', null).neq('status', 'banned')),
     count(T.testimonials, (q) => q.eq('status', 'pending')),
+    pendingLinkCaps(staff),
   ]);
 
   ok(res, {
     staff: publicStaff(staff.user),
-    counts: { active, pending, banned, links, removed, openReports, awaitingReview, quarantined, pendingTestimonials },
+    counts: { active, pending, banned, links, removed, openReports, awaitingReview, quarantined, pendingTestimonials, linkCapRequests },
   });
 });

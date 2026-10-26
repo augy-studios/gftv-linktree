@@ -97,6 +97,7 @@
                 <button class="tab" role="tab" id="atab-links" aria-controls="apanel-links" aria-selected="false" tabindex="-1"><span data-icon="link"></span><span data-i18n="admin.tab-links">Links</span></button>
                 <button class="tab" role="tab" id="atab-blocks" aria-controls="apanel-blocks" aria-selected="false" tabindex="-1" data-admin-only hidden><span data-icon="ban"></span><span data-i18n="admin.tab-blocks">Block lists</span></button>
                 <button class="tab" role="tab" id="atab-testimonials" aria-controls="apanel-testimonials" aria-selected="false" tabindex="-1"><span data-icon="chat"></span><span data-i18n="admin.tab-testimonials">Testimonials</span></button>
+                <button class="tab" role="tab" id="atab-caps" aria-controls="apanel-caps" aria-selected="false" tabindex="-1" data-admin-only hidden><span data-icon="trending-up"></span><span data-i18n="admin.tab-caps">Link limits</span></button>
                 <button class="tab" role="tab" id="atab-audit" aria-controls="apanel-audit" aria-selected="false" tabindex="-1" data-admin-only hidden><span data-icon="document"></span><span data-i18n="admin.tab-audit">Audit log</span></button>
                 <button class="tab" role="tab" id="atab-account" aria-controls="apanel-account" aria-selected="false" tabindex="-1"><span data-icon="key"></span><span data-i18n="admin.tab-account">My passkeys</span></button>
             </div>
@@ -264,6 +265,28 @@
                 <ul class="data-list u-mt-1" id="testimonialList"></ul>
             </section>
 
+            <section class="glass-card panel" role="tabpanel" id="apanel-caps" aria-labelledby="atab-caps" hidden>
+                <div class="panel-section">
+                    <h2 data-i18n="admin.caps-default-title">Default link limit</h2>
+                    <p class="muted small" data-i18n="admin.caps-default-body">How many links a page can have unless it has a limit of its own. Lowering it never deletes links: a page over the limit keeps them, but cannot add more.</p>
+                    <form class="toolbar u-mt-075" id="capDefaultForm" novalidate>
+                        <label class="field"><span class="visually-hidden" data-i18n="admin.caps-limit">Link limit</span><input id="capDefault" type="number" inputmode="numeric" min="1" max="200" step="1" required></label>
+                        <button class="btn btn-primary" type="submit" id="capDefaultSave"><span data-i18n="common.save">Save</span></button>
+                    </form>
+                    <div class="callout danger" id="capDefaultError" role="alert"></div>
+                </div>
+                <div class="panel-section">
+                    <h2 data-i18n="admin.caps-requests-title">Requests for more links</h2>
+                    <p class="muted small" data-i18n="admin.caps-requests-body">Approving gives the page a limit of its own: the number it asked for, unless you change it. The owner sees your answer, and any note, in their editor.</p>
+                    <ul class="data-list u-mt-075" id="capRequestList"></ul>
+                </div>
+                <div class="panel-section">
+                    <h2 data-i18n="admin.caps-custom-title">Pages with their own limit</h2>
+                    <p class="muted small" data-i18n="admin.caps-custom-body">These pages do not follow the default. Change one here, or from the page under Pages.</p>
+                    <ul class="data-list u-mt-075" id="capCustomList"></ul>
+                </div>
+            </section>
+
             <section class="glass-card panel" role="tabpanel" id="apanel-audit" aria-labelledby="atab-audit" hidden>
                 <div class="toolbar">
                     <label class="field u-flex-14"><span class="visually-hidden" data-i18n="admin.filter-action">Action</span>
@@ -404,6 +427,30 @@
             </label>
             <div class="callout danger" id="reasonError" role="alert"></div>
             <div class="actions"><button class="btn btn-primary" type="submit" id="reasonSubmit"><span data-i18n="common.confirm">Confirm</span></button></div>
+        </form>
+    </div>
+
+    <div class="modal-backdrop hidden" id="capModal">
+        <form class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="capTitle" id="capForm" novalidate>
+            <div class="modal-head">
+                <h2 id="capTitle"></h2>
+                <button class="icon-btn small" type="button" data-close-modal="capModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
+            </div>
+            <p class="small muted" id="capBody"></p>
+            <label class="field u-mt-075">
+                <span data-i18n="admin.caps-limit">Link limit</span>
+                <input id="capValue" type="number" inputmode="numeric" min="1" max="200" step="1">
+            </label>
+            <label class="check" id="capUseDefaultRow" hidden>
+                <input type="checkbox" id="capUseDefault">
+                <span id="capUseDefaultLabel"></span>
+            </label>
+            <label class="field" id="capNoteRow" hidden>
+                <span data-i18n="admin.caps-note">Note to the owner (optional)</span>
+                <textarea id="capNote" maxlength="500" rows="3"></textarea>
+            </label>
+            <div class="callout danger" id="capError" role="alert"></div>
+            <div class="actions"><button class="btn btn-primary" type="submit" id="capSubmit"><span data-i18n="common.save">Save</span></button></div>
         </form>
     </div>
 
