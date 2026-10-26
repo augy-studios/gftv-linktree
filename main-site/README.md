@@ -65,14 +65,15 @@ the browser shows `error.<code>` from the locale file.
 | `POST /api/auth/recover` | anyone | Forgotten password: needs a Telegram code and the authenticator or a backup code. |
 | `GET/POST /api/auth/session` | anyone | Am I signed in; sign out. |
 | `GET/PATCH /api/me/page` | owner | The editor view; name and bio. |
-| `POST/PATCH/DELETE /api/me/links` | owner | Add, edit, show/hide, reorder, delete links. |
+| `POST/PATCH/DELETE /api/me/links` | owner | Add, edit, show/hide, reorder, delete links. Adding is refused once the page is at its link limit. |
+| `GET/POST/DELETE /api/me/link-cap` | owner | The link limit; ask for a higher one, or withdraw the request. |
 | `POST /api/me/security` | owner | Second factors, backup codes, Telegram, password, sign out elsewhere, delete page. Asks for the password again. |
 | `GET /api/public/page` | anyone | A page as visitors see it. |
 | `POST /api/public/click` | anyone | Count a click. |
 | `POST /api/public/report` | anyone | Report a page or link, with a Turnstile token. |
 | `GET /api/public/turnstile` | anyone | The Turnstile site key, or null. |
 | `POST /api/telegram/webhook` | Telegram | Bot updates, checked against `TELEGRAM_WEBHOOK_SECRET`. Replies with the help message (rich) and one-line confirmations (plain). |
-| `/api/admin/*` | staff | `auth`, `passkeys`, `overview`, `pages`, `links`, `reports`, `blocklist` (admin), `audit` (admin). |
+| `/api/admin/*` | staff | `auth`, `passkeys`, `overview`, `pages`, `links`, `reports`, `blocklist` (admin), `link-caps` (admin), `audit` (admin). |
 | `GET /api/cron/cleanup` | Vercel Cron | Sweeps expired rows. |
 
 ### Security model
