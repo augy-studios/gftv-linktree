@@ -943,7 +943,7 @@
   "admin.caps-default-body": "Berapa tautan yang boleh dimiliki sebuah halaman, kecuali halaman itu punya batas sendiri. Menurunkannya tidak pernah menghapus tautan: halaman yang melebihi batas tetap menyimpannya, tetapi tidak bisa menambah lagi.",
   "admin.caps-limit": "Batas tautan",
   "admin.caps-requests-title": "Permintaan lebih banyak tautan",
-  "admin.caps-requests-body": "Menyetujui memberi halaman itu batas sendiri: jumlah yang diminta, kecuali Anda mengubahnya. Pemilik melihat jawaban Anda, dan catatan jika ada, di editor mereka.",
+  "admin.caps-requests-body": "Menyetujui memberi halaman itu batas sendiri: jumlah yang diminta, kecuali Anda mengubahnya. Penolakan bisa disertai kenaikan yang lebih kecil. Pemilik melihat jawaban Anda, dan catatan jika ada, di editor mereka, dan di Telegram jika tertaut.",
   "admin.caps-empty-requests": "Tidak ada yang menunggu.",
   "admin.caps-custom-title": "Halaman dengan batas sendiri",
   "admin.caps-custom-body": "Halaman ini tidak mengikuti batas bawaan. Ubah di sini, atau dari halamannya di bagian Halaman.",
@@ -953,7 +953,7 @@
   "admin.caps-over": "Melebihi batas",
   "admin.caps-change": "Ubah batas",
   "admin.caps-approve-title": "Lebih banyak tautan untuk /{slug}",
-  "admin.caps-approve-body": "Mereka meminta batas {requested}. Anda bisa memberi jumlah lain.",
+  "admin.caps-approve-body": "Mereka meminta batas {requested}. Anda bisa memberi jumlah lain, dari {min} sampai {max}.",
   "admin.caps-decline-title": "Tolak permintaan dari /{slug}",
   "admin.caps-decline-body": "Pemilik melihat bahwa permintaannya tidak disetujui, beserta catatan Anda jika ada. Mereka bisa meminta lagi.",
   "admin.caps-note": "Catatan untuk pemilik (opsional)",
@@ -961,5 +961,9 @@
   "admin.caps-page-body": "Menurunkannya tidak pernah menghapus tautan: halaman tetap menyimpannya, tetapi tidak bisa menambah lagi sampai di bawah batas.",
   "admin.caps-use-default": "Ikuti batas bawaan ({limit})",
   "admin.caps-page-own": "Batas tautan: memakai {used} dari {limit}, batas sendiri.",
-  "admin.caps-page-default": "Batas tautan: memakai {used} dari {limit}, batas bawaan."
+  "admin.caps-page-default": "Batas tautan: memakai {used} dari {limit}, batas bawaan.",
+  "link-cap.status-compromise": "Permintaan Anda untuk batas {requested} tidak disetujui, tetapi batas Anda dinaikkan menjadi {granted}.",
+  "error.cap_grant_range": "Pilih batas dari {min} sampai {max}.",
+  "admin.caps-compromise": "Batas lebih kecil sebagai gantinya (opsional)",
+  "admin.caps-decline-compromise-body": "Pemilik melihat bahwa permintaannya tidak disetujui, beserta catatan Anda jika ada, dan bisa meminta lagi. Anda bisa memberi kenaikan yang lebih kecil, dari {min} sampai {max}. Kosongkan untuk mempertahankan batas mereka di {limit}."
 }

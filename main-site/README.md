@@ -73,7 +73,7 @@ the browser shows `error.<code>` from the locale file.
 | `POST /api/public/report` | anyone | Report a page or link, with a Turnstile token. |
 | `GET /api/public/turnstile` | anyone | The Turnstile site key, or null. |
 | `POST /api/telegram/webhook` | Telegram | Bot updates, checked against `TELEGRAM_WEBHOOK_SECRET`. Replies with the help message (rich) and one-line confirmations (plain). |
-| `/api/admin/*` | staff | `auth`, `passkeys`, `overview`, `pages`, `links`, `reports`, `blocklist` (admin), `link-caps` (admin), `audit` (admin). |
+| `/api/admin/*` | staff | `auth`, `passkeys`, `overview`, `pages`, `links`, `reports`, `blocklist` (admin), `link-caps` (any staff answer requests for more links; the default and per-page limits are admin only), `audit` (admin). |
 | `GET /api/cron/cleanup` | Vercel Cron | Sweeps expired rows. |
 
 ### Security model
@@ -117,13 +117,17 @@ the browser shows `error.<code>` from the locale file.
 ### Telegram messages
 
 These follow `telethon-richmessage-retrofit.md`, adapted from Telethon to the
-HTTP Bot API (10.1 and later). Structured messages (the code DMs and the help)
-are built in `api/_lib/telegram-messages.js` as `{ markdown, fallback }` and
-sent with `sendRichMessage`. That method has no plain-text field, so when a
+HTTP Bot API (10.1 and later). Structured messages (the code DMs, the help,
+the dormancy reminder, and the answer to a request for more links) are built
+in `api/_lib/telegram-messages.js` as `{ markdown, fallback }` and sent with
+`sendRichMessage`. That method has no plain-text field, so when a
 rich send is refused, `sendRichTelegram` sends the fallback with `sendMessage`
 and logs `rich send failed, falling back`. One-line notices stay plain. Data in
 the Markdown goes through `escapeMd`, and table cells through `escapeCell`.
-Neither path uses `parse_mode`.
+Neither path uses `parse_mode`. The bot writes in English only. A message
+that is a courtesy (the answer to a link limit request) is sent only when the
+owner has Telegram linked, and a failed send is logged, never an error for
+the staff member who answered.
 
 ### Profile pictures
 

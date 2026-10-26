@@ -1382,8 +1382,12 @@ test('link limits: 20 by default, admins change it, and lowering one keeps the l
   const { secret: edSecret } = await makeStaff({ username: 'ed', role: 'editor' });
   const editor = browser();
   await staffSignIn(editor, 'ed', edSecret);
-  assert.equal((await editor.call(adminLinkCaps)).json.error, 'admin_only');
+  // Editors see requests, but the default and per-page limits are for admins.
+  const edView = (await editor.call(adminLinkCaps)).json;
+  assert.equal(edView.defaultCap, 20);
+  assert.equal(edView.custom, undefined, 'editors are not sent the pages with their own limit');
   assert.equal((await editor.call(adminLinkCaps, { method: 'POST', body: { action: 'set-default', cap: 99 } })).json.error, 'admin_only');
+  assert.equal((await editor.call(adminLinkCaps, { method: 'POST', body: { action: 'set-page', id: pageId, cap: 99 } })).json.error, 'admin_only');
 
   for (const cap of [0, 201, 'abc', 2.5, null]) {
     assert.equal((await admin.call(adminLinkCaps, { method: 'POST', body: { action: 'set-default', cap } })).json.error, 'cap_invalid', String(cap));
@@ -1419,7 +1423,7 @@ test('link limits: 20 by default, admins change it, and lowering one keeps the l
   for (const a of ['mod.link_cap_default', 'mod.link_cap_page']) assert.ok(log.includes(a), a);
 });
 
-test('owners ask for a higher link limit, and an admin approves or declines', async () => {
+test('owners ask for a higher link limit, and staff approve or decline', async () => {
   const owner = browser();
   const { password } = await makePage(owner);
   const pageId = fake.table('gftvonelink_pages')[0].id;
@@ -1444,9 +1448,9 @@ test('owners ask for a higher link limit, and an admin approves or declines', as
   const editor = browser();
   await staffSignIn(editor, 'ed', edSecret);
   assert.equal((await admin.call(adminOverview)).json.counts.linkCapRequests, 1);
-  assert.equal((await editor.call(adminOverview)).json.counts.linkCapRequests, undefined, 'requests are for admins');
+  assert.equal((await editor.call(adminOverview)).json.counts.linkCapRequests, 1, 'editors answer requests too');
 
-  const list = await admin.call(adminLinkCaps);
+  const list = await editor.call(adminLinkCaps);
   assert.deepEqual(leaks(list.json), []);
   const waiting = list.json.pending[0];
   assert.equal(waiting.slug, 'augy');
@@ -1454,10 +1458,16 @@ test('owners ask for a higher link limit, and an admin approves or declines', as
   assert.equal(waiting.used, 20);
   assert.equal(waiting.limit, 20);
   assert.equal(waiting.reason, 'I run a convention and link every panel.');
-  assert.equal((await editor.call(adminLinkCaps, { method: 'POST', body: { action: 'approve', id: waiting.id } })).json.error, 'admin_only');
+  // An editor can give up to what was asked, and more than the page has now.
+  const approve = (b, cap) => b.call(adminLinkCaps, { method: 'POST', body: { action: 'approve', id: waiting.id, cap } });
+  for (const cap of [31, 20, 0]) {
+    const r = await approve(editor, cap);
+    assert.equal(r.json.error, 'cap_grant_range', String(cap));
+    assert.deepEqual([r.json.min, r.json.max], [21, 30]);
+  }
 
   // Approved for a different number than asked, with a note.
-  const approved = await admin.call(adminLinkCaps, { method: 'POST', body: { action: 'approve', id: waiting.id, cap: 25, note: 'Start with 25.' } });
+  const approved = await editor.call(adminLinkCaps, { method: 'POST', body: { action: 'approve', id: waiting.id, cap: 25, note: 'Start with 25.' } });
   assert.equal(approved.json.pending.length, 0);
   assert.equal(fake.table('gftvonelink_pages')[0].links_cap, 25);
   assert.equal((await admin.call(adminLinkCaps, { method: 'POST', body: { action: 'approve', id: waiting.id } })).json.error, 'cap_request_closed');
@@ -1471,18 +1481,33 @@ test('owners ask for a higher link limit, and an admin approves or declines', as
 
   // Asking again, declined: the limit stays where it was.
   await ask({ requested: 60, reason: 'Even more' });
-  const again = (await admin.call(adminLinkCaps)).json.pending[0];
+  let again = (await admin.call(adminLinkCaps)).json.pending[0];
   assert.equal(again.limit, 25);
   assert.equal(again.capWhenAsked, 25);
-  await admin.call(adminLinkCaps, { method: 'POST', body: { action: 'decline', id: again.id, note: 'Not for now.' } });
+  await editor.call(adminLinkCaps, { method: 'POST', body: { action: 'decline', id: again.id, note: 'Not for now.' } });
   mine = (await owner.call(meLinkCap)).json;
   assert.equal(mine.request.status, 'declined');
   assert.equal(mine.request.granted, null);
   assert.equal(mine.request.note, 'Not for now.');
   assert.equal(mine.linkCap.limit, 25);
 
+  // Declined with a compromise: above the limit now, below what was asked.
+  await ask({ requested: 60, reason: 'Please' });
+  again = (await editor.call(adminLinkCaps)).json.pending[0];
+  for (const cap of [60, 25, 'x']) {
+    const r = await editor.call(adminLinkCaps, { method: 'POST', body: { action: 'decline', id: again.id, cap } });
+    assert.equal(r.json.error, 'cap_grant_range', String(cap));
+    assert.deepEqual([r.json.min, r.json.max], [26, 59]);
+  }
+  await editor.call(adminLinkCaps, { method: 'POST', body: { action: 'decline', id: again.id, cap: 40, note: 'Meet you halfway.' } });
+  mine = (await owner.call(meLinkCap)).json;
+  assert.equal(mine.request.status, 'declined');
+  assert.equal(mine.request.granted, 40);
+  assert.equal(mine.request.note, 'Meet you halfway.');
+  assert.deepEqual(mine.linkCap, { used: 21, limit: 40, custom: true });
+
   // The owner can take an open request back.
-  await ask({ requested: 40, reason: 'Third time' });
+  assert.equal((await ask({ requested: 45, reason: 'Third time' })).status, 200);
   assert.equal((await owner.call(meLinkCap, { method: 'DELETE', body: {} })).json.request, null);
   assert.equal((await admin.call(adminLinkCaps)).json.pending.length, 0);
 
@@ -1491,4 +1516,67 @@ test('owners ask for a higher link limit, and an admin approves or declines', as
 
   await owner.call(security, { method: 'POST', body: { action: 'delete-page', password, confirmSlug: 'augy' } });
   assert.equal(fake.table('gftvonelink_link_cap_requests').length, 0, 'deleting the page takes its requests too');
+});
+
+test('the owner hears about a review on Telegram, and a failed send does not stop it', async () => {
+  const owner = browser();
+  await makePage(owner);
+  const page = fake.table('gftvonelink_pages')[0];
+  page.telegram_chat_id = 4242;
+  const ask = (requested) => owner.call(meLinkCap, { method: 'POST', body: { requested, reason: 'Shop links' } });
+  const { secret } = await makeStaff({ username: 'ed', role: 'editor' });
+  const editor = browser();
+  await staffSignIn(editor, 'ed', secret);
+  const review = async (body) => {
+    const id = (await editor.call(adminLinkCaps)).json.pending[0].id;
+    return editor.call(adminLinkCaps, { method: 'POST', body: { id, ...body } });
+  };
+
+  const calls = [];
+  let failing = false;
+  const realFetch = globalThis.fetch;
+  const warn = console.warn;
+  process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+  process.env.TELEGRAM_BOT_USERNAME = 'onelink_test_bot';
+  console.warn = () => {};
+  globalThis.fetch = async (url, init) => {
+    calls.push({ method: String(url).split('/').pop(), body: JSON.parse(init.body) });
+    if (failing) throw new Error('network down');
+    return new Response('{"ok":true}');
+  };
+  try {
+    await ask(30);
+    assert.equal((await review({ action: 'approve', note: 'Enjoy *bold* <b>' })).status, 200);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].method, 'sendRichMessage');
+    assert.equal(calls[0].body.chat_id, 4242);
+    const md = calls[0].body.rich_message.markdown;
+    assert.match(md, /approved/);
+    assert.match(md, /links\.gftv\.asia\/augy/);
+    assert.ok(md.includes(String.raw`Enjoy \*bold\* \<b\>`), 'the note is escaped');
+
+    await ask(50);
+    await review({ action: 'decline', cap: 40 });
+    assert.match(calls[1].body.rich_message.markdown, /raised to 40/);
+
+    // Telegram down: the review still goes through.
+    failing = true;
+    await ask(60);
+    const r = await review({ action: 'decline', note: 'No' });
+    assert.equal(r.status, 200);
+    assert.equal(fake.table('gftvonelink_link_cap_requests').filter((x) => x.status === 'declined').length, 2);
+
+    // No Telegram linked: nothing is sent.
+    failing = false;
+    page.telegram_chat_id = null;
+    const before = calls.length;
+    await ask(70);
+    await review({ action: 'approve' });
+    assert.equal(calls.length, before);
+  } finally {
+    globalThis.fetch = realFetch;
+    console.warn = warn;
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    delete process.env.TELEGRAM_BOT_USERNAME;
+  }
 });

@@ -66,15 +66,16 @@ export function ownerLinkCap(cap, used) {
 }
 
 // The owner's latest request for more links, or null. A withdrawn one is as
-// good as none. The note is what the admin wrote back; who reviewed it stays
-// here.
+// good as none. granted is the limit it was given: on an approval, or on a
+// decline that came with a smaller raise. The note is what the reviewer
+// wrote back; who reviewed it stays here.
 export function ownerCapRequest(row) {
   if (!row || row.status === 'withdrawn') return null;
   return {
     status: row.status,
     requested: row.requested_cap,
     reason: row.reason,
-    granted: row.status === 'approved' ? row.granted_cap : null,
+    granted: row.status === 'approved' || row.status === 'declined' ? row.granted_cap ?? null : null,
     note: row.status === 'pending' ? null : row.review_note || null,
     sentAt: row.created_at,
     reviewedAt: row.reviewed_at || null,
@@ -200,7 +201,7 @@ export function adminTestimonialRow(row) {
   };
 }
 
-// A request for more links, for admins. used and limit are the page's now,
+// A request for more links, for staff. used and limit are the page's now,
 // not when it asked.
 export function adminCapRequestRow(row, { used, limit } = {}) {
   return {
@@ -221,7 +222,7 @@ export function adminCapRequestRow(row, { used, limit } = {}) {
   };
 }
 
-// A page with a limit of its own, for admins.
+// A page with a limit of its own, for admins only.
 export function adminCapPageRow(page, used) {
   return { id: page.id, slug: page.slug, displayName: page.display_name || null, limit: page.links_cap, used };
 }

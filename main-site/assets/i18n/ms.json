@@ -973,7 +973,7 @@
   "admin.caps-default-body": "Jumlah pautan yang boleh ada pada sesebuah halaman, melainkan halaman itu mempunyai had sendiri. Menurunkannya tidak pernah memadam pautan: halaman yang melebihi had menyimpannya, tetapi tidak boleh menambah lagi.",
   "admin.caps-limit": "Had pautan",
   "admin.caps-requests-title": "Permintaan untuk lebih banyak pautan",
-  "admin.caps-requests-body": "Meluluskan memberi halaman itu had sendiri: jumlah yang diminta, melainkan anda mengubahnya. Pemilik melihat jawapan anda, dan sebarang nota, dalam editor mereka.",
+  "admin.caps-requests-body": "Meluluskan memberi halaman itu had sendiri: jumlah yang diminta, melainkan anda mengubahnya. Penolakan boleh disertai kenaikan yang lebih kecil. Pemilik melihat jawapan anda, dan sebarang nota, dalam editor mereka, dan di Telegram jika dipautkan.",
   "admin.caps-empty-requests": "Tiada yang menunggu.",
   "admin.caps-custom-title": "Halaman dengan had sendiri",
   "admin.caps-custom-body": "Halaman ini tidak mengikut had lalai. Ubah di sini, atau dari halaman itu di bawah Halaman.",
@@ -983,7 +983,7 @@
   "admin.caps-over": "Melebihi had",
   "admin.caps-change": "Ubah had",
   "admin.caps-approve-title": "Lebih banyak pautan untuk /{slug}",
-  "admin.caps-approve-body": "Mereka meminta had {requested}. Anda boleh memberi jumlah yang lain.",
+  "admin.caps-approve-body": "Mereka meminta had {requested}. Anda boleh memberi jumlah yang lain, dari {min} hingga {max}.",
   "admin.caps-decline-title": "Tolak permintaan daripada /{slug}",
   "admin.caps-decline-body": "Pemilik melihat bahawa permintaan tidak diluluskan, beserta nota anda jika ada. Mereka boleh meminta lagi.",
   "admin.caps-note": "Nota kepada pemilik (pilihan)",
@@ -991,5 +991,9 @@
   "admin.caps-page-body": "Menurunkannya tidak pernah memadam pautan: halaman menyimpannya, tetapi tidak boleh menambah lagi sehingga di bawah had.",
   "admin.caps-use-default": "Ikut had lalai ({limit})",
   "admin.caps-page-own": "Had pautan: menggunakan {used} daripada {limit}, had sendiri.",
-  "admin.caps-page-default": "Had pautan: menggunakan {used} daripada {limit}, had lalai."
+  "admin.caps-page-default": "Had pautan: menggunakan {used} daripada {limit}, had lalai.",
+  "link-cap.status-compromise": "Permintaan anda untuk had {requested} tidak diluluskan, tetapi had anda dinaikkan kepada {granted}.",
+  "error.cap_grant_range": "Pilih had dari {min} hingga {max}.",
+  "admin.caps-compromise": "Had yang lebih kecil sebagai ganti (pilihan)",
+  "admin.caps-decline-compromise-body": "Pemilik melihat bahawa permintaan tidak diluluskan, beserta nota anda jika ada, dan boleh meminta lagi. Anda boleh memberi kenaikan yang lebih kecil, dari {min} hingga {max}. Biarkan kosong untuk mengekalkan had mereka pada {limit}."
 }

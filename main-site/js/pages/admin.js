@@ -275,7 +275,7 @@ loaders.overview = async () => {
       ['awaitingReview', 'admin.stat-review', 'pages', 'review'],
       ['quarantined', 'admin.stat-quarantined', 'pages', 'quarantined'],
       ['pendingTestimonials', 'admin.stat-testimonials', 'testimonials'],
-      // Only admins are sent this count.
+      // Left out before migration 013.
       ['linkCapRequests', 'admin.stat-link-caps', 'caps'],
       ['active', 'admin.stat-active'],
       ['pending', 'admin.stat-pending'],
@@ -862,21 +862,29 @@ $('testimonialForm').addEventListener('submit', (e) => {
 });
 
 // ---------------------------------------------------------------------------
-// Link limits (admin)
+// Link limits
 //
-// The default every page follows, owners' requests for more, and the pages
-// that have a limit of their own. Lowering a limit never deletes links.
+// Owners' requests for more, which any staff member answers; and, for admins,
+// the default every page follows and the pages with a limit of their own.
+// Lowering a limit never deletes links.
 // ---------------------------------------------------------------------------
 
 let caps = null;
 
-// The number dialog, for approving a request and setting a page's limit.
+// The number dialog, for answering a request and setting a page's limit.
 // useDefault, when given, is the default limit, offered as a way back to it.
+// min and max bound the number; optional lets it be left empty (a decline
+// without a smaller raise); askNumber: false hides it altogether.
 let capAction = null;
-function askCap({ title, body, value, note = false, useDefault = null, run }) {
-  capAction = { run, useDefault };
+function askCap({ title, body, value = '', label = 'admin.caps-limit', min = 1, max = null, optional = false, askNumber = true, note = false, useDefault = null, run }) {
+  const top = max ?? caps?.maxCap ?? 200;
+  capAction = { run, useDefault, min, max: top, optional, askNumber };
   $('capTitle').textContent = title;
   $('capBody').textContent = body;
+  $('capValueRow').hidden = !askNumber;
+  $('capValueLabel').textContent = t(label);
+  $('capValue').min = String(min);
+  $('capValue').max = String(top);
   $('capValue').value = value ?? '';
   $('capValue').disabled = false;
   $('capUseDefaultRow').hidden = useDefault === null;
@@ -885,20 +893,22 @@ function askCap({ title, body, value, note = false, useDefault = null, run }) {
   $('capNoteRow').hidden = !note;
   $('capNote').value = '';
   $('capError').textContent = '';
-  openModal('capModal', { initialFocus: $('capValue') });
+  openModal('capModal', { initialFocus: askNumber ? $('capValue') : (note ? $('capNote') : null) });
 }
 $('capUseDefault').addEventListener('change', (e) => { $('capValue').disabled = e.target.checked; });
 $('capForm').addEventListener('submit', (e) => {
   e.preventDefault();
   if (!capAction) return;
+  const { min, max, optional, askNumber } = capAction;
   const backToDefault = capAction.useDefault !== null && $('capUseDefault').checked;
-  const value = $('capValue').value.trim();
-  if (!backToDefault && !/^\d{1,4}$/.test(value)) {
-    $('capError').textContent = t('error.cap_invalid', { max: formatNumber(caps?.maxCap ?? 200) });
+  const value = askNumber ? $('capValue').value.trim() : '';
+  const none = backToDefault || !askNumber || (optional && value === '');
+  if (!none && (!/^\d{1,4}$/.test(value) || Number(value) < min || Number(value) > max)) {
+    $('capError').textContent = t('error.cap_grant_range', { min: formatNumber(min), max: formatNumber(max) });
     return;
   }
   withBusy($('capSubmit'), $('capError'), async () => {
-    await capAction.run(backToDefault ? null : Number(value), $('capNote').value.trim());
+    await capAction.run(none ? null : Number(value), $('capNote').value.trim());
     closeModal('capModal');
     toast(t('admin.done'));
   });
@@ -928,8 +938,13 @@ function changePageCap(p, defaultCap, after = null) {
   });
 }
 
+// Any staff member answers requests. Approving gives more than the page has
+// now: up to what was asked (editors) or the ceiling (admins). Declining can
+// come with a smaller raise, between the two.
 function capRequestRow(r) {
   const numbers = { requested: formatNumber(r.requested), used: formatNumber(r.used), limit: formatNumber(r.limit) };
+  const approveMax = isAdmin() ? (caps?.maxCap ?? 200) : r.requested;
+  const compromise = { min: r.limit + 1, max: r.requested - 1 };
   return el('li', { class: 'data-row' }, [
     el('div', {}, [
       pageLink(r.slug, r.displayName),
@@ -940,20 +955,29 @@ function capRequestRow(r) {
     el('div', { class: 'row-actions' }, [
       actionButton('admin.approve', 'check', () => askCap({
         title: t('admin.caps-approve-title', { slug: r.slug }),
-        body: t('admin.caps-approve-body', numbers),
+        body: t('admin.caps-approve-body', { ...numbers, min: formatNumber(r.limit + 1), max: formatNumber(approveMax) }),
         value: r.requested,
+        min: r.limit + 1,
+        max: approveMax,
         note: true,
         run: (cap, note) => sendCaps({ action: 'approve', id: r.id, cap, note }),
       }), 'btn-primary'),
-      actionButton('admin.decline', 'close', () => askReason({
-        title: t('admin.caps-decline-title', { slug: r.slug }),
-        body: t('admin.caps-decline-body'),
-        required: false,
-        run: async (note) => {
-          await sendCaps({ action: 'decline', id: r.id, note });
-          toast(t('admin.done'));
-        },
-      })),
+      actionButton('admin.decline', 'close', () => {
+        const canCompromise = compromise.min <= compromise.max;
+        askCap({
+          title: t('admin.caps-decline-title', { slug: r.slug }),
+          body: canCompromise
+            ? t('admin.caps-decline-compromise-body', { ...numbers, min: formatNumber(compromise.min), max: formatNumber(compromise.max) })
+            : t('admin.caps-decline-body'),
+          label: 'admin.caps-compromise',
+          min: compromise.min,
+          max: compromise.max,
+          optional: true,
+          askNumber: canCompromise,
+          note: true,
+          run: (cap, note) => sendCaps({ action: 'decline', id: r.id, cap, note }),
+        });
+      }),
     ]),
   ]);
 }
@@ -975,13 +999,13 @@ function renderCaps(data) {
   input.max = String(data.maxCap);
   if (document.activeElement !== input) input.value = String(data.defaultCap);
   fill($('capRequestList'), data.pending.map(capRequestRow), 'admin.caps-empty-requests');
-  fill($('capCustomList'), data.custom.map(capCustomRow), 'admin.caps-empty-custom');
+  // Admins only: editors are not sent it.
+  if (data.custom) fill($('capCustomList'), data.custom.map(capCustomRow), 'admin.caps-empty-custom');
 }
 
 loaders.caps = async () => {
-  if (!isAdmin()) return;
   loading($('capRequestList'));
-  loading($('capCustomList'));
+  if (isAdmin()) loading($('capCustomList'));
   try {
     renderCaps(await api('/api/admin/link-caps'));
   } catch (error) {

@@ -468,8 +468,10 @@ function linksInUse() {
   return page.links.filter((l) => !l.removed).length;
 }
 
+// A decline can come with a smaller raise (granted), which reads differently.
 function capRequestText(r) {
-  const text = t(`link-cap.status-${r.status}`, {
+  const key = r.status === 'declined' && r.granted ? 'compromise' : r.status;
+  const text = t(`link-cap.status-${key}`, {
     requested: formatNumber(r.requested),
     granted: formatNumber(r.granted ?? 0),
     when: formatDate(r.sentAt),
@@ -499,7 +501,7 @@ function renderLinkCap() {
   box.hidden = atMost && !request;
   const status = $('capRequestStatus');
   status.classList.toggle('ok', request?.status === 'approved');
-  status.classList.toggle('warn', request?.status === 'declined');
+  status.classList.toggle('warn', request?.status === 'declined' && !request.granted);
   status.textContent = request ? capRequestText(request) : '';
   $('capRequestForm').hidden = pending || atMost;
   $('capWithdrawRow').hidden = !pending;

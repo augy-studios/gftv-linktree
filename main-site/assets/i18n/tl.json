@@ -944,7 +944,7 @@
   "admin.caps-default-body": "Ilang link ang puwedeng magkaroon ang isang pahina, maliban kung may sarili itong limit. Hindi kailanman nagbubura ng link ang pagbaba nito: itatago ng pahinang lampas sa limit ang mga ito, pero hindi na ito makakapagdagdag.",
   "admin.caps-limit": "Limit ng link",
   "admin.caps-requests-title": "Mga hiling para sa mas maraming link",
-  "admin.caps-requests-body": "Kapag inaprubahan, magkakaroon ang pahina ng sariling limit: ang bilang na hiningi nito, maliban kung babaguhin mo. Makikita ng may-ari ang sagot mo, at anumang tala, sa editor nila.",
+  "admin.caps-requests-body": "Kapag inaprubahan, magkakaroon ang pahina ng sariling limit: ang bilang na hiningi nito, maliban kung babaguhin mo. Puwedeng may kasamang mas maliit na pagtaas ang pagtanggi. Makikita ng may-ari ang sagot mo, at anumang tala, sa editor nila, at sa Telegram kung naka-link.",
   "admin.caps-empty-requests": "Walang naghihintay.",
   "admin.caps-custom-title": "Mga pahinang may sariling limit",
   "admin.caps-custom-body": "Hindi sinusunod ng mga pahinang ito ang default. Baguhin dito, o mula sa pahina sa ilalim ng Mga Pahina.",
@@ -954,7 +954,7 @@
   "admin.caps-over": "Lampas sa limit",
   "admin.caps-change": "Baguhin ang limit",
   "admin.caps-approve-title": "Mas maraming link para sa /{slug}",
-  "admin.caps-approve-body": "Humingi sila ng limit na {requested}. Puwede kang magbigay ng ibang bilang.",
+  "admin.caps-approve-body": "Humingi sila ng limit na {requested}. Puwede kang magbigay ng ibang bilang, mula {min} hanggang {max}.",
   "admin.caps-decline-title": "Tanggihan ang hiling mula sa /{slug}",
   "admin.caps-decline-body": "Makikita ng may-ari na hindi ito naaprubahan, kasama ang tala mo kung magsusulat ka. Puwede silang humingi ulit.",
   "admin.caps-note": "Tala para sa may-ari (opsyonal)",
@@ -962,5 +962,9 @@
   "admin.caps-page-body": "Hindi kailanman nagbubura ng link ang pagbaba nito: itatago ng pahina ang mga ito, pero hindi ito makakapagdagdag hangga't hindi bumababa sa limit.",
   "admin.caps-use-default": "Sundin ang default ({limit})",
   "admin.caps-page-own": "Limit ng link: gumagamit ng {used} sa {limit}, sariling limit.",
-  "admin.caps-page-default": "Limit ng link: gumagamit ng {used} sa {limit}, ang default."
+  "admin.caps-page-default": "Limit ng link: gumagamit ng {used} sa {limit}, ang default.",
+  "link-cap.status-compromise": "Hindi naaprubahan ang hiling mo para sa limit na {requested}, pero itinaas ang limit mo sa {granted}.",
+  "error.cap_grant_range": "Pumili ng limit mula {min} hanggang {max}.",
+  "admin.caps-compromise": "Mas maliit na limit na lang (opsyonal)",
+  "admin.caps-decline-compromise-body": "Makikita ng may-ari na hindi ito naaprubahan, kasama ang tala mo kung magsusulat ka, at puwede silang humingi ulit. Puwede kang magbigay ng mas maliit na pagtaas, mula {min} hanggang {max}. Iwanang blangko para manatili ang limit nila sa {limit}."
 }

@@ -964,7 +964,7 @@
   "admin.caps-default-body": "页面可拥有的链接数量，除非该页面有自己的上限。调低上限不会删除任何链接：超出上限的页面会保留现有链接，但不能再添加。",
   "admin.caps-limit": "链接上限",
   "admin.caps-requests-title": "链接上限申请",
-  "admin.caps-requests-body": "批准后，该页面会有自己的上限：默认为其申请的数量，你也可以修改。页面所有者会在编辑器中看到你的答复和留言。",
+  "admin.caps-requests-body": "批准后，该页面会有自己的上限：默认为其申请的数量，你也可以修改。拒绝时也可以改为小幅提高。页面所有者会在编辑器中看到你的答复和留言；如已关联 Telegram，也会收到通知。",
   "admin.caps-empty-requests": "没有待处理的申请。",
   "admin.caps-custom-title": "有自己上限的页面",
   "admin.caps-custom-body": "这些页面不使用默认上限。可以在这里修改，也可以在“页面”中打开该页面修改。",
@@ -974,7 +974,7 @@
   "admin.caps-over": "超出上限",
   "admin.caps-change": "修改上限",
   "admin.caps-approve-title": "为 /{slug} 提高链接上限",
-  "admin.caps-approve-body": "对方申请的上限是 {requested}。你可以给出不同的数字。",
+  "admin.caps-approve-body": "对方申请的上限是 {requested}。你可以给出不同的数字，范围为 {min} 到 {max}。",
   "admin.caps-decline-title": "拒绝 /{slug} 的申请",
   "admin.caps-decline-body": "页面所有者会看到申请未获批准，以及你写的留言（如有）。对方可以再次申请。",
   "admin.caps-note": "给页面所有者的留言（可选）",
@@ -982,5 +982,9 @@
   "admin.caps-page-body": "调低上限不会删除任何链接：页面会保留现有链接，但在数量降到上限以下之前不能再添加。",
   "admin.caps-use-default": "使用默认上限（{limit}）",
   "admin.caps-page-own": "链接上限：已使用 {used} / {limit}，为该页面单独设置。",
-  "admin.caps-page-default": "链接上限：已使用 {used} / {limit}，为默认上限。"
+  "admin.caps-page-default": "链接上限：已使用 {used} / {limit}，为默认上限。",
+  "link-cap.status-compromise": "你将上限提高到 {requested} 的申请未获批准，但你的上限已提高到 {granted}。",
+  "error.cap_grant_range": "请选择 {min} 到 {max} 之间的上限。",
+  "admin.caps-compromise": "改为较小的上限（可选）",
+  "admin.caps-decline-compromise-body": "页面所有者会看到申请未获批准，以及你写的留言（如有），并可以再次申请。你也可以改为小幅提高，范围为 {min} 到 {max}。留空则保持其上限为 {limit}。"
 }

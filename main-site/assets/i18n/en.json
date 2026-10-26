@@ -974,7 +974,7 @@
   "admin.caps-default-body": "How many links a page can have unless it has a limit of its own. Lowering it never deletes links: a page over the limit keeps them, but cannot add more.",
   "admin.caps-limit": "Link limit",
   "admin.caps-requests-title": "Requests for more links",
-  "admin.caps-requests-body": "Approving gives the page a limit of its own: the number it asked for, unless you change it. The owner sees your answer, and any note, in their editor.",
+  "admin.caps-requests-body": "Approving gives the page a limit of its own: the number it asked for, unless you change it. Declining can come with a smaller raise instead. The owner sees your answer, and any note, in their editor, and on Telegram if they have it linked.",
   "admin.caps-empty-requests": "Nothing waiting.",
   "admin.caps-custom-title": "Pages with their own limit",
   "admin.caps-custom-body": "These pages do not follow the default. Change one here, or from the page under Pages.",
@@ -984,7 +984,7 @@
   "admin.caps-over": "Over its limit",
   "admin.caps-change": "Change limit",
   "admin.caps-approve-title": "More links for /{slug}",
-  "admin.caps-approve-body": "They asked for a limit of {requested}. You can give a different number.",
+  "admin.caps-approve-body": "They asked for a limit of {requested}. You can give a different number, from {min} to {max}.",
   "admin.caps-decline-title": "Decline the request from /{slug}",
   "admin.caps-decline-body": "The owner sees that it was not approved, with your note if you write one. They can ask again.",
   "admin.caps-note": "Note to the owner (optional)",
@@ -992,5 +992,9 @@
   "admin.caps-page-body": "Lowering it never deletes links: the page keeps them, but cannot add more until it is under the limit.",
   "admin.caps-use-default": "Follow the default ({limit})",
   "admin.caps-page-own": "Link limit: uses {used} of {limit}, a limit of its own.",
-  "admin.caps-page-default": "Link limit: uses {used} of {limit}, the default."
+  "admin.caps-page-default": "Link limit: uses {used} of {limit}, the default.",
+  "link-cap.status-compromise": "Your request for a limit of {requested} was not approved, but your limit was raised to {granted}.",
+  "error.cap_grant_range": "Choose a limit from {min} to {max}.",
+  "admin.caps-compromise": "Smaller limit instead (optional)",
+  "admin.caps-decline-compromise-body": "The owner sees that it was not approved, with your note if you write one, and can ask again. You can give a smaller raise instead, from {min} to {max}. Leave it empty to keep their limit at {limit}."
 }

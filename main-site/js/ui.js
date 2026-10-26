@@ -153,8 +153,8 @@ export async function withBusy(button, errorBox, fn) {
 }
 
 // The server adds what a message names: { host } for an address the lists
-// refused, { limit } and { max } for link limits.
-const ERROR_PARAMS = ['host', 'limit', 'max'];
+// refused, { limit }, { min } and { max } for link limits.
+const ERROR_PARAMS = ['host', 'limit', 'min', 'max'];
 
 export function errorText(error) {
   const code = error && error.code ? error.code : 'generic';

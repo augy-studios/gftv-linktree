@@ -10,10 +10,10 @@ async function count(table, apply) {
   return n ?? 0;
 }
 
-// Requests for more links are for admins. Before migration 013 there is no
-// such table, and the card is left out rather than the whole overview failing.
-async function pendingLinkCaps(staff) {
-  if (staff.user.is_admin !== true) return undefined;
+// Requests for more links, which any staff member can answer. Before
+// migration 013 there is no such table, and the card is left out rather than
+// the whole overview failing.
+async function pendingLinkCaps() {
   try {
     return await count(T.linkCapRequests, (q) => q.eq('status', 'pending'));
   } catch (cause) {
@@ -37,7 +37,7 @@ export default route('admin/overview', async (req, res) => {
     count(T.pages, (q) => q.eq('needs_review', true).is('reviewed_at', null).neq('status', 'banned')),
     count(T.pages, (q) => q.not('quarantined_at', 'is', null).neq('status', 'banned')),
     count(T.testimonials, (q) => q.eq('status', 'pending')),
-    pendingLinkCaps(staff),
+    pendingLinkCaps(),
   ]);
 
   ok(res, {
