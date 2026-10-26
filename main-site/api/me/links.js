@@ -7,13 +7,17 @@
 //
 // A link staff have removed cannot be edited or deleted by its owner, so the
 // moderation record survives. The owner sees that it was removed and why.
+//
+// Adding one is refused with too_many_links (and the limit) once the page is
+// at its link limit (link-cap.js). Removed links do not count towards it.
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
 import { cleanText, checkIcon, isUuid, LIMITS, MAX_LINKS } from '../_lib/validate.js';
 import { limited, checkLinkUrl, noteRefusedLink, refusedForAttempts, addressRefusedInText, refusedForBan } from '../_lib/guards.js';
 import { requireOwner } from '../_lib/session.js';
-import { ownerLink } from '../_lib/serialize.js';
+import { ownerLink, ownerLinkCap } from '../_lib/serialize.js';
+import { linkCapFor, linksUsed, isCapRefusal } from '../_lib/link-cap.js';
 
 const LINK_COLUMNS = 'id, title, url, icon, order_index, is_active, click_count, removed_at, removed_reason';
 
@@ -52,8 +56,8 @@ export default route('me/links', async (req, res) => {
     const { error } = await db().rpc('gftvonelink_reorder_links', { p_page_id: pageId, p_ids: ids });
     if (error) throw error;
   } else if (req.method === 'POST') {
-    const existing = await allLinks(pageId);
-    if (existing.length >= MAX_LINKS) return fail(res, 400, 'too_many_links');
+    const [existing, cap] = await Promise.all([allLinks(pageId), linkCapFor(pageId)]);
+    if (linksUsed(existing) >= cap.limit) return fail(res, 400, 'too_many_links', { limit: cap.limit });
     const title = cleanText(body.title, LIMITS.title);
     if (!title) return fail(res, 400, 'title_required');
     if (await titleRefused(title)) return;
@@ -63,6 +67,8 @@ export default route('me/links', async (req, res) => {
     const { error } = await db()
       .from(T.links)
       .insert({ page_id: pageId, title, url: url.url, icon: checkIcon(body.icon), order_index: nextIndex });
+    // Another add got in first and filled the last place (the trigger in 013).
+    if (isCapRefusal(error)) return fail(res, 400, 'too_many_links', { limit: cap.limit });
     if (error) throw error;
   } else {
     if (!isUuid(body.id)) return fail(res, 400, 'bad_request');
@@ -100,5 +106,6 @@ export default route('me/links', async (req, res) => {
     }
   }
 
-  ok(res, { links: (await allLinks(pageId)).map(ownerLink) });
+  const [links, cap] = await Promise.all([allLinks(pageId), linkCapFor(pageId)]);
+  ok(res, { links: links.map(ownerLink), linkCap: ownerLinkCap(cap, linksUsed(links)) });
 });

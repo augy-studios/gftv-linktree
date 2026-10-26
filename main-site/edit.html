@@ -111,8 +111,34 @@
                         <h2 class="u-m-0" data-i18n="edit.links-title">Links</h2>
                         <button class="btn btn-primary btn-small" type="button" id="addLink"><span data-icon="plus"></span><span data-i18n="edit.add-link">Add link</span></button>
                     </div>
+                    <p class="field-hint u-mb-085" id="linkCapUsage" aria-live="polite"></p>
+                    <p class="callout warn u-mb-085" id="linkCapNotice" role="status"></p>
                     <ul class="edit-links" id="linkList"></ul>
                     <p class="empty-state" id="linksEmpty" hidden data-i18n="edit.links-empty">No links yet. Add your first one.</p>
+
+                    <div class="panel-section u-mt-1" id="capRequestBox" hidden>
+                        <h3 data-i18n="link-cap.ask-title">Need more links?</h3>
+                        <p class="muted small" data-i18n="link-cap.ask-body">Ask the GFTV team for a higher limit. Say how many links you need in total, and what they are for.</p>
+                        <p class="callout u-mt-075" id="capRequestStatus" role="status"></p>
+                        <form id="capRequestForm" class="u-mt-075" novalidate>
+                            <label class="field">
+                                <span data-i18n="link-cap.ask-number">How many links you need in total</span>
+                                <input id="capRequested" type="number" inputmode="numeric" min="2" max="200" step="1">
+                            </label>
+                            <label class="field">
+                                <span data-i18n="link-cap.ask-reason">What they are for</span>
+                                <textarea id="capReason" maxlength="500" rows="3"></textarea>
+                                <p class="field-hint" id="capReasonCount" aria-live="polite"></p>
+                            </label>
+                            <div class="callout danger" id="capRequestError" role="alert"></div>
+                            <div class="actions inline">
+                                <button class="btn btn-primary btn-small" type="submit" id="capRequestSend"><span data-icon="send"></span><span data-i18n="link-cap.ask-send">Ask for more</span></button>
+                            </div>
+                        </form>
+                        <div class="actions inline u-mt-075" id="capWithdrawRow" hidden>
+                            <button class="btn btn-small btn-quiet" type="button" id="capRequestWithdraw"><span data-i18n="link-cap.withdraw">Withdraw the request</span></button>
+                        </div>
+                    </div>
                 </section>
 
                 <section class="glass-card panel" role="tabpanel" id="panel-profile" aria-labelledby="tab-profile" hidden>

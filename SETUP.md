@@ -29,6 +29,8 @@ In the Supabase project that already holds the `gftvhello_` tables, open
 - `012_device_bans.sql`: bans the devices used on a banned connection along
   with it, by a hash of their fingerprint, and flags them for staff when they
   turn up elsewhere
+- `013_link_caps.sql`: a limit on how many links each page can have (20 by
+  default, set by admins), per-page limits, and owners' requests for a higher one
 
 **Check:** in **Table Editor** you see the `gftvonelink_` tables, each marked
 **RLS enabled**.

@@ -79,3 +79,37 @@ export function dormancyMessage({ slug, date }) {
     'If it goes to sleep, signing in brings it straight back; nothing is deleted.';
   return { markdown, fallback };
 }
+
+// The answer to a request for a higher link limit (admin/link-caps.js).
+// outcome: "approved" | "compromise" (declined, with a smaller raise) | "declined"
+export function linkCapMessage({ slug, outcome, requested, granted, note }) {
+  const page = `links.gftv.asia/${slug}`;
+  const heading = {
+    approved: 'More links: approved',
+    compromise: 'More links: a smaller raise',
+    declined: 'More links: not this time',
+  }[outcome];
+  const summary = {
+    approved: `Your request for a limit of ${requested} links on ${page} was approved. Your limit is now ${granted}.`,
+    compromise: `Your request for a limit of ${requested} links on ${page} was not approved, but your limit was raised to ${granted}.`,
+    declined: `Your request for a limit of ${requested} links on ${page} was not approved this time. You can ask again from your editor.`,
+  }[outcome];
+  const rows = [['Page', page], ['Asked for', String(requested)]];
+  if (granted !== null && granted !== undefined) rows.push(['New limit', String(granted)]);
+
+  const markdown = [
+    `## ${heading}`,
+    '',
+    escapeMd(summary),
+    '',
+    richTable(['Detail'], rows),
+    ...(note ? ['', `**Note from the GFTV team:** ${escapeMd(note)}`] : []),
+    '',
+    'See it in your editor at links.gftv.asia/edit.',
+  ].join('\n');
+
+  const fallback = [summary, note ? `Note from the GFTV team: ${note}` : null, 'See it in your editor at links.gftv.asia/edit.']
+    .filter(Boolean)
+    .join('\n\n');
+  return { markdown, fallback };
+}

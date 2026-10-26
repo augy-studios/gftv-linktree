@@ -152,9 +152,16 @@ export async function withBusy(button, errorBox, fn) {
   }
 }
 
+// The server adds what a message names: { host } for an address the lists
+// refused, { limit }, { min } and { max } for link limits.
+const ERROR_PARAMS = ['host', 'limit', 'min', 'max'];
+
 export function errorText(error) {
   const code = error && error.code ? error.code : 'generic';
-  const text = t(`error.${code}`, error?.detail?.host ? { host: error.detail.host } : undefined);
+  const detail = error?.detail || {};
+  const params = {};
+  for (const name of ERROR_PARAMS) if (detail[name] !== undefined && detail[name] !== null) params[name] = name === 'host' ? detail[name] : formatNumber(detail[name]);
+  const text = t(`error.${code}`, Object.keys(params).length ? params : undefined);
   return text === `error.${code}` ? t('error.generic') : text;
 }
 

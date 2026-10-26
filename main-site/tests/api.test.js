@@ -41,6 +41,8 @@ import adminTestimonials from '../api/admin/testimonials.js';
 import publicInsights from '../api/public/insights.js';
 import meTestimonial from '../api/me/testimonial.js';
 import publicTurnstile from '../api/public/turnstile.js';
+import meLinkCap from '../api/me/link-cap.js';
+import adminLinkCaps from '../api/admin/link-caps.js';
 
 let fake;
 beforeEach(() => {
@@ -1345,4 +1347,236 @@ test('the fingerprint library loads on sign-up, sign-in, reset and the editor, a
   assert.equal(html.status, 200);
   assert.equal(html.body.includes('fingerprintjs'), false);
   assert.equal(html.body.includes('challenges.cloudflare.com'), false, 'Turnstile waits for the report form');
+});
+
+// Links put straight into the table, standing in for ones added earlier.
+function seedLinks(pageId, n) {
+  for (let i = 0; i < n; i += 1) {
+    fake.table('gftvonelink_links').push({ id: crypto.randomUUID(), page_id: pageId, title: `Seed ${i}`, url: `https://example.com/${i}`, icon: 'link', order_index: i, click_count: 0, is_active: true, removed_at: null, created_at: new Date().toISOString() });
+  }
+}
+
+test('link limits: 20 by default, admins change it, and lowering one keeps the links', async () => {
+  const owner = browser();
+  await makePage(owner);
+  const pageId = fake.table('gftvonelink_pages')[0].id;
+  const add = (title = 'New') => owner.call(meLinks, { method: 'POST', body: { title, url: 'https://example.org/new' } });
+
+  seedLinks(pageId, 19);
+  assert.deepEqual((await owner.call(mePage)).json.page.linkCap, { used: 19, limit: 20, custom: false });
+  const twentieth = await add();
+  assert.equal(twentieth.status, 200);
+  assert.deepEqual(twentieth.json.linkCap, { used: 20, limit: 20, custom: false });
+  const full = await add();
+  assert.equal(full.json.error, 'too_many_links');
+  assert.equal(full.json.limit, 20);
+
+  // A link staff removed does not take up a place, since its owner cannot delete it.
+  fake.table('gftvonelink_links')[0].removed_at = new Date().toISOString();
+  assert.equal((await add()).status, 200);
+  assert.equal((await add()).json.error, 'too_many_links');
+
+  const { secret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', secret);
+  const { secret: edSecret } = await makeStaff({ username: 'ed', role: 'editor' });
+  const editor = browser();
+  await staffSignIn(editor, 'ed', edSecret);
+  // Editors see requests, but the default and per-page limits are for admins.
+  const edView = (await editor.call(adminLinkCaps)).json;
+  assert.equal(edView.defaultCap, 20);
+  assert.equal(edView.custom, undefined, 'editors are not sent the pages with their own limit');
+  assert.equal((await editor.call(adminLinkCaps, { method: 'POST', body: { action: 'set-default', cap: 99 } })).json.error, 'admin_only');
+  assert.equal((await editor.call(adminLinkCaps, { method: 'POST', body: { action: 'set-page', id: pageId, cap: 99 } })).json.error, 'admin_only');
+
+  for (const cap of [0, 201, 'abc', 2.5, null]) {
+    assert.equal((await admin.call(adminLinkCaps, { method: 'POST', body: { action: 'set-default', cap } })).json.error, 'cap_invalid', String(cap));
+  }
+  const lowered = await admin.call(adminLinkCaps, { method: 'POST', body: { action: 'set-default', cap: 5 } });
+  assert.equal(lowered.json.defaultCap, 5);
+  const over = (await owner.call(mePage)).json.page;
+  assert.deepEqual(over.linkCap, { used: 20, limit: 5, custom: false }, 'over the limit, nothing deleted');
+  assert.equal(over.links.length, 21);
+  assert.equal((await add()).json.limit, 5);
+  // Editing, hiding and deleting still work while over the limit.
+  const first = over.links.find((l) => !l.removed);
+  assert.equal((await owner.call(meLinks, { method: 'PATCH', body: { id: first.id, title: 'Renamed' } })).status, 200);
+
+  // A page of its own limit, then back on the default.
+  const own = await admin.call(adminLinkCaps, { method: 'POST', body: { action: 'set-page', id: pageId, cap: 22 } });
+  assert.deepEqual(own.json.custom.map((p) => [p.slug, p.limit, p.used]), [['augy', 22, 20]]);
+  const detail = await editor.call(adminPages, { query: { id: pageId } });
+  assert.deepEqual(detail.json.linkCap, { used: 20, limit: 22, custom: true, defaultCap: 5 });
+  assert.equal((await add('A')).status, 200);
+  assert.equal((await add('B')).status, 200);
+  assert.equal((await add('C')).json.error, 'too_many_links');
+  await admin.call(adminLinkCaps, { method: 'POST', body: { action: 'set-page', id: pageId, cap: null } });
+  assert.deepEqual((await owner.call(mePage)).json.page.linkCap, { used: 22, limit: 5, custom: false });
+
+  // Two adds at once with one place left: the database lets one through.
+  await admin.call(adminLinkCaps, { method: 'POST', body: { action: 'set-page', id: pageId, cap: 23 } });
+  const both = await Promise.all([add('X'), add('Y')]);
+  assert.deepEqual(both.map((r) => r.status).sort(), [200, 400]);
+  assert.equal(fake.table('gftvonelink_links').filter((l) => l.page_id === pageId && !l.removed_at).length, 23);
+
+  const log = (await admin.call(adminAudit, { query: { action: 'mod.' } })).json.entries.map((e) => e.action);
+  for (const a of ['mod.link_cap_default', 'mod.link_cap_page']) assert.ok(log.includes(a), a);
+});
+
+test('owners ask for a higher link limit, and staff approve or decline', async () => {
+  const owner = browser();
+  const { password } = await makePage(owner);
+  const pageId = fake.table('gftvonelink_pages')[0].id;
+  seedLinks(pageId, 20);
+  const ask = (body) => owner.call(meLinkCap, { method: 'POST', body });
+
+  assert.equal((await ask({ requested: 20, reason: 'More please' })).json.error, 'cap_not_higher');
+  assert.equal((await ask({ requested: 500, reason: 'More please' })).json.error, 'cap_invalid');
+  assert.equal((await ask({ requested: 30, reason: '   ' })).json.error, 'cap_reason_required');
+  const sent = await ask({ requested: '30', reason: 'I run a convention and link every panel.' });
+  assert.equal(sent.status, 200, sent.body);
+  assert.deepEqual(Object.keys(sent.json.request).sort(), ['granted', 'note', 'reason', 'requested', 'reviewedAt', 'sentAt', 'status']);
+  assert.equal(sent.json.request.status, 'pending');
+  assert.equal(sent.json.request.requested, 30);
+  assert.equal((await ask({ requested: 40, reason: 'Again' })).json.error, 'cap_request_open', 'one open request at a time');
+  assert.equal((await owner.call(mePage)).json.page.linkCapRequest.status, 'pending');
+
+  const { secret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', secret);
+  const { secret: edSecret } = await makeStaff({ username: 'ed', role: 'editor' });
+  const editor = browser();
+  await staffSignIn(editor, 'ed', edSecret);
+  assert.equal((await admin.call(adminOverview)).json.counts.linkCapRequests, 1);
+  assert.equal((await editor.call(adminOverview)).json.counts.linkCapRequests, 1, 'editors answer requests too');
+
+  const list = await editor.call(adminLinkCaps);
+  assert.deepEqual(leaks(list.json), []);
+  const waiting = list.json.pending[0];
+  assert.equal(waiting.slug, 'augy');
+  assert.equal(waiting.requested, 30);
+  assert.equal(waiting.used, 20);
+  assert.equal(waiting.limit, 20);
+  assert.equal(waiting.reason, 'I run a convention and link every panel.');
+  // An editor can give up to what was asked, and more than the page has now.
+  const approve = (b, cap) => b.call(adminLinkCaps, { method: 'POST', body: { action: 'approve', id: waiting.id, cap } });
+  for (const cap of [31, 20, 0]) {
+    const r = await approve(editor, cap);
+    assert.equal(r.json.error, 'cap_grant_range', String(cap));
+    assert.deepEqual([r.json.min, r.json.max], [21, 30]);
+  }
+
+  // Approved for a different number than asked, with a note.
+  const approved = await editor.call(adminLinkCaps, { method: 'POST', body: { action: 'approve', id: waiting.id, cap: 25, note: 'Start with 25.' } });
+  assert.equal(approved.json.pending.length, 0);
+  assert.equal(fake.table('gftvonelink_pages')[0].links_cap, 25);
+  assert.equal((await admin.call(adminLinkCaps, { method: 'POST', body: { action: 'approve', id: waiting.id } })).json.error, 'cap_request_closed');
+  let mine = (await owner.call(meLinkCap)).json;
+  assert.deepEqual(mine.linkCap, { used: 20, limit: 25, custom: true });
+  assert.equal(mine.request.status, 'approved');
+  assert.equal(mine.request.granted, 25);
+  assert.equal(mine.request.note, 'Start with 25.');
+  assert.deepEqual(leaks(mine), []);
+  assert.equal((await owner.call(meLinks, { method: 'POST', body: { title: 'Now fits', url: 'https://example.org/' } })).status, 200);
+
+  // Asking again, declined: the limit stays where it was.
+  await ask({ requested: 60, reason: 'Even more' });
+  let again = (await admin.call(adminLinkCaps)).json.pending[0];
+  assert.equal(again.limit, 25);
+  assert.equal(again.capWhenAsked, 25);
+  await editor.call(adminLinkCaps, { method: 'POST', body: { action: 'decline', id: again.id, note: 'Not for now.' } });
+  mine = (await owner.call(meLinkCap)).json;
+  assert.equal(mine.request.status, 'declined');
+  assert.equal(mine.request.granted, null);
+  assert.equal(mine.request.note, 'Not for now.');
+  assert.equal(mine.linkCap.limit, 25);
+
+  // Declined with a compromise: above the limit now, below what was asked.
+  await ask({ requested: 60, reason: 'Please' });
+  again = (await editor.call(adminLinkCaps)).json.pending[0];
+  for (const cap of [60, 25, 'x']) {
+    const r = await editor.call(adminLinkCaps, { method: 'POST', body: { action: 'decline', id: again.id, cap } });
+    assert.equal(r.json.error, 'cap_grant_range', String(cap));
+    assert.deepEqual([r.json.min, r.json.max], [26, 59]);
+  }
+  await editor.call(adminLinkCaps, { method: 'POST', body: { action: 'decline', id: again.id, cap: 40, note: 'Meet you halfway.' } });
+  mine = (await owner.call(meLinkCap)).json;
+  assert.equal(mine.request.status, 'declined');
+  assert.equal(mine.request.granted, 40);
+  assert.equal(mine.request.note, 'Meet you halfway.');
+  assert.deepEqual(mine.linkCap, { used: 21, limit: 40, custom: true });
+
+  // The owner can take an open request back.
+  assert.equal((await ask({ requested: 45, reason: 'Third time' })).status, 200);
+  assert.equal((await owner.call(meLinkCap, { method: 'DELETE', body: {} })).json.request, null);
+  assert.equal((await admin.call(adminLinkCaps)).json.pending.length, 0);
+
+  const log = (await admin.call(adminAudit)).json.entries.map((e) => e.action);
+  for (const a of ['page.link_cap_requested', 'mod.link_cap_approved', 'mod.link_cap_declined']) assert.ok(log.includes(a), a);
+
+  await owner.call(security, { method: 'POST', body: { action: 'delete-page', password, confirmSlug: 'augy' } });
+  assert.equal(fake.table('gftvonelink_link_cap_requests').length, 0, 'deleting the page takes its requests too');
+});
+
+test('the owner hears about a review on Telegram, and a failed send does not stop it', async () => {
+  const owner = browser();
+  await makePage(owner);
+  const page = fake.table('gftvonelink_pages')[0];
+  page.telegram_chat_id = 4242;
+  const ask = (requested) => owner.call(meLinkCap, { method: 'POST', body: { requested, reason: 'Shop links' } });
+  const { secret } = await makeStaff({ username: 'ed', role: 'editor' });
+  const editor = browser();
+  await staffSignIn(editor, 'ed', secret);
+  const review = async (body) => {
+    const id = (await editor.call(adminLinkCaps)).json.pending[0].id;
+    return editor.call(adminLinkCaps, { method: 'POST', body: { id, ...body } });
+  };
+
+  const calls = [];
+  let failing = false;
+  const realFetch = globalThis.fetch;
+  const warn = console.warn;
+  process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+  process.env.TELEGRAM_BOT_USERNAME = 'onelink_test_bot';
+  console.warn = () => {};
+  globalThis.fetch = async (url, init) => {
+    calls.push({ method: String(url).split('/').pop(), body: JSON.parse(init.body) });
+    if (failing) throw new Error('network down');
+    return new Response('{"ok":true}');
+  };
+  try {
+    await ask(30);
+    assert.equal((await review({ action: 'approve', note: 'Enjoy *bold* <b>' })).status, 200);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].method, 'sendRichMessage');
+    assert.equal(calls[0].body.chat_id, 4242);
+    const md = calls[0].body.rich_message.markdown;
+    assert.match(md, /approved/);
+    assert.match(md, /links\.gftv\.asia\/augy/);
+    assert.ok(md.includes(String.raw`Enjoy \*bold\* \<b\>`), 'the note is escaped');
+
+    await ask(50);
+    await review({ action: 'decline', cap: 40 });
+    assert.match(calls[1].body.rich_message.markdown, /raised to 40/);
+
+    // Telegram down: the review still goes through.
+    failing = true;
+    await ask(60);
+    const r = await review({ action: 'decline', note: 'No' });
+    assert.equal(r.status, 200);
+    assert.equal(fake.table('gftvonelink_link_cap_requests').filter((x) => x.status === 'declined').length, 2);
+
+    // No Telegram linked: nothing is sent.
+    failing = false;
+    page.telegram_chat_id = null;
+    const before = calls.length;
+    await ask(70);
+    await review({ action: 'approve' });
+    assert.equal(calls.length, before);
+  } finally {
+    globalThis.fetch = realFetch;
+    console.warn = warn;
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    delete process.env.TELEGRAM_BOT_USERNAME;
+  }
 });

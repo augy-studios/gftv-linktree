@@ -59,8 +59,32 @@ export function ownerPasskey(row) {
   return { id: row.id, label: row.label || null, createdAt: row.created_at, lastUsedAt: row.last_used_at };
 }
 
+// How many links the owner has used of their limit. custom: an admin gave
+// this page its own limit, rather than the default.
+export function ownerLinkCap(cap, used) {
+  return { used, limit: cap.limit, custom: cap.override !== null };
+}
+
+// The owner's latest request for more links, or null. A withdrawn one is as
+// good as none. granted is the limit it was given: on an approval, or on a
+// decline that came with a smaller raise. The note is what the reviewer
+// wrote back; who reviewed it stays here.
+export function ownerCapRequest(row) {
+  if (!row || row.status === 'withdrawn') return null;
+  return {
+    status: row.status,
+    requested: row.requested_cap,
+    reason: row.reason,
+    granted: row.status === 'approved' || row.status === 'declined' ? row.granted_cap ?? null : null,
+    note: row.status === 'pending' ? null : row.review_note || null,
+    sentAt: row.created_at,
+    reviewedAt: row.reviewed_at || null,
+  };
+}
+
 // security: { passkeys, backupCodesLeft, telegramReady }, assembled by the caller.
-export function ownerPage(page, links, security) {
+// limits: { linkCap, capRequest }, the same.
+export function ownerPage(page, links, security, limits = null) {
   return {
     slug: page.slug,
     displayName: page.display_name,
@@ -76,6 +100,8 @@ export function ownerPage(page, links, security) {
     // Hidden after repeated attempts at harmful addresses, until staff look.
     quarantined: Boolean(page.quarantined_at),
     links: (links ?? []).sort((a, b) => a.order_index - b.order_index).map(ownerLink),
+    linkCap: limits ? limits.linkCap : null,
+    linkCapRequest: limits ? limits.capRequest : null,
     security: {
       totp: Boolean(page.totp_secret),
       passkeys: security.passkeys.map(ownerPasskey),
@@ -173,6 +199,32 @@ export function adminTestimonialRow(row) {
     createdAt: row.created_at,
     reviewedAt: row.reviewed_at || null,
   };
+}
+
+// A request for more links, for staff. used and limit are the page's now,
+// not when it asked.
+export function adminCapRequestRow(row, { used, limit } = {}) {
+  return {
+    id: row.id,
+    pageId: row.page_id,
+    slug: row.page?.slug ?? null,
+    displayName: row.page?.display_name || null,
+    status: row.status,
+    requested: row.requested_cap,
+    capWhenAsked: row.current_cap,
+    used: used ?? null,
+    limit: limit ?? null,
+    reason: row.reason,
+    granted: row.granted_cap ?? null,
+    note: row.review_note || null,
+    createdAt: row.created_at,
+    reviewedAt: row.reviewed_at || null,
+  };
+}
+
+// A page with a limit of its own, for admins only.
+export function adminCapPageRow(page, used) {
+  return { id: page.id, slug: page.slug, displayName: page.display_name || null, limit: page.links_cap, used };
 }
 
 // The owner's own testimonial, or null.

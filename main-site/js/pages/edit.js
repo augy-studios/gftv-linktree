@@ -169,6 +169,7 @@ $('redirectForm').addEventListener('submit', (e) => {
 // ---------------------------------------------------------------------------
 
 function renderLinks() {
+  renderLinkCap();
   const list = $('linkList');
   list.replaceChildren();
   $('linksEmpty').hidden = page.links.length > 0;
@@ -219,10 +220,24 @@ function renderLinks() {
   });
 }
 
+// Every answer from /api/me/links is the whole list, and the limit with it.
+function takeLinks(data) {
+  page.links = data.links;
+  if (data.linkCap) page.linkCap = data.linkCap;
+}
+
+// A refusal for being at the limit says what the limit is now, which may be
+// lower than when the editor loaded.
+function noteLimit(error) {
+  if (error?.code === 'too_many_links' && page.linkCap && Number.isInteger(error.detail?.limit)) {
+    page.linkCap.limit = error.detail.limit;
+    renderLinks();
+  }
+}
+
 async function saveLink(body, method) {
   try {
-    const data = await api('/api/me/links', { method, body });
-    page.links = data.links;
+    takeLinks(await api('/api/me/links', { method, body }));
     renderLinks();
     return true;
   } catch (error) {
@@ -421,13 +436,101 @@ $('linkForm').addEventListener('submit', (e) => {
   const title = $('linkTitle').value.trim() || (platform ? platformName(platform) : '');
   withBusy($('linkSave'), $('linkError'), async () => {
     const body = { title, url, icon: chosenIcon };
-    const data = editing
-      ? await api('/api/me/links', { method: 'PATCH', body: { id: editing.id, ...body } })
-      : await post('/api/me/links', body);
-    page.links = data.links;
+    let data;
+    try {
+      data = editing
+        ? await api('/api/me/links', { method: 'PATCH', body: { id: editing.id, ...body } })
+        : await post('/api/me/links', body);
+    } catch (error) {
+      noteLimit(error);
+      throw error;
+    }
+    takeLinks(data);
     renderLinks();
     closeModal('linkModal');
     toast(t(editing ? 'link.saved' : 'link.added'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Link limit
+//
+// A page can have up to page.linkCap.limit links; ones the GFTV team removed
+// do not count. If an admin lowers the limit below what the page has, the
+// links all stay, and Add link is off until the page is under it again. The
+// owner can ask for more, one request at a time, and sees the answer here.
+// ---------------------------------------------------------------------------
+
+// The most any page can be given (MAX_LINKS in api/_lib/validate.js).
+const MAX_LINK_CAP = 200;
+
+function linksInUse() {
+  return page.links.filter((l) => !l.removed).length;
+}
+
+// A decline can come with a smaller raise (granted), which reads differently.
+function capRequestText(r) {
+  const key = r.status === 'declined' && r.granted ? 'compromise' : r.status;
+  const text = t(`link-cap.status-${key}`, {
+    requested: formatNumber(r.requested),
+    granted: formatNumber(r.granted ?? 0),
+    when: formatDate(r.sentAt),
+  });
+  return r.note ? `${text} ${t('link-cap.note', { note: r.note })}` : text;
+}
+
+function renderLinkCap() {
+  const cap = page.linkCap;
+  const box = $('capRequestBox');
+  if (!cap) {
+    $('linkCapUsage').textContent = '';
+    $('linkCapNotice').textContent = '';
+    $('addLink').disabled = false;
+    box.hidden = true;
+    return;
+  }
+  const used = linksInUse();
+  const numbers = { count: cap.limit, used: formatNumber(used), limit: formatNumber(cap.limit) };
+  $('linkCapUsage').textContent = t('link-cap.usage', numbers);
+  $('linkCapNotice').textContent = used > cap.limit ? t('link-cap.over', numbers) : used === cap.limit ? t('link-cap.full') : '';
+  $('addLink').disabled = used >= cap.limit;
+
+  const request = page.linkCapRequest;
+  const pending = request?.status === 'pending';
+  const atMost = cap.limit >= MAX_LINK_CAP;
+  box.hidden = atMost && !request;
+  const status = $('capRequestStatus');
+  status.classList.toggle('ok', request?.status === 'approved');
+  status.classList.toggle('warn', request?.status === 'declined' && !request.granted);
+  status.textContent = request ? capRequestText(request) : '';
+  $('capRequestForm').hidden = pending || atMost;
+  $('capWithdrawRow').hidden = !pending;
+  $('capRequested').min = String(Math.min(cap.limit + 1, MAX_LINK_CAP));
+  $('capReasonCount').textContent = t('field.bio-count', { used: [...$('capReason').value].length, max: 500 });
+}
+
+function takeCap(data) {
+  page.linkCap = data.linkCap;
+  page.linkCapRequest = data.request;
+  renderLinks();
+}
+
+$('capReason').addEventListener('input', renderLinkCap);
+$('capRequestForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  withBusy($('capRequestSend'), $('capRequestError'), async () => {
+    takeCap(await post('/api/me/link-cap', { requested: $('capRequested').value, reason: $('capReason').value }));
+    $('capRequested').value = '';
+    $('capReason').value = '';
+    renderLinkCap();
+    toast(t('link-cap.sent'));
+  });
+});
+$('capRequestWithdraw').addEventListener('click', () => {
+  if (!window.confirm(t('link-cap.withdraw-confirm'))) return;
+  withBusy($('capRequestWithdraw'), $('capRequestError'), async () => {
+    takeCap(await api('/api/me/link-cap', { method: 'DELETE', body: {} }));
+    toast(t('link-cap.withdrawn'));
   });
 });
 
