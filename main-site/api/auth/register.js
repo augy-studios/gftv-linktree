@@ -1,12 +1,12 @@
-// POST /api/auth/register { slug, password, turnstile }
+// POST /api/auth/register { slug, password, cf-turnstile-response }
 //
 // Creates the page in `pending` and returns an enrolment challenge. Nothing is
 // public and nothing can be edited until a second factor is set up through
 // /api/auth/enrol, which is what turns the page `active` and signs the owner in.
 //
 // Refused from a banned connection, and from a device banned with one
-// (guards.js refusedForBan), which is flagged for staff. turnstile is the
-// Cloudflare Turnstile token, checked when TURNSTILE_SECRET_KEY is set.
+// (guards.js refusedForBan), which is flagged for staff. cf-turnstile-response
+// is the Cloudflare Turnstile token for action "register" (_lib/turnstile.js).
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
@@ -21,7 +21,7 @@ export default route('auth/register', async (req, res) => {
   const body = await readJson(req, res);
   if (!body) return;
   if (await limited(req, res, 'register')) return;
-  if (await refusedForTurnstile(req, res, body.turnstile, 'register')) return;
+  if (await refusedForTurnstile(req, res, body, 'register')) return;
   if (await refusedForBan(req, res, { newPage: true })) return;
 
   const slugCheck = checkSlug(body.slug);

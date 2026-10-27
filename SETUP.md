@@ -95,8 +95,8 @@ Keep a copy somewhere safe outside Vercel.
    | `TELEGRAM_WEBHOOK_SECRET` | from step 2, or leave empty for now |
    | `GOOGLE_SAFE_BROWSING_KEY` | optional; see below |
    | `DOMAIN_BLOCKLISTS` | leave empty to use HaGeZi's lists; see below |
-   | `TURNSTILE_SITE_KEY` | optional; see [TURNSTILE-SETUP.md](TURNSTILE-SETUP.md) |
-   | `TURNSTILE_SECRET_KEY` | optional; see [TURNSTILE-SETUP.md](TURNSTILE-SETUP.md) |
+   | `TURNSTILE_SECRET` | the Turnstile secret key; **required in Production**; see [TURNSTILE-SETUP.md](TURNSTILE-SETUP.md) |
+   | `TURNSTILE_HOSTNAMES` | `links.gftv.asia`; see [TURNSTILE-SETUP.md](TURNSTILE-SETUP.md) |
 
 4. **Settings > Domains:** add `links.gftv.asia` and create the DNS record
    Vercel shows (a `CNAME` for `links`).
@@ -122,8 +122,10 @@ and again each day:
   API**, create an API key under **APIs & Services > Credentials**, and set it
   as `GOOGLE_SAFE_BROWSING_KEY`. The free tier is for non-commercial use.
 
-**Turnstile**, optional: Cloudflare's "are you a person" check on sign-up
-and the report form. Set it up with [TURNSTILE-SETUP.md](TURNSTILE-SETUP.md).
+**Turnstile**: Cloudflare's "are you a person" check on sign-up, sign-in,
+password reset and the report form. The site key is in the code; the secret
+must be set before production deploys, or those forms are refused. Set it up
+with [TURNSTILE-SETUP.md](TURNSTILE-SETUP.md).
 
 **Check:**
 

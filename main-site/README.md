@@ -60,9 +60,9 @@ the browser shows `error.<code>` from the locale file.
 | `GET /api/slug?slug=` | anyone | Is this name free? |
 | `POST /api/auth/register` | anyone | Name, password and Turnstile token. Returns a setup challenge; the page stays private until a second factor is set up. |
 | `POST /api/auth/enrol` | setup challenge | First authenticator or passkey. Activates the page, returns ten backup codes, signs in. |
-| `POST /api/auth/login` | anyone | Password step. Returns a challenge and the second factors this page can use. |
+| `POST /api/auth/login` | anyone | Password step, with a Turnstile token. Returns a challenge and the second factors this page can use. |
 | `POST /api/auth/verify` | login challenge | Authenticator, passkey, backup code or Telegram code. Signs in. |
-| `POST /api/auth/recover` | anyone | Forgotten password: needs a Telegram code and the authenticator or a backup code. |
+| `POST /api/auth/recover` | anyone | Forgotten password: a Turnstile token to start, then a Telegram code and the authenticator or a backup code. |
 | `GET/POST /api/auth/session` | anyone | Am I signed in; sign out. |
 | `GET/PATCH /api/me/page` | owner | The editor view; name and bio. |
 | `POST/PATCH/DELETE /api/me/links` | owner | Add, edit, show/hide, reorder, delete links. Adding is refused once the page is at its link limit. |
@@ -71,7 +71,7 @@ the browser shows `error.<code>` from the locale file.
 | `GET /api/public/page` | anyone | A page as visitors see it. |
 | `POST /api/public/click` | anyone | Count a click. |
 | `POST /api/public/report` | anyone | Report a page or link, with a Turnstile token. |
-| `GET /api/public/turnstile` | anyone | The Turnstile site key, or null. |
+| `GET /api/public/turnstile` | anyone | The Turnstile site key, or null when the check is off. |
 | `POST /api/telegram/webhook` | Telegram | Bot updates, checked against `TELEGRAM_WEBHOOK_SECRET`. Replies with the help message (rich) and one-line confirmations (plain). |
 | `/api/admin/*` | staff | `auth`, `passkeys`, `overview`, `pages`, `links`, `reports`, `blocklist` (admin), `link-caps` (any staff answer requests for more links; the default and per-page limits are admin only), `audit` (admin). |
 | `GET /api/cron/cleanup` | Vercel Cron | Sweeps expired rows. |
@@ -96,10 +96,13 @@ the browser shows `error.<code>` from the locale file.
   another connection is flagged for staff and cannot create a page, but is
   never banned automatically. Public pages, the home page, 404 and `/admin`
   never load it, and a test checks that.
-- **Turnstile** (Cloudflare) on sign-up and the report form, checked by
-  `api/_lib/turnstile.js` once `TURNSTILE_SITE_KEY` and
-  `TURNSTILE_SECRET_KEY` are both set. On a public page its script loads
-  only when the report form opens. See `TURNSTILE-SETUP.md`.
+- **Turnstile** (Cloudflare) on sign-up, sign-in, password reset and the
+  report form, each with its own action. `api/_lib/turnstile.js` checks the
+  `cf-turnstile-response` token with siteverify: success, the form's action,
+  and a hostname in `TURNSTILE_HOSTNAMES`. It fails closed, and production
+  without `TURNSTILE_SECRET` refuses those forms; local runs and previews
+  without it skip the check. On a public page its script loads only when the
+  report form opens. See `TURNSTILE-SETUP.md`.
 - **Rate limits** on every sensitive route, shared across instances through a
   table (`gftvonelink_rate_hit`).
 - **Links** are `http` or `https` only. Other schemes are refused, not

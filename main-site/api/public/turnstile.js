@@ -1,7 +1,8 @@
 // GET /api/public/turnstile
-// The Turnstile site key for the sign-up and report forms (js/turnstile.js),
-// or null when TURNSTILE_SITE_KEY is not set and the forms show no widget.
-// The site key is public by design; the secret key never leaves the server.
+// The Turnstile site key for the protected forms (js/turnstile.js), or null
+// when the check is off (no TURNSTILE_SECRET outside production) and the
+// forms show no widget. The site key is public by design; the secret never
+// leaves the server.
 
 import { route, guard, ok } from '../_lib/http.js';
 import { turnstileSiteKey } from '../_lib/turnstile.js';

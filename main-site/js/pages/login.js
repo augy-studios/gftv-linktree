@@ -7,10 +7,13 @@ import { api, post } from '../api.js';
 import { withBusy, toast } from '../ui.js';
 import { normaliseSlugInput } from '../slug-check.js';
 import { passkeysSupported, usePasskey, passkeyErrorCode } from '../passkeys.js';
+import { humanCheck } from '../turnstile.js';
 
 const $ = (id) => document.getElementById(id);
 let challenge = null;
 let method = null;
+// Turnstile on the password step (turnstile.js).
+const check = humanCheck($('humanCheck'));
 
 // Somebody already signed in goes straight to their editor.
 api('/api/auth/session')
@@ -23,7 +26,13 @@ if (prefill) $('slug').value = prefill;
 $('passwordForm').addEventListener('submit', (e) => {
   e.preventDefault();
   withBusy($('passwordSubmit'), $('passwordError'), async () => {
-    const data = await post('/api/auth/login', { slug: normaliseSlugInput($('slug').value), password: $('password').value });
+    const token = await check.token();
+    let data;
+    try {
+      data = await post('/api/auth/login', { slug: normaliseSlugInput($('slug').value), password: $('password').value, 'cf-turnstile-response': token });
+    } finally {
+      check.reset();
+    }
     challenge = data.challenge;
     $('password').value = '';
     showFactors(data.methods);

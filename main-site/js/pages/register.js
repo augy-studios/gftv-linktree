@@ -31,7 +31,7 @@ let check = null;
 // Focus moves to the new step's heading when the step changes, so a screen
 // reader hears where it is; not on first load, where it starts at the top.
 function step(n, { focus = true } = {}) {
-  if (n === 1) check ??= humanCheck($('humanCheck'), 'register');
+  if (n === 1) check ??= humanCheck($('humanCheck'));
   $('stepAccount').hidden = n !== 1;
   $('stepFactor').hidden = n !== 2;
   $('stepCodes').hidden = n !== 3;
@@ -63,10 +63,10 @@ $('accountForm').addEventListener('submit', (e) => {
     return;
   }
   withBusy($('accountSubmit'), error, async () => {
-    const turnstile = await check.token();
+    const token = await check.token();
     let data;
     try {
-      data = await post('/api/auth/register', { slug: normaliseSlugInput(slugInput.value), password, turnstile });
+      data = await post('/api/auth/register', { slug: normaliseSlugInput(slugInput.value), password, 'cf-turnstile-response': token });
     } finally {
       check.reset();
     }

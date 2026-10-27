@@ -1,9 +1,13 @@
-// Cloudflare Turnstile, the "are you a person" check on sign-up and on the
-// report form. Cloudflare's script loads only when one of those forms is
-// shown, and only when the site has a key (TURNSTILE_SITE_KEY): without one
-// the forms work as they did, and the server skips the check too until
-// TURNSTILE_SECRET_KEY is set. The widget follows the page's light or dark
-// mode, drawn again when the mode changes.
+// Cloudflare Turnstile, the "are you a person" check on sign-up, sign-in,
+// password reset and the report form. Each form has a <div class="human-check
+// cf-turnstile" data-action="..."> for the widget.
+//
+// The widget is drawn with turnstile.render() rather than left for api.js to
+// find, so Cloudflare's script loads only when one of those forms is shown
+// (never just for reading a public page), and only when the server says the
+// check is on (api/public/turnstile.js gives the site key, or null when no
+// TURNSTILE_SECRET is set outside production). The widget follows the page's
+// light or dark mode, drawn again when the mode changes.
 
 import { api, ApiError } from './api.js';
 
@@ -25,6 +29,7 @@ function loadScript() {
     const script = document.createElement('script');
     script.src = SCRIPT;
     script.async = true;
+    script.defer = true;
     script.onload = () => (window.turnstile ? resolve(window.turnstile) : reject(new Error('turnstile')));
     script.onerror = () => {
       scriptPromise = null;
@@ -38,11 +43,13 @@ function loadScript() {
 
 const mode = () => (document.documentElement.getAttribute('data-mode') === 'dark' ? 'dark' : 'light');
 
-// A widget in container, for action "register" or "report". Returns
-//   token()  the token to send: undefined when the site has no key (send
-//            nothing), or throws human_check_pending while it is not ready;
+// A widget in container, for action ("register", "login", "recover" or
+// "report"; by default the container's data-action). Returns
+//   token()  the token to send as "cf-turnstile-response": undefined when the
+//            check is off (send nothing), or throws human_check_pending while
+//            it is not ready;
 //   reset()  after every submit, since a token works only once.
-export function humanCheck(container, action) {
+export function humanCheck(container, action = container.dataset.action) {
   let widget = null;
   let current = null;
   let drawnIn = null;

@@ -264,20 +264,20 @@ function openReport(link) {
   // A redirect waits while the visitor is reporting it.
   countdown?.hold('report', true);
   openModal('reportModal', { initialFocus: $('reportReason'), onClose: () => countdown?.hold('report', false) });
-  reportCheck ??= humanCheck($('reportCheck'), 'report');
+  reportCheck ??= humanCheck($('reportCheck'));
 }
 
 $('reportForm').addEventListener('submit', (e) => {
   e.preventDefault();
   withBusy($('reportSubmit'), $('reportError'), async () => {
-    const turnstile = await reportCheck.token();
+    const token = await reportCheck.token();
     try {
       await post('/api/public/report', {
         slug: data.page.slug,
         linkId: reportTarget ? reportTarget.id : null,
         reason: $('reportReason').value,
         details: $('reportDetails').value,
-        turnstile,
+        'cf-turnstile-response': token,
       });
     } finally {
       reportCheck.reset();
