@@ -1268,57 +1268,90 @@ test('staff can ban a flagged device\'s connection, and unbanning a connection l
 // Cloudflare Turnstile, and where the fingerprint library loads
 // ---------------------------------------------------------------------------
 
-test('Turnstile: skipped until both keys are set, then sign-up and reports need a passed check', async () => {
+test('Turnstile: off without a secret outside production, then sign-up, sign-in, reset and reports need a passed check', async () => {
   const owner = browser();
   await makePage(owner);
   let n = 0;
-  const signUp = (turnstile) => browser().call(register, { method: 'POST', body: { slug: `t${(n += 1)}x`, password: 'correct horse battery', turnstile }, ip: `198.51.100.${100 + n}` });
-  const sendReport = (turnstile) => browser().call(report, { method: 'POST', body: { slug: 'augy', reason: 'spam', turnstile }, ip: `198.51.100.${200 + (n += 1)}` });
+  const ip = () => `198.51.100.${(n += 1)}`;
+  const withToken = (token, body) => (token === undefined ? body : { ...body, 'cf-turnstile-response': token });
+  const signUp = (token) => browser().call(register, { method: 'POST', body: withToken(token, { slug: `t${n}x`, password: 'correct horse battery' }), ip: ip() });
+  const signIn = (token) => browser().call(login, { method: 'POST', body: withToken(token, { slug: 'augy', password: 'correct horse battery' }), ip: ip() });
+  const startReset = (token) => browser().call(recover, { method: 'POST', body: withToken(token, { action: 'start', slug: 'augy' }), ip: ip() });
+  const sendReport = (token) => browser().call(report, { method: 'POST', body: withToken(token, { slug: 'augy', reason: 'spam' }), ip: ip() });
+  const quiet = async (fn) => {
+    const { warn, error } = console;
+    console.warn = () => {};
+    console.error = () => {};
+    try { return await fn(); } finally { Object.assign(console, { warn, error }); }
+  };
 
+  // Local runs and previews without a secret: no widget, nothing checked.
   assert.equal((await browser().call(publicTurnstile)).json.siteKey, null);
-  assert.equal((await signUp()).status, 200, 'no keys: nothing checked');
-  process.env.TURNSTILE_SECRET_KEY = 'test-secret';
-  assert.equal((await signUp()).status, 200, 'a secret without a site key is not enforced');
+  assert.equal((await quiet(() => signUp())).status, 200, 'no secret: nothing checked');
+  assert.equal((await signIn()).status, 200);
+
+  // Production without a secret: refused, so a forgotten secret is noticed.
+  process.env.VERCEL_ENV = 'production';
+  try {
+    assert.equal((await browser().call(publicTurnstile)).json.siteKey, '0x4AAAAAAFlkl5LtUMQYO1DZ');
+    const refused = await signUp('anything');
+    assert.equal(refused.status, 503);
+    assert.equal(refused.json.error, 'human_check_unavailable');
+    assert.equal((await signIn()).json.error, 'human_check_unavailable');
+  } finally {
+    delete process.env.VERCEL_ENV;
+  }
 
   const calls = [];
   const realFetch = globalThis.fetch;
-  process.env.TURNSTILE_SITE_KEY = 'test-site-key';
-  // Cloudflare's answer, by token: good-<action> passes for that action.
+  process.env.TURNSTILE_SECRET = 'test-secret';
+  // Cloudflare's answer, by token: good-<action> passes for that action on
+  // links.gftv.asia, elsewhere-<action> passes on another hostname.
   globalThis.fetch = async (url, init) => {
-    const body = JSON.parse(init.body);
+    const body = Object.fromEntries(new URLSearchParams(String(init.body)));
     calls.push({ url: String(url), body });
     if (body.response === 'unreachable') throw new Error('network down');
     const [verdict, action] = body.response.split('-');
-    return new Response(JSON.stringify(verdict === 'good' ? { success: true, action } : { success: false, 'error-codes': ['invalid-input-response'] }));
+    if (verdict === 'bad') return new Response(JSON.stringify({ success: false, 'error-codes': ['invalid-input-response'] }));
+    return new Response(JSON.stringify({ success: true, action, hostname: verdict === 'good' ? 'links.gftv.asia' : 'evil.example' }));
   };
   try {
-    assert.equal((await browser().call(publicTurnstile)).json.siteKey, 'test-site-key');
+    assert.equal((await browser().call(publicTurnstile)).json.siteKey, '0x4AAAAAAFlkl5LtUMQYO1DZ');
 
-    assert.equal((await signUp()).json.error, 'human_check_failed', 'no token');
+    const missing = await signUp();
+    assert.equal(missing.status, 403);
+    assert.equal(missing.json.error, 'human_check_failed', 'no token');
     assert.equal(calls.length, 0, 'a missing token is refused without asking Cloudflare');
     assert.equal((await signUp('bad-register')).json.error, 'human_check_failed');
     assert.equal(calls[0].url, 'https://challenges.cloudflare.com/turnstile/v0/siteverify');
     assert.equal(calls[0].body.secret, 'test-secret');
     assert.match(calls[0].body.remoteip, /^198\.51\.100\./);
     assert.equal((await signUp('good-report')).json.error, 'human_check_failed', 'a token from the report form does not count');
+    assert.equal((await quiet(() => signUp('elsewhere-register'))).json.error, 'human_check_failed', 'a token from another hostname does not count');
     assert.equal((await signUp('good-register')).status, 200);
+    // A page cached before the rename sends it as "turnstile".
+    assert.equal((await browser().call(register, { method: 'POST', body: { slug: 'legacy-field', password: 'correct horse battery', turnstile: 'good-register' }, ip: ip() })).status, 200);
+
+    assert.equal((await signIn()).json.error, 'human_check_failed');
+    assert.equal((await signIn('good-register')).json.error, 'human_check_failed');
+    const signedIn = await signIn('good-login');
+    assert.equal(signedIn.status, 200, signedIn.body);
+    assert.ok(signedIn.json.challenge);
+
+    assert.equal((await startReset()).json.error, 'human_check_failed');
+    assert.equal((await startReset('good-recover')).status, 200);
 
     assert.equal((await sendReport()).json.error, 'human_check_failed');
     assert.equal((await sendReport('bad-report')).json.error, 'human_check_failed');
     assert.equal((await sendReport('good-report')).status, 200);
 
-    // Cloudflare out of reach: let it through, as the other outside checks do.
-    const warn = console.warn;
-    console.warn = () => {};
-    try {
-      assert.equal((await signUp('unreachable')).status, 200);
-    } finally {
-      console.warn = warn;
-    }
+    // Cloudflare out of reach: refused, since the page cannot get a token then either.
+    const down = await quiet(() => signUp('unreachable'));
+    assert.equal(down.status, 503);
+    assert.equal(down.json.error, 'human_check_unavailable');
   } finally {
     globalThis.fetch = realFetch;
-    delete process.env.TURNSTILE_SITE_KEY;
-    delete process.env.TURNSTILE_SECRET_KEY;
+    delete process.env.TURNSTILE_SECRET;
   }
 });
 

@@ -11,14 +11,16 @@
 // A lost second factor is not this route: sign in with the password and a
 // backup code instead.
 //
-//   start            { slug }  -> { telegram, challenge? }
+//   start            { slug, cf-turnstile-response }  -> { telegram, challenge? }
 //   send             { challenge }
 //   passkey-options  { challenge, telegramCode }  -> { options }
 //   finish           { challenge, telegramCode, factor: "totp" | "backup", code, newPassword }
 //                    { challenge, telegramCode, factor: "passkey", response, newPassword }
 //
 // passkey-options wants the Telegram code too, so the page's credential ids
-// are never handed to somebody who knows only its name.
+// are never handed to somebody who knows only its name. start wants a
+// Cloudflare Turnstile token for action "recover" (_lib/turnstile.js); the
+// later steps need its challenge, so the whole reset sits behind that check.
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
@@ -27,6 +29,7 @@ import { hashPassword, sha256 } from '../_lib/crypto.js';
 import { limited, audit } from '../_lib/guards.js';
 import { telegramConfigured, sendTelegram } from '../_lib/telegram.js';
 import { authenticationOptions, finishAuthentication } from '../_lib/webauthn.js';
+import { refusedForTurnstile } from '../_lib/turnstile.js';
 import { ownerTotpOk, spendBackupCode, sendTelegramCode, telegramCodeOk } from '../_lib/factors.js';
 import {
   createChallenge,
@@ -45,6 +48,7 @@ export default route('auth/recover', async (req, res) => {
   if (body.action === 'start') {
     const slug = normaliseSlug(body.slug).slice(0, 40);
     if (await limited(req, res, 'recover', [`slug:${sha256(slug)}`])) return;
+    if (await refusedForTurnstile(req, res, body, 'recover')) return;
     const { data: page, error } = await db()
       .from(T.pages)
       .select('id, status, telegram_chat_id')

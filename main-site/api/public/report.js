@@ -1,6 +1,7 @@
-// POST /api/public/report { slug, linkId?, reason, details?, turnstile }
-// A visitor flags a page, or one link on it, for staff to look at. turnstile
-// is the Cloudflare Turnstile token, checked when TURNSTILE_SECRET_KEY is set.
+// POST /api/public/report { slug, linkId?, reason, details?, cf-turnstile-response }
+// A visitor flags a page, or one link on it, for staff to look at.
+// cf-turnstile-response is the Cloudflare Turnstile token for action "report"
+// (_lib/turnstile.js).
 
 import { route, guard, readJson, ok, fail, clientIp } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
@@ -14,7 +15,7 @@ export default route('public/report', async (req, res) => {
   const body = await readJson(req, res);
   if (!body) return;
   if (await limited(req, res, 'report')) return;
-  if (await refusedForTurnstile(req, res, body.turnstile, 'report')) return;
+  if (await refusedForTurnstile(req, res, body, 'report')) return;
 
   if (!REPORT_REASONS.has(body.reason)) return fail(res, 400, 'report_reason');
   const { data: page, error } = await db()

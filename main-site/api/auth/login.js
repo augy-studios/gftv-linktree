@@ -1,8 +1,10 @@
-// POST /api/auth/login { slug, password }
+// POST /api/auth/login { slug, password, cf-turnstile-response }
 //
 // The password step. Issues nothing the browser can edit with: only a
 // challenge token and the list of second factors this page can use, which
-// /api/auth/verify then accepts.
+// /api/auth/verify then accepts. cf-turnstile-response is the Cloudflare
+// Turnstile token for action "login" (_lib/turnstile.js), checked before the
+// password so guessing passwords needs a passed check each time.
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
@@ -12,6 +14,7 @@ import { limited, audit, noteBannedVisitor } from '../_lib/guards.js';
 import { createChallenge } from '../_lib/session.js';
 import { countPasskeys } from '../_lib/webauthn.js';
 import { telegramConfigured } from '../_lib/telegram.js';
+import { refusedForTurnstile } from '../_lib/turnstile.js';
 
 export default route('auth/login', async (req, res) => {
   if (guard(req, res, ['POST'])) return;
@@ -20,6 +23,7 @@ export default route('auth/login', async (req, res) => {
 
   const slug = normaliseSlug(body.slug).slice(0, 40);
   if (await limited(req, res, 'login', [`slug:${sha256(slug)}`])) return;
+  if (await refusedForTurnstile(req, res, body, 'login')) return;
 
   const { data: page, error } = await db()
     .from(T.pages)

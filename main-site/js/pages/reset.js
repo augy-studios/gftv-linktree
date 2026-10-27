@@ -7,10 +7,13 @@ import { post } from '../api.js';
 import { withBusy, toast } from '../ui.js';
 import { normaliseSlugInput } from '../slug-check.js';
 import { passkeysSupported, usePasskey, passkeyErrorCode } from '../passkeys.js';
+import { humanCheck } from '../turnstile.js';
 
 const $ = (id) => document.getElementById(id);
 let challenge = null;
 let factor = 'totp';
+// Turnstile on the first step (turnstile.js); the rest needs its challenge.
+const check = humanCheck($('humanCheck'));
 
 $('stepReset').querySelector('[data-factor="passkey"]').hidden = !passkeysSupported();
 
@@ -24,7 +27,13 @@ function show(id) {
 $('findForm').addEventListener('submit', (e) => {
   e.preventDefault();
   withBusy($('findSubmit'), $('findError'), async () => {
-    const data = await post('/api/auth/recover', { action: 'start', slug: normaliseSlugInput($('slug').value) });
+    const token = await check.token();
+    let data;
+    try {
+      data = await post('/api/auth/recover', { action: 'start', slug: normaliseSlugInput($('slug').value), 'cf-turnstile-response': token });
+    } finally {
+      check.reset();
+    }
     if (!data.telegram) return show('stepNoTelegram');
     challenge = data.challenge;
     show('stepReset');
