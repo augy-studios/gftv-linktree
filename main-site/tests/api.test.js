@@ -9,7 +9,7 @@ import { useTestClient } from '../api/_lib/supabase.js';
 import { createFakeDb } from './fake-db.js';
 import { totpAt, generateTotpSecret } from '../api/_lib/totp.js';
 import { forgetDomainBlocklist } from '../api/_lib/domain-blocklist.js';
-import { forgetBlockedDomains, forgetBlockedPatterns, forgetReviewPatterns } from '../api/_lib/guards.js';
+import { forgetBlockedDomains, forgetAllowedDomains, forgetBlockedPatterns, forgetReviewPatterns } from '../api/_lib/guards.js';
 
 import slug from '../api/slug.js';
 import register from '../api/auth/register.js';
@@ -49,6 +49,7 @@ beforeEach(() => {
   fake = createFakeDb();
   useTestClient(fake);
   forgetBlockedDomains();
+  forgetAllowedDomains();
   forgetBlockedPatterns();
   forgetReviewPatterns();
 });
@@ -864,6 +865,92 @@ test('links: the domain blocklists, built into an index every two weeks', async 
     delete process.env.CRON_SECRET;
     forgetDomainBlocklist();
   }
+});
+
+test('allowed domains skip the threat lists, never the staff lists', async () => {
+  const owner = browser();
+  await makePage(owner);
+  const { secret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', secret);
+
+  const LISTS = {
+    'https://lists.example/tif.txt': '*.caught.example\n*.evil.example\n',
+    'https://lists.example/nsfw.txt': '*.artsite.example\n',
+  };
+  const bad = new Set(['https://flagged.example/page']);
+  process.env.DOMAIN_BLOCKLISTS = 'unsafe:https://lists.example/tif.txt,adult:https://lists.example/nsfw.txt';
+  process.env.GOOGLE_SAFE_BROWSING_KEY = 'sb-key';
+  process.env.CRON_SECRET = 'cron-secret';
+  forgetDomainBlocklist();
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).includes('safebrowsing.googleapis.com')) return new Response(LISTS[String(url)], { status: 200 });
+    const entries = JSON.parse(init.body).threatInfo.threatEntries.map((e) => e.url);
+    const matches = entries.filter((u) => bad.has(u)).map((u) => ({ threatType: 'SOCIAL_ENGINEERING', threat: { url: u } }));
+    return new Response(JSON.stringify(matches.length ? { matches } : {}), { status: 200 });
+  };
+  // Each from its own connection, so the refusals do not flag one.
+  let ip = 0;
+  const save = async (url) => (await owner.call(meLinks, { method: 'POST', body: { title: 'x', url }, ip: `198.51.100.${(ip += 1)}` })).json.error;
+  const blocklist = (action, value, reason) => admin.call(adminBlocklist, { method: 'POST', body: { action, value, reason } });
+  const cron = () => browser().call(cleanup, { headers: { authorization: 'Bearer cron-secret' } });
+  try {
+    await cron();
+    forgetDomainBlocklist();
+    assert.equal(await save('https://shop.caught.example/'), 'url_unsafe');
+    assert.equal(await save('https://artsite.example/gallery'), 'url_adult');
+    assert.equal(await save('https://flagged.example/page'), 'url_unsafe');
+
+    const added = await blocklist('add-allowed', 'https://www.caught.example/anything', 'false positive');
+    assert.equal(added.status, 200, added.body);
+    assert.deepEqual(added.json.allowed.map((d) => [d.value, d.reason]), [['caught.example', 'false positive']], 'kept as the bare domain');
+    await blocklist('add-allowed', 'artsite.example');
+    await blocklist('add-allowed', 'flagged.example');
+    assert.equal((await blocklist('add-allowed', 'not a domain')).json.error, 'domain_invalid');
+
+    assert.equal(await save('https://shop.caught.example/'), undefined, 'a subdomain of an allowed domain');
+    assert.equal(await save('https://artsite.example/gallery'), undefined, 'any HaGeZi category');
+    assert.equal(await save('https://flagged.example/page'), undefined, 'and Safe Browsing');
+    assert.equal(await save('https://login.evil.example/'), 'url_unsafe', 'other listed domains are still refused');
+    assert.equal(await save('https://caught.example.evil.example/'), 'url_unsafe', 'a domain only starting the same is not allowed');
+    assert.equal((await owner.call(mePage, { method: 'PATCH', body: { bio: 'My shop: shop.caught.example' } })).status, 200, 'in text too');
+
+    // The daily check leaves them alone until the domain is taken off.
+    assert.equal((await cron()).json.unsafe, 0);
+    const removed = await blocklist('remove-allowed', 'caught.example');
+    assert.deepEqual(removed.json.allowed.map((d) => d.value), ['artsite.example', 'flagged.example']);
+    assert.equal((await cron()).json.unsafe, 1);
+    assert.equal(await save('https://shop.caught.example/'), 'url_unsafe');
+
+    // Staff blocks win over an allowed domain, and so does the shortener rule.
+    await blocklist('add-domain', 'artsite.example', 'changed our minds');
+    assert.equal(await save('https://artsite.example/other'), 'url_blocked');
+    await blocklist('add-allowed', 'bit.ly');
+    assert.equal(await save('https://bit.ly/abc'), 'url_shortener');
+
+    const actions = fake.table('gftvonelink_audit_logs').map((r) => r.action);
+    for (const a of ['mod.domain_allowed', 'mod.domain_unallowed']) assert.ok(actions.includes(a), a);
+  } finally {
+    globalThis.fetch = realFetch;
+    process.env.DOMAIN_BLOCKLISTS = 'off';
+    delete process.env.GOOGLE_SAFE_BROWSING_KEY;
+    delete process.env.CRON_SECRET;
+    forgetDomainBlocklist();
+  }
+});
+
+test('the block lists page works before migration 014 is run', async () => {
+  const { secret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', secret);
+  fake.missing('gftvonelink_allowed_domains');
+  const lists = await admin.call(adminBlocklist);
+  assert.equal(lists.status, 200, lists.body);
+  assert.deepEqual(lists.json.allowed, []);
+  const owner = browser();
+  await makePage(owner);
+  assert.equal((await owner.call(meLinks, { method: 'POST', body: { title: 'x', url: 'https://fine.example/' } })).status, 200);
 });
 
 test('repeated harmful addresses quarantine the page and flag the connection', async () => {

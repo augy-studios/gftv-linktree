@@ -1,12 +1,14 @@
-// Rate limits, the audit log, and the staff block lists (names, domains and
-// patterns). Small, and used by almost every route.
+// Rate limits, the audit log, the staff block lists (names, domains and
+// patterns) and the domains staff allow past the threat lists. Small, and
+// used by almost every route.
 
 import { db, T } from './supabase.js';
 import { fail, clientIp, clientVisitor } from './http.js';
 import { hashIp, hashVisitor } from './crypto.js';
-import { sanitizeUrl, addressBlocked, patternBlocks, isShortener, addressesInText, linkHost, lookupUrl } from './validate.js';
+import { sanitizeUrl, addressBlocked, patternBlocks, isShortener, addressesInText, linkHost, lookupUrl, hostIsBlocked } from './validate.js';
 import { unsafeUrls } from './safe-browsing.js';
 import { blocklistCategory } from './domain-blocklist.js';
+import { missingSchema } from './link-cap.js';
 
 // The error an owner sees for each blocklist category.
 const LIST_ERRORS = { unsafe: 'url_unsafe', gambling: 'url_gambling', adult: 'url_adult', piracy: 'url_piracy', shortener: 'url_shortener' };
@@ -142,18 +144,49 @@ export async function blockLists() {
   return { domains, patterns };
 }
 
+let allowedCache = { at: 0, list: [] };
+
+// Domains staff vouch for (migration 014), cached per instance for a minute
+// like the blocked ones. Before 014 is run there are none.
+export async function allowedDomains() {
+  if (Date.now() - allowedCache.at < 60_000) return allowedCache.list;
+  const { data, error } = await db().from(T.allowedDomains).select('domain');
+  if (error) {
+    if (missingSchema(error)) {
+      allowedCache = { at: Date.now(), list: [] };
+    } else {
+      console.error('[onelink] allowed domains:', error.message);
+    }
+    return allowedCache.list;
+  }
+  allowedCache = { at: Date.now(), list: (data ?? []).map((r) => r.domain) };
+  return allowedCache.list;
+}
+
+export function forgetAllowedDomains() {
+  allowedCache = { at: 0, list: [] };
+}
+
+// True when host is an allowed domain or a subdomain of one. Such a host
+// skips the threat lists (HaGeZi and Safe Browsing), never the staff lists.
+export async function domainAllowed(host) {
+  return hostIsBlocked(host, await allowedDomains());
+}
+
 // A link or redirect address an owner is saving: { ok, url, host } or
 // { ok: false, error }. { mail: true } lets it be an email address, for
 // links but never a redirect. Refused: generic shorteners (validate.js),
 // anything on the staff block lists, any domain on the HaGeZi blocklists
 // (domain-blocklist.js: harmful sites, gambling, adult, piracy, shorteners), and
 // anything Google Safe Browsing lists, when that check is switched on
-// (safe-browsing.js). An email address is checked by its domain.
+// (safe-browsing.js). A domain staff have allowed skips those last two. An
+// email address is checked by its domain.
 export async function checkLinkUrl(input, { mail = false } = {}) {
   const check = sanitizeUrl(input, { mail });
   if (!check.ok) return check;
   if (!check.mail && isShortener(check.host)) return { ok: false, error: 'url_shortener' };
   if (addressBlocked(check.url, await blockLists())) return { ok: false, error: 'url_blocked' };
+  if (await domainAllowed(check.host)) return check;
   const listed = await blocklistCategory(check.host);
   if (listed) return { ok: false, error: LIST_ERRORS[listed] };
   const probe = lookupUrl(check.url);
@@ -200,14 +233,17 @@ export async function addressRefusedInText(...texts) {
   const found = addressesInText(texts.filter(Boolean).join('\n'));
   if (found.length === 0) return null;
   const lists = await blockLists();
+  const unvouched = [];
   for (const { host, url } of found) {
     if (isShortener(host)) return { host, error: 'url_shortener' };
     if (addressBlocked(url, lists)) return { host, error: 'url_blocked' };
+    if (await domainAllowed(host)) continue;
     const listed = await blocklistCategory(host);
     if (listed) return { host, error: LIST_ERRORS[listed] };
+    unvouched.push({ host, url });
   }
-  const unsafe = await unsafeUrls(found.map((f) => f.url));
-  const bad = found.find((f) => unsafe.has(f.url));
+  const unsafe = await unsafeUrls(unvouched.map((f) => f.url));
+  const bad = unvouched.find((f) => unsafe.has(f.url));
   return bad ? { host: bad.host, error: 'url_unsafe' } : null;
 }
 

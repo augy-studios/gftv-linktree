@@ -721,6 +721,7 @@ function renderBlocks(data) {
   fillPaged('bannedList', 'bannedPager', bannedRows(data.banned ?? []), 'admin.empty-banned');
   fillPaged('slugBlockList', 'slugBlockPager', blockRows(data.slugs, 'slug'), 'admin.empty-blocks');
   fillPaged('domainBlockList', 'domainBlockPager', blockRows(data.domains, 'domain'), 'admin.empty-blocks');
+  fillPaged('allowedBlockList', 'allowedBlockPager', blockRows(data.allowed ?? [], 'allowed'), 'admin.empty-allowed');
   fillPaged('patternBlockList', 'patternBlockPager', blockRows(data.patterns, 'pattern'), 'admin.empty-blocks');
   fillPaged('reviewBlockList', 'reviewBlockPager', blockRows(data.reviews, 'review'), 'admin.empty-blocks');
   renderThreatList(data.threatList);
@@ -728,7 +729,7 @@ function renderBlocks(data) {
 
 loaders.blocks = async () => {
   if (!isAdmin()) return;
-  for (const id of ['slugBlockList', 'domainBlockList', 'patternBlockList', 'reviewBlockList', 'flaggedList', 'flaggedDeviceList', 'bannedList']) loading($(id));
+  for (const id of ['slugBlockList', 'domainBlockList', 'allowedBlockList', 'patternBlockList', 'reviewBlockList', 'flaggedList', 'flaggedDeviceList', 'bannedList']) loading($(id));
   try {
     renderBlocks(await api('/api/admin/blocklist'));
   } catch (error) {
@@ -736,7 +737,7 @@ loaders.blocks = async () => {
   }
 };
 
-for (const [formId, kind] of [['slugBlockForm', 'slug'], ['domainBlockForm', 'domain'], ['patternBlockForm', 'pattern'], ['reviewBlockForm', 'review']]) {
+for (const [formId, kind] of [['slugBlockForm', 'slug'], ['domainBlockForm', 'domain'], ['allowedBlockForm', 'allowed'], ['patternBlockForm', 'pattern'], ['reviewBlockForm', 'review']]) {
   $(formId).addEventListener('submit', (e) => {
     e.preventDefault();
     const button = $(formId).querySelector('button[type="submit"]');

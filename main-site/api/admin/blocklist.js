@@ -5,6 +5,9 @@
 // POST { action: "remove-slug", value }
 // POST { action: "add-domain", value, reason }
 // POST { action: "remove-domain", value }
+// POST { action: "add-allowed", value, reason }  a domain that skips the
+//                                                threat lists (014)
+// POST { action: "remove-allowed", value }
 // POST { action: "add-pattern", value, appliesTo, reason }
 // POST { action: "remove-pattern", id }
 // POST { action: "add-review", value, reason }    names that need approval
@@ -27,25 +30,35 @@
 // (validate.js checkPattern) matched without regard to case against link
 // addresses, page names, or both; for links it works like a domain block,
 // for names like a slug block.
+//
+// An allowed domain, and any subdomain of it, skips the threat lists (the
+// HaGeZi blocklists and Google Safe Browsing) when a link is saved and in the
+// daily re-check, for a site they caught by mistake. The staff lists above
+// still apply to it.
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
 import { cleanText, normaliseSlug, normaliseDomain, checkPattern, isUuid, PATTERN_SCOPES, LIMITS } from '../_lib/validate.js';
-import { limited, audit, forgetBlockedDomains, forgetBlockedPatterns, forgetReviewPatterns, flaggedConnections, unflagConnection, bannedConnections, banFlaggedConnection, unbanConnection, flaggedVisitors, unflagVisitor, banFlaggedVisitor } from '../_lib/guards.js';
+import { limited, audit, forgetBlockedDomains, forgetAllowedDomains, forgetBlockedPatterns, forgetReviewPatterns, flaggedConnections, unflagConnection, bannedConnections, banFlaggedConnection, unbanConnection, flaggedVisitors, unflagVisitor, banFlaggedVisitor } from '../_lib/guards.js';
 import { requireStaff } from '../_lib/staff.js';
 import { rebuildDomainBlocklist, domainBlocklistInfo } from '../_lib/domain-blocklist.js';
+import { missingSchema } from '../_lib/link-cap.js';
 
 async function lists() {
-  const [{ data: slugs, error }, { data: domains, error: domainError }, { data: patterns, error: patternError }, { data: reviews, error: reviewError }] = await Promise.all([
+  const [{ data: slugs, error }, { data: domains, error: domainError }, { data: allowed, error: allowedError }, { data: patterns, error: patternError }, { data: reviews, error: reviewError }] = await Promise.all([
     db().from(T.blockedSlugs).select('slug, reason, created_at').order('slug'),
     db().from(T.blockedDomains).select('domain, reason, created_at').order('domain'),
+    db().from(T.allowedDomains).select('domain, reason, created_at').order('domain'),
     db().from(T.blockedPatterns).select('id, pattern, applies_to, reason, created_at').order('created_at'),
     db().from(T.reviewPatterns).select('id, pattern, reason, created_at').order('created_at'),
   ]);
-  if (error || domainError || patternError || reviewError) throw error || domainError || patternError || reviewError;
+  // Before migration 014 the allowed list is empty rather than an error.
+  const allowedFailed = allowedError && !missingSchema(allowedError) ? allowedError : null;
+  if (error || domainError || allowedFailed || patternError || reviewError) throw error || domainError || allowedFailed || patternError || reviewError;
   return {
     slugs: (slugs ?? []).map((r) => ({ value: r.slug, reason: r.reason, createdAt: r.created_at })),
     domains: (domains ?? []).map((r) => ({ value: r.domain, reason: r.reason, createdAt: r.created_at })),
+    allowed: (allowedError ? [] : allowed ?? []).map((r) => ({ value: r.domain, reason: r.reason, createdAt: r.created_at })),
     patterns: (patterns ?? []).map((r) => ({ id: r.id, value: r.pattern, appliesTo: r.applies_to, reason: r.reason, createdAt: r.created_at })),
     reviews: (reviews ?? []).map((r) => ({ id: r.id, value: r.pattern, reason: r.reason, createdAt: r.created_at })),
     threatList: await domainBlocklistInfo(),
@@ -99,6 +112,24 @@ export default route('admin/blocklist', async (req, res) => {
       if (error) throw error;
       forgetBlockedDomains();
       await audit(req, { action: 'mod.domain_unblocked', ...actor, details: { domain } });
+      break;
+    }
+    case 'add-allowed': {
+      const domain = normaliseDomain(body.value);
+      if (!domain) return fail(res, 400, 'domain_invalid');
+      const { error } = await db().from(T.allowedDomains).upsert({ domain, reason, created_by: staff.user.id });
+      if (error) throw error;
+      forgetAllowedDomains();
+      await audit(req, { action: 'mod.domain_allowed', ...actor, details: { domain, reason } });
+      break;
+    }
+    case 'remove-allowed': {
+      const domain = normaliseDomain(body.value);
+      if (!domain) return fail(res, 400, 'domain_invalid');
+      const { error } = await db().from(T.allowedDomains).delete().eq('domain', domain);
+      if (error) throw error;
+      forgetAllowedDomains();
+      await audit(req, { action: 'mod.domain_unallowed', ...actor, details: { domain } });
       break;
     }
     case 'add-pattern': {

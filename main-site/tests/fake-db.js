@@ -1,6 +1,6 @@
 // An in-memory stand-in for the supabase-js client, covering the query
 // builder calls the API makes, with the schema's unique constraints, foreign
-// key cascades and RPC functions from migrations/001 to 013. Enough to drive every
+// key cascades and RPC functions from migrations/001 to 014. Enough to drive every
 // route end to end in tests; not a general PostgREST.
 
 import { randomUUID } from 'node:crypto';
@@ -34,7 +34,7 @@ const DEFAULTS = {
 };
 
 // A list for a primary key over several columns.
-const PRIMARY = { gftvonelink_blocked_slugs: 'slug', gftvonelink_blocked_domains: 'domain', gftvonelink_rate_limits: 'bucket', gftvonelink_ip_bans: 'ip_hash', gftvonelink_visitor_bans: ['visitor_hash', 'ip_hash'], gftvonelink_settings: 'key' };
+const PRIMARY = { gftvonelink_blocked_slugs: 'slug', gftvonelink_blocked_domains: 'domain', gftvonelink_allowed_domains: 'domain', gftvonelink_rate_limits: 'bucket', gftvonelink_ip_bans: 'ip_hash', gftvonelink_visitor_bans: ['visitor_hash', 'ip_hash'], gftvonelink_settings: 'key' };
 const UNIQUE = {
   gftvonelink_pages: ['slug'],
   gftvonelink_passkeys: ['credential_id'],
@@ -107,6 +107,8 @@ function likeToRegex(pattern, flags) {
 export function createFakeDb() {
   const tables = {};
   const table = (name) => (tables[name] ??= []);
+  // Tables a test pretends a migration has not created yet.
+  const missing = new Set();
 
   function project(name, row, select) {
     if (!select || select.trim() === '*') return { ...row };
@@ -230,6 +232,7 @@ export function createFakeDb() {
     }
     run() {
       const name = this.name;
+      if (missing.has(name)) return { data: null, error: { code: 'PGRST205', message: `Could not find the table 'public.${name}'` } };
       if (this.op === 'select') {
         let rows = this.matches();
         if (this.sort) {
@@ -396,6 +399,7 @@ export function createFakeDb() {
     table,
     objects,
     storage,
+    missing: (name) => missing.add(name),
     from: (name) => new Query(name),
     rpc: async (name, args) => {
       if (!rpcs[name]) return { data: null, error: { message: `no rpc ${name}` } };
