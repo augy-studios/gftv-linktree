@@ -12,7 +12,7 @@
 // dormant (a year without a sign-in), when its owner linked Telegram, and
 // checks every live link and redirect against the HaGeZi domain blocklist
 // and Google Safe Browsing again, since an address that was fine when it
-// was added can turn bad later.
+// was added can turn bad later. Domains staff have allowed are left alone.
 
 import { route, send } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
@@ -23,7 +23,7 @@ import { sendRichTelegram, telegramConfigured } from '../_lib/telegram.js';
 import { dormancyMessage } from '../_lib/telegram-messages.js';
 import { unsafeUrls, safeBrowsingConfigured } from '../_lib/safe-browsing.js';
 import { blocklistCategory, domainBlocklists, rebuildDomainBlocklist } from '../_lib/domain-blocklist.js';
-import { audit, addressRefusedInText } from '../_lib/guards.js';
+import { audit, addressRefusedInText, domainAllowed } from '../_lib/guards.js';
 
 // How long the audit log keeps the device hash next to the address hash, for
 // banning the devices used on a connection along with it (guards.js).
@@ -52,6 +52,7 @@ async function recheckAddresses() {
   const flagged = await unsafeUrls([...(links ?? []).map((l) => l.url), ...(pages ?? []).map((p) => p.redirect_url)].map(lookupUrl));
   // Why a url should go, or null to keep it.
   const verdict = async (url) => {
+    if (await domainAllowed(linkHost(url))) return null;
     if (flagged.has(lookupUrl(url))) return UNSAFE_REASON;
     const listed = await blocklistCategory(linkHost(url));
     return listed ? LISTED_REASONS[listed] : null;

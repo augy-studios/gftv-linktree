@@ -31,6 +31,8 @@ In the Supabase project that already holds the `gftvhello_` tables, open
   turn up elsewhere
 - `013_link_caps.sql`: a limit on how many links each page can have (20 by
   default, set by admins), per-page limits, and owners' requests for a higher one
+- `014_allowed_domains.sql`: domains staff allow past the threat lists (the
+  HaGeZi blocklists and Google Safe Browsing), for a site caught by mistake
 
 **Check:** in **Table Editor** you see the `gftvonelink_` tables, each marked
 **RLS enabled**.

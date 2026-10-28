@@ -192,6 +192,17 @@
                     </div>
                 </div>
                 <div class="panel-section">
+                    <h2 data-i18n="admin.allowed-domains">Allowed domains</h2>
+                    <p class="muted small" data-i18n="admin.allowed-domains-body">Links to these domains, and any subdomain of them, skip the threat lists, for a site they have caught by mistake. Blocked domains, blocked patterns and the shortened-link rule still apply.</p>
+                    <form class="toolbar u-mt-075" id="allowedBlockForm">
+                        <label class="field"><span class="visually-hidden" data-i18n="admin.domain">Domain</span><input id="allowedBlockValue" type="text" autocapitalize="none" spellcheck="false" placeholder="example.com" required></label>
+                        <label class="field"><span class="visually-hidden" data-i18n="field.reason">Reason</span><input id="allowedBlockReason" type="text" maxlength="500" placeholder="Reason" data-i18n-attr="placeholder:field.reason"></label>
+                        <button class="btn" type="submit"><span data-icon="check"></span><span data-i18n="admin.allow">Allow</span></button>
+                    </form>
+                    <ul class="data-list" id="allowedBlockList"></ul>
+                    <div class="pager" id="allowedBlockPager"></div>
+                </div>
+                <div class="panel-section">
                     <h2 data-i18n="admin.flagged-title">Flagged connections</h2>
                     <p class="muted small" data-i18n="admin.flagged-body">Connections that tried five harmful addresses today, and cannot save links until the day is up. Only a one-way hash of each address is kept, so each is shown by the start of it. Unflag one that was caught by mistake; to free its page as well, release the page under Pages.</p>
                     <ul class="data-list u-mt-075" id="flaggedList"></ul>
