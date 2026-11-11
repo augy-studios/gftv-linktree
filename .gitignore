@@ -4,3 +4,4 @@ node_modules/
 .env.local
 .env.*.local
 .claude/worktrees/
+main-site/tests/e2e/out/

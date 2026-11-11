@@ -3,7 +3,8 @@
 // GET ?q=&status=&offset=        a page of pages, newest first; status is
 //                                active, pending, banned, dormant,
 //                                review (waiting for approval) or
-//                                quarantined
+//                                quarantined, or team (verified GFTV
+//                                team pages)
 // GET ?id=                       one page with its links, reports and link
 //                                limit
 // POST { action: "ban", id, reason }     admin only; signs the owner out
@@ -18,10 +19,18 @@
 //                                                live. Refusing one is a take
 //                                                down or a delete.
 // POST { action: "release", id }                 any staff; ends a quarantine
+// POST { action: "verify", id, role? }           admin only; marks the page as
+//                                                someone on the GFTV team, with
+//                                                an optional role label. Sent
+//                                                again, it changes the role.
+//        Or { action: "verify", slug, role? }, from the Team tab: by page
+//        name, refused with already_verified when the page has the mark,
+//        so adding someone never overwrites a role by accident.
+// POST { action: "unverify", id }                admin only
 
 import { route, guard, readJson, ok, fail, query } from '../_lib/http.js';
 import { db, T } from '../_lib/supabase.js';
-import { cleanText, isUuid, LIMITS, DORMANT_AFTER_DAYS } from '../_lib/validate.js';
+import { cleanText, isUuid, normaliseSlug, LIMITS, DORMANT_AFTER_DAYS } from '../_lib/validate.js';
 import { limited, audit, resetRefusedLinks } from '../_lib/guards.js';
 import { requireStaff } from '../_lib/staff.js';
 import { endAllOwnerSessions } from '../_lib/session.js';
@@ -30,7 +39,7 @@ import { deleteAvatarFile } from '../_lib/avatar.js';
 import { PAGE_SIZE, offsetOf, searchTerm, pattern } from '../_lib/admin.js';
 import { linkCapFor, linksUsed } from '../_lib/link-cap.js';
 
-const PAGE_COLUMNS = 'id, slug, display_name, bio, avatar_path, status, ban_reason, banned_at, created_at, activated_at, telegram_chat_id, redirect_url, last_sign_in_at, needs_review, reviewed_at, quarantined_at, quarantine_reason';
+const PAGE_COLUMNS = 'id, slug, display_name, bio, avatar_path, status, ban_reason, banned_at, created_at, activated_at, telegram_chat_id, redirect_url, last_sign_in_at, needs_review, reviewed_at, quarantined_at, quarantine_reason, team_verified_at, team_role';
 
 export default route('admin/pages', async (req, res) => {
   if (guard(req, res, ['GET', 'POST'])) return;
@@ -66,12 +75,14 @@ export default route('admin/pages', async (req, res) => {
     let q = db()
       .from(T.pages)
       .select(`${PAGE_COLUMNS}, links:gftvonelink_links ( count ), reports:gftvonelink_reports ( count )`, { count: 'exact' })
-      .order('created_at', { ascending: false })
+      // The team list reads like a directory, by name; the rest newest first.
+      .order(status === 'team' ? 'slug' : 'created_at', { ascending: status === 'team' })
       .range(offset, offset + PAGE_SIZE - 1);
     if (['active', 'pending', 'banned'].includes(status)) q = q.eq('status', status);
     // Live, but not shown: the owner has not signed in for a year.
     if (status === 'review') q = q.eq('needs_review', true).is('reviewed_at', null);
     if (status === 'quarantined') q = q.not('quarantined_at', 'is', null);
+    if (status === 'team') q = q.not('team_verified_at', 'is', null);
     if (status === 'dormant') {
       q = q.eq('status', 'active').lt('last_sign_in_at', new Date(Date.now() - DORMANT_AFTER_DAYS * 86400_000).toISOString());
     }
@@ -95,11 +106,15 @@ export default route('admin/pages', async (req, res) => {
   const staff = await requireStaff(req, res, { admin: !['remove-avatar', 'approve', 'release'].includes(body.action) });
   if (!staff) return;
   if (await limited(req, res, 'staffWrite', [`staff:${staff.user.id}`])) return;
-  if (!isUuid(body.id)) return fail(res, 400, 'bad_request');
+  const bySlug = body.action === 'verify' && body.id === undefined && typeof body.slug === 'string';
+  if (!bySlug && !isUuid(body.id)) return fail(res, 400, 'bad_request');
 
-  const { data: page, error } = await db().from(T.pages).select('id, slug, status, activated_at, avatar_path, needs_review, reviewed_at, quarantined_at').eq('id', body.id).maybeSingle();
+  const columns = 'id, slug, status, activated_at, avatar_path, needs_review, reviewed_at, quarantined_at, team_verified_at, team_role';
+  const lookup = db().from(T.pages).select(columns);
+  const { data: page, error } = await (bySlug ? lookup.eq('slug', normaliseSlug(body.slug)) : lookup.eq('id', body.id)).maybeSingle();
   if (error) throw error;
   if (!page) return fail(res, 404, 'page_not_found');
+  if (bySlug && page.team_verified_at) return fail(res, 409, 'already_verified');
 
   if (body.action === 'ban') {
     const reason = cleanText(body.reason, LIMITS.reason, { multiline: true });
@@ -108,7 +123,9 @@ export default route('admin/pages', async (req, res) => {
     await audit(req, { action: 'mod.page_banned', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug, reason } });
     const { error: updateError } = await db()
       .from(T.pages)
-      .update({ status: 'banned', ban_reason: reason, banned_at: new Date().toISOString(), banned_by: staff.user.id })
+      // A page taken down loses its team mark, so restoring it later does
+      // not quietly vouch for whoever has it then.
+      .update({ status: 'banned', ban_reason: reason, banned_at: new Date().toISOString(), banned_by: staff.user.id, team_verified_at: null, team_verified_by: null, team_role: null })
       .eq('id', page.id);
     if (updateError) throw updateError;
     await endAllOwnerSessions(page.id);
@@ -146,6 +163,21 @@ export default route('admin/pages', async (req, res) => {
     const { error: updateError } = await db().from(T.pages).update({ quarantined_at: null, quarantine_reason: null }).eq('id', page.id);
     if (updateError) throw updateError;
     await resetRefusedLinks(page.id);
+  } else if (body.action === 'verify') {
+    if (page.status !== 'active') return fail(res, 409, 'not_active');
+    const role = cleanText(body.role, LIMITS.teamRole) || null;
+    await audit(req, { action: page.team_verified_at ? 'mod.team_role_changed' : 'mod.team_verified', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug, role } });
+    const { error: updateError } = await db()
+      .from(T.pages)
+      // The first verification's date is kept when only the role changes.
+      .update({ team_verified_at: page.team_verified_at || new Date().toISOString(), team_verified_by: staff.user.id, team_role: role })
+      .eq('id', page.id);
+    if (updateError) throw updateError;
+  } else if (body.action === 'unverify') {
+    if (!page.team_verified_at) return fail(res, 409, 'not_verified');
+    await audit(req, { action: 'mod.team_unverified', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug, role: page.team_role || null } });
+    const { error: updateError } = await db().from(T.pages).update({ team_verified_at: null, team_verified_by: null, team_role: null }).eq('id', page.id);
+    if (updateError) throw updateError;
   } else if (body.action === 'remove-avatar') {
     if (!page.avatar_path) return fail(res, 409, 'no_avatar');
     const reason = cleanText(body.reason, LIMITS.reason, { multiline: true });

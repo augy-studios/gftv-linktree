@@ -683,13 +683,46 @@ function countryName(code) {
   }
 }
 
-function tile(label, value, note) {
+// words: the value is a name (a country), not a number, so it is set smaller
+// and wraps between words rather than through them.
+function tile(label, value, note, { words = false } = {}) {
   return el('div', { class: 'stat-tile' }, [
-    el('div', { class: 'value', text: value }),
+    el('div', { class: words ? 'value words' : 'value', text: value }),
     el('div', { class: 'label', text: label }),
     note ? el('div', { class: 'note', text: note }) : null,
   ]);
 }
+
+// A name is never split inside a word. It wraps only between words; when a
+// word is still wider than its tile, the text steps down in size, and if the
+// smallest size is still too wide the tile takes the whole row. Run again on
+// every render, which a resize triggers.
+const FIT_MIN = 0.7; // of the starting size
+function fitWords(value) {
+  const tile = value.closest('.stat-tile');
+  const grid = tile.parentElement;
+  grid.querySelectorAll('.stat-tile.wide').forEach((x) => x.classList.remove('wide'));
+  value.style.fontSize = '';
+  const start = parseFloat(getComputedStyle(value).fontSize);
+  const overflows = () => value.scrollWidth > value.clientWidth + 1;
+  const shrink = () => {
+    for (let scale = 1; overflows() && scale > FIT_MIN; ) {
+      scale = Math.max(FIT_MIN, scale - 0.05);
+      value.style.fontSize = `${start * scale}px`;
+    }
+  };
+  shrink();
+  if (!overflows()) return;
+  tile.classList.add('wide');
+  // In two columns the tile before it would be left alone in its row, so it
+  // takes the whole row too.
+  if (getComputedStyle(grid).gridTemplateColumns.split(' ').length === 2) tile.previousElementSibling?.classList.add('wide');
+  value.style.fontSize = '';
+  shrink();
+}
+// The site font can arrive after the first render and is wider than the
+// fallback, so fit again once it has.
+document.fonts?.ready.then(() => $('statsTiles').querySelectorAll('.value.words').forEach(fitWords));
 
 function renderStats() {
   document.querySelectorAll('#statsPeriod [data-days]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.days) === statsDays)));
@@ -703,8 +736,9 @@ function renderStats() {
     tile(t('stats.visits'), formatNumber(totals.visits)),
     tile(t('stats.clicks'), formatNumber(totals.clicks)),
     tile(t('stats.click-rate'), rate, t('stats.click-rate-note')),
-    tile(t('stats.top-country'), topCountry ? countryName(topCountry.key) : '–', topSource ? t('stats.top-source', { site: topSource.key }) : null),
+    tile(t('stats.top-country'), topCountry ? countryName(topCountry.key) : '–', topSource ? t('stats.top-source', { site: topSource.key }) : null, { words: Boolean(topCountry) }),
   );
+  $('statsTiles').querySelectorAll('.value.words').forEach(fitWords);
 
   const series = statsSeries;
   const title = t(`stats.chart-${series}`, { days: statsDays });

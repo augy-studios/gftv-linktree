@@ -91,7 +91,7 @@ export const ICON_CATEGORIES = [
   ['creative', ['brush', 'pencil', 'feather', 'book', 'book-open', 'document', 'news', 'rss', 'layers']],
   ['tech', ['code', 'terminal', 'cpu', 'monitor', 'download', 'game']],
   ['places', ['map', 'map-pin', 'compass', 'calendar', 'clock', 'sun', 'moon', 'cloud', 'briefcase']],
-  ['social', ['instagram', 'x', 'threads', 'bluesky', 'facebook', 'tiktok', 'mastodon', 'tumblr', 'reddit', 'snapchat', 'pinterest', 'xiaohongshu', 'linktree']],
+  ['social', ['instagram', 'x', 'threads', 'bluesky', 'facebook', 'tiktok', 'mastodon', 'tumblr', 'reddit', 'snapchat', 'pinterest', 'xiaohongshu', 'vk', 'sinaweibo', 'barq', 'linktree']],
   ['streaming', ['youtube', 'twitch', 'kick', 'vimeo', 'bilibili']],
   ['audio', ['spotify', 'soundcloud', 'bandcamp', 'applemusic', 'youtubemusic', 'applepodcasts']],
   ['messaging', ['telegram', 'discord', 'whatsapp', 'line']],

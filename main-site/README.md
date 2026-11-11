@@ -15,6 +15,7 @@ build step, plus Node serverless functions under `api/`. Setup is in the
 | `/edit` | `edit.html` | `js/pages/edit.js` |
 | `/admin` | `admin.html` | `js/pages/admin.js` |
 | `/privacy` | `privacy.html` | `js/pages/privacy.js` |
+| `/team` | `team.html` | `js/pages/team.js` |
 | `/<slug>` | `shell/profile.html`, served by `api/render.js` | `js/pages/profile.js` |
 | anything else | `404.html` | `js/pages/notfound.js` |
 
@@ -159,15 +160,44 @@ Staff can remove a picture from the page's details in the dashboard.
 
 ### Platform links
 
-`js/platforms.js` lists 52 services with their address formats. Choosing one
+`js/platforms.js` lists 56 services with their address formats. Choosing one
 fills in the start of the address, so the owner types only the username or
 ID; YouTube offers handle, channel ID, custom address and legacy username.
 An existing link to a known service opens again as that service. Links are
-stored as ordinary addresses and checked like any other.
+stored as ordinary addresses and checked like any other. Barq
+(`barq.app/@username`) has no logo in Simple Icons, so its icon is drawn by
+hand in the same style (`OWN_BRANDS` in `tools/make-icon-data.mjs`).
 
 Icons come in categories (`ICON_CATEGORIES` in `js/icons.js`), from general
 icons to service logos. `LINK_ICONS` in `api/_lib/validate.js` is the server's
 list; the tests check the two agree.
+
+### GFTV team pages
+
+An admin can mark a live page as belonging to someone on the GFTV team, with
+an optional role such as "Moderator" (migration 015, `verify` and `unverify`
+on `api/admin/pages.js`). Admins manage it from the **Team** tab in `/admin`,
+which adds someone by page name (or pasted address), lists the team by name
+with search, and changes or removes roles; the same buttons are also in each
+page's dialog. Adding a page that already has the mark is refused, so a role
+is never overwritten by accident. The page then
+shows a ring and a tick on its picture, a "GFTV team" label under the name,
+and a note at the top of the footer saying what the mark means; the label
+jumps to the note. The mark comes only from the server,
+so the page works as a way to check that someone is on the team. Taking a
+page down clears the mark; restoring it does not bring it back. The pages
+list in `/admin` can also be filtered to team pages.
+
+`/team` lists every verified page a visitor can open (`api/public/team.js`),
+so anyone can check a name against the official list. It is linked from the
+footer and from the explanation under each mark, and `team` is a reserved
+page name.
+
+Browser tests for all of this, and the Barq, VK and Weibo links, run with
+`npm run e2e` (`tests/e2e/`). They drive the real pages in Chromium against
+the real API handlers on the in-memory test database, with the production
+Content-Security-Policy, and fail on any console error. They need Playwright
+with Chromium installed where Node can find it; it is not a site dependency.
 
 ### Offline
 

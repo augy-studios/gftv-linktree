@@ -42,7 +42,7 @@ export default route('me/testimonial', async (req, res) => {
   if (await refusedForBan(req, res, { pageId: owner.page.id })) return;
   if (body.consent !== true) return fail(res, 400, 'testimonial_consent');
   const quote = cleanText(body.quote, LIMITS.quote, { multiline: true });
-  if (!quote) return fail(res, 400, 'testimonial_required');
+  if (!quote) return fail(res, 400, 'own_testimonial_required');
   const refused = await addressRefusedInText(quote);
   if (refused) return fail(res, 400, 'text_address', { host: refused.host });
 

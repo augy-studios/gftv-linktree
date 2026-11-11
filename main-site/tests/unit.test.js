@@ -180,6 +180,14 @@ test('platform links build and read back their addresses', async () => {
   assert.equal(p.cleanUsername(email, ' mailto:you@example.com '), 'you@example.com');
   assert.equal(p.matchPlatform('mailto:you@example.com')?.platform.id, 'email');
   assert.equal(p.usernameOk(email, 'you@example.com?subject=hi'), false);
+
+  assert.equal(p.matchPlatform('https://vk.com/durov')?.platform.id, 'vk');
+  assert.equal(p.matchPlatform('https://weibo.com/u/1234567890')?.platform.id, 'weibo');
+  const barq = p.platformById('barq').formats[0];
+  assert.equal(p.cleanUsername(barq, 'https://barq.app/@jianweit'), 'jianweit', 'a pasted Barq link comes down to the username');
+  assert.equal(p.cleanUsername(barq, '@jianweit'), 'jianweit');
+  assert.equal(p.matchPlatform('https://barq.app/@jianweit')?.platform.id, 'barq');
+  assert.equal(p.usernameOk(barq, 'p/abc'), false);
 });
 
 test('addresses hidden in text are found however they are written', async () => {

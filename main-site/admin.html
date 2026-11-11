@@ -94,6 +94,7 @@
                 <button class="tab" role="tab" id="atab-overview" aria-controls="apanel-overview" aria-selected="true"><span data-icon="chart"></span><span data-i18n="admin.tab-overview">Overview</span></button>
                 <button class="tab" role="tab" id="atab-reports" aria-controls="apanel-reports" aria-selected="false" tabindex="-1"><span data-icon="flag"></span><span data-i18n="admin.tab-reports">Reports</span></button>
                 <button class="tab" role="tab" id="atab-pages" aria-controls="apanel-pages" aria-selected="false" tabindex="-1"><span data-icon="user"></span><span data-i18n="admin.tab-pages">Pages</span></button>
+                <button class="tab" role="tab" id="atab-team" aria-controls="apanel-team" aria-selected="false" tabindex="-1" data-admin-only hidden><span data-icon="users"></span><span data-i18n="admin.tab-team">Team</span></button>
                 <button class="tab" role="tab" id="atab-links" aria-controls="apanel-links" aria-selected="false" tabindex="-1"><span data-icon="link"></span><span data-i18n="admin.tab-links">Links</span></button>
                 <button class="tab" role="tab" id="atab-blocks" aria-controls="apanel-blocks" aria-selected="false" tabindex="-1" data-admin-only hidden><span data-icon="ban"></span><span data-i18n="admin.tab-blocks">Block lists</span></button>
                 <button class="tab" role="tab" id="atab-testimonials" aria-controls="apanel-testimonials" aria-selected="false" tabindex="-1"><span data-icon="chat"></span><span data-i18n="admin.tab-testimonials">Testimonials</span></button>
@@ -120,6 +121,31 @@
                 <div class="pager" id="reportPager"></div>
             </section>
 
+            <section class="glass-card panel" role="tabpanel" id="apanel-team" aria-labelledby="atab-team" hidden>
+                <h2 data-i18n="admin.team-add-title">Add someone to the GFTV team</h2>
+                <p class="small muted" data-i18n="admin.team-add-body">Their page gets a yellow ring and tick, and is listed on the public /team page. Only add someone you know is on the team.</p>
+                <form class="toolbar u-mt-075" id="teamAdd" novalidate>
+                    <label class="field"><span class="visually-hidden" data-i18n="admin.team-slug">Page name</span>
+                        <input id="teamAddSlug" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="80" placeholder="Page name, for example augy" data-i18n-attr="placeholder:admin.team-slug-placeholder">
+                    </label>
+                    <label class="field"><span class="visually-hidden" data-i18n="admin.team-role-short">Role (optional)</span>
+                        <input id="teamAddRole" type="text" autocomplete="off" maxlength="40" placeholder="Role (optional)" data-i18n-attr="placeholder:admin.team-role-short">
+                    </label>
+                    <button class="btn btn-primary" type="submit" id="teamAddSubmit"><span data-icon="shield"></span><span data-i18n="admin.team-verify">Verify as GFTV team</span></button>
+                </form>
+                <div class="callout danger" id="teamAddError" role="alert"></div>
+
+                <h2 class="u-mt-1" id="adminTeamTitle" data-i18n="admin.team-list-title">On the team</h2>
+                <form class="toolbar" id="teamSearch" role="search">
+                    <label class="field"><span class="visually-hidden" data-i18n="admin.search">Search</span>
+                        <input id="teamQuery" type="search" placeholder="Search the team" data-i18n-attr="placeholder:admin.team-search">
+                    </label>
+                    <button class="btn" type="submit"><span data-icon="search"></span><span data-i18n="admin.search">Search</span></button>
+                </form>
+                <ul class="data-list" id="adminTeamList" aria-labelledby="adminTeamTitle"></ul>
+                <div class="pager" id="adminTeamPager"></div>
+            </section>
+
             <section class="glass-card panel" role="tabpanel" id="apanel-pages" aria-labelledby="atab-pages" hidden>
                 <form class="toolbar" id="pageSearch" role="search">
                     <label class="field"><span class="visually-hidden" data-i18n="admin.search">Search</span>
@@ -134,6 +160,7 @@
                             <option value="review" data-i18n="status.review">Awaiting approval</option>
                             <option value="dormant" data-i18n="status.dormant">Dormant</option>
                             <option value="quarantined" data-i18n="status.quarantined">Quarantined</option>
+                            <option value="team" data-i18n="team.label">GFTV team</option>
                         </select>
                     </label>
                     <button class="btn" type="submit"><span data-icon="search"></span><span data-i18n="admin.search">Search</span></button>
@@ -331,6 +358,7 @@
     <footer class="site-footer">
         <nav>
             <a href="/privacy" data-i18n="footer.privacy">Privacy</a>
+            <a href="/team" data-i18n="footer.team">GFTV team</a>
             <a href="https://policy.globalfurry.tv/legal/terms" target="_blank" rel="noopener" data-i18n="footer.terms">Terms of Use</a>
         </nav>
         <span data-i18n="footer.made">Made with</span> <span data-icon="heart"></span> <span data-i18n="footer.in">in</span>
@@ -424,7 +452,7 @@
                 <button class="icon-btn small" type="button" data-close-modal="reasonModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
             </div>
             <p class="small muted" id="reasonBody"></p>
-            <label class="field u-mt-075">
+            <label class="field u-mt-075" id="reasonTextRow">
                 <span id="reasonLabel" data-i18n="field.reason">Reason</span>
                 <textarea id="reasonText" maxlength="500" rows="3"></textarea>
             </label>

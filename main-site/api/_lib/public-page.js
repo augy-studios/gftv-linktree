@@ -16,7 +16,7 @@ export async function loadPublicPage(slugInput) {
 
   const { data: page, error } = await db()
     .from(T.pages)
-    .select('id, slug, display_name, bio, avatar_path, status, redirect_url, last_sign_in_at, needs_review, reviewed_at, quarantined_at')
+    .select('id, slug, display_name, bio, avatar_path, status, redirect_url, last_sign_in_at, needs_review, reviewed_at, quarantined_at, team_verified_at, team_role')
     .eq('slug', slug)
     .maybeSingle();
   if (error) throw error;

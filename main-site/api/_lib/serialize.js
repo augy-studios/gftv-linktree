@@ -37,7 +37,26 @@ export function publicPage(page, links, blocked) {
     avatarUrl: avatarUrl(page.avatar_path),
     redirectUrl: redirect,
     links: servableLinks(links, blocked),
+    // On the GFTV team, as an admin has confirmed (migration 015). Only the
+    // date and the optional role go out; which admin did it stays here.
+    team: publicTeam(page),
   };
+}
+
+// One entry on the public /team list.
+export function publicTeamMember(page) {
+  return {
+    slug: page.slug,
+    displayName: page.display_name || page.slug,
+    avatarUrl: avatarUrl(page.avatar_path),
+    role: page.team_role || null,
+    verifiedAt: page.team_verified_at,
+  };
+}
+
+export function publicTeam(page) {
+  if (!page.team_verified_at) return null;
+  return { verifiedAt: page.team_verified_at, role: page.team_role || null };
 }
 
 // The owner's view of their own link: everything they control, plus whether
@@ -99,6 +118,7 @@ export function ownerPage(page, links, security, limits = null) {
     awaitingReview: Boolean(page.needs_review && !page.reviewed_at),
     // Hidden after repeated attempts at harmful addresses, until staff look.
     quarantined: Boolean(page.quarantined_at),
+    team: publicTeam(page),
     links: (links ?? []).sort((a, b) => a.order_index - b.order_index).map(ownerLink),
     linkCap: limits ? limits.linkCap : null,
     linkCapRequest: limits ? limits.capRequest : null,
@@ -138,6 +158,7 @@ export function adminPageRow(page, extra = {}) {
     awaitingReview: Boolean(page.needs_review && !page.reviewed_at),
     quarantined: Boolean(page.quarantined_at),
     quarantineReason: page.quarantine_reason || null,
+    team: publicTeam(page),
     ...extra,
   };
 }

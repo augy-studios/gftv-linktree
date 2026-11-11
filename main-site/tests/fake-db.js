@@ -1,6 +1,6 @@
 // An in-memory stand-in for the supabase-js client, covering the query
 // builder calls the API makes, with the schema's unique constraints, foreign
-// key cascades and RPC functions from migrations/001 to 014. Enough to drive every
+// key cascades and RPC functions from migrations/001 to 015. Enough to drive every
 // route end to end in tests; not a general PostgREST.
 
 import { randomUUID } from 'node:crypto';
@@ -17,7 +17,7 @@ const stamp = () => {
 };
 
 const DEFAULTS = {
-  gftvonelink_pages: () => ({ display_name: '', bio: '', avatar_path: null, totp_secret: null, telegram_chat_id: null, telegram_username: null, status: 'pending', ban_reason: null, banned_at: null, banned_by: null, password_changed_at: now(), activated_at: null, updated_at: now(), redirect_url: null, last_sign_in_at: now(), dormancy_warned_at: null, needs_review: false, reviewed_at: null, reviewed_by: null, quarantined_at: null, quarantine_reason: null, links_cap: null }),
+  gftvonelink_pages: () => ({ display_name: '', bio: '', avatar_path: null, totp_secret: null, telegram_chat_id: null, telegram_username: null, status: 'pending', ban_reason: null, banned_at: null, banned_by: null, password_changed_at: now(), activated_at: null, updated_at: now(), redirect_url: null, last_sign_in_at: now(), dormancy_warned_at: null, needs_review: false, reviewed_at: null, reviewed_by: null, quarantined_at: null, quarantine_reason: null, links_cap: null, team_verified_at: null, team_verified_by: null, team_role: null }),
   gftvonelink_links: () => ({ order_index: 0, icon: 'link', click_count: 0, is_active: true, removed_at: null, removed_by: null, removed_reason: null, updated_at: now() }),
   gftvonelink_passkeys: () => ({ counter: 0, transports: null, label: null, last_used_at: null }),
   gftvonelink_staff_passkeys: () => ({ counter: 0, transports: null, label: null, last_used_at: null }),

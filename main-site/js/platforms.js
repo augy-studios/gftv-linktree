@@ -47,6 +47,9 @@ export const PLATFORMS = [
   { id: 'snapchat', name: 'Snapchat', icon: 'snapchat', category: 'social', formats: [f('profile', 'https://www.snapchat.com/add/')] },
   { id: 'pinterest', name: 'Pinterest', icon: 'pinterest', category: 'social', formats: [f('profile', 'https://www.pinterest.com/')] },
   { id: 'xiaohongshu', name: 'Xiaohongshu', icon: 'xiaohongshu', category: 'social', formats: [f('profile', 'https://www.xiaohongshu.com/user/profile/', { pattern: '[A-Za-z0-9]{8,40}', example: '5f1a2b3c4d5e6f7a8b9c0d1e' })] },
+  { id: 'vk', name: 'VK', icon: 'vk', category: 'social', formats: [f('profile', 'https://vk.com/', { pattern: '[A-Za-z0-9._]{1,64}' })] },
+  { id: 'weibo', name: 'Weibo', icon: 'sinaweibo', category: 'social', formats: [f('uid', 'https://weibo.com/u/', { pattern: '[0-9]{5,20}', example: '1234567890', strip: /^$/ })] },
+  { id: 'barq', name: 'Barq', icon: 'barq', category: 'social', formats: [f('profile', 'https://barq.app/@')] },
   { id: 'linkedin', name: 'LinkedIn', icon: 'briefcase', category: 'social', formats: [f('profile', 'https://www.linkedin.com/in/', { pattern: '[A-Za-z0-9-]{3,100}' })] },
 
   // video and streaming

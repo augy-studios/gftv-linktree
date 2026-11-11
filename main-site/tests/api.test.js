@@ -43,6 +43,7 @@ import meTestimonial from '../api/me/testimonial.js';
 import publicTurnstile from '../api/public/turnstile.js';
 import meLinkCap from '../api/me/link-cap.js';
 import adminLinkCaps from '../api/admin/link-caps.js';
+import publicTeam from '../api/public/team.js';
 
 let fake;
 beforeEach(() => {
@@ -147,7 +148,7 @@ test('links: only http(s), owner order, public view is minimal', async () => {
 
   const pub = await b.call(publicPage, { query: { slug: 'augy' } });
   assert.deepEqual(pub.json.page.links.map((l) => l.title), ['Second', 'First']);
-  assert.deepEqual(Object.keys(pub.json.page).sort(), ['avatarUrl', 'bio', 'displayName', 'links', 'redirectUrl', 'slug']);
+  assert.deepEqual(Object.keys(pub.json.page).sort(), ['avatarUrl', 'bio', 'displayName', 'links', 'redirectUrl', 'slug', 'team']);
   assert.equal(pub.json.page.redirectUrl, null);
   assert.deepEqual(Object.keys(pub.json.page.links[0]).sort(), ['icon', 'id', 'title', 'url']);
   assert.deepEqual(leaks(pub.json), []);
@@ -751,6 +752,98 @@ test('names on the review list wait for staff approval before going live', async
   assert.ok(fake.table('gftvonelink_audit_logs').some((r) => r.action === 'mod.page_approved'));
 });
 
+test('admins mark GFTV team pages, which show the mark publicly', async () => {
+  const { secret: adminSecret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const { secret: editorSecret } = await makeStaff({ username: 'ed', role: 'editor' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', adminSecret);
+  const editor = browser();
+  await staffSignIn(editor, 'ed', editorSecret);
+  const owner = browser();
+  await makePage(owner);
+  const page = fake.table('gftvonelink_pages')[0];
+
+  assert.equal((await browser().call(publicPage, { query: { slug: 'augy' } })).json.page.team, null, 'not marked by default');
+  assert.equal((await editor.call(adminPages, { method: 'POST', body: { action: 'verify', id: page.id } })).status, 403, 'editors cannot');
+
+  assert.equal((await admin.call(adminPages, { method: 'POST', body: { action: 'verify', id: page.id, role: '  Moderator  ' } })).json.page.team.role, 'Moderator');
+  const team = (await browser().call(publicPage, { query: { slug: 'augy' } })).json.page.team;
+  assert.equal(team.role, 'Moderator');
+  assert.ok(team.verifiedAt);
+  assert.deepEqual(Object.keys(team).sort(), ['role', 'verifiedAt'], 'who verified stays on the server');
+  assert.match((await browser().call(render, { query: { slug: 'augy' } })).body, /"team":\{"verifiedAt"/);
+  assert.equal((await owner.call(mePage)).json.page.team.role, 'Moderator', 'the owner sees it too');
+  assert.equal((await admin.call(adminPages, { query: { status: 'team' } })).json.pages.length, 1);
+
+  // Changing the role keeps the original date.
+  await admin.call(adminPages, { method: 'POST', body: { action: 'verify', id: page.id, role: '' } });
+  const changed = (await browser().call(publicPage, { query: { slug: 'augy' } })).json.page.team;
+  assert.equal(changed.role, null);
+  assert.equal(changed.verifiedAt, team.verifiedAt);
+
+  assert.equal((await admin.call(adminPages, { method: 'POST', body: { action: 'unverify', id: page.id } })).json.page.team, null);
+  assert.equal((await admin.call(adminPages, { method: 'POST', body: { action: 'unverify', id: page.id } })).json.error, 'not_verified');
+
+  // A take down clears the mark, and restoring the page does not bring it back.
+  await admin.call(adminPages, { method: 'POST', body: { action: 'verify', id: page.id } });
+  await admin.call(adminPages, { method: 'POST', body: { action: 'ban', id: page.id, reason: 'test' } });
+  assert.equal((await admin.call(adminPages, { method: 'POST', body: { action: 'verify', id: page.id } })).json.error, 'not_active');
+  await admin.call(adminPages, { method: 'POST', body: { action: 'unban', id: page.id } });
+  assert.equal((await browser().call(publicPage, { query: { slug: 'augy' } })).json.page.team, null);
+
+  const actions = fake.table('gftvonelink_audit_logs').map((r) => r.action);
+  for (const a of ['mod.team_verified', 'mod.team_role_changed', 'mod.team_unverified']) assert.ok(actions.includes(a), a);
+});
+
+test('the Team tab adds by page name, never overwriting an existing role, and lists by name', async () => {
+  const { secret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const { secret: edSecret } = await makeStaff({ username: 'ed', role: 'editor' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', secret);
+  const editor = browser();
+  await staffSignIn(editor, 'ed', edSecret);
+  for (const name of ['zulu', 'augy', 'mike']) await makePage(browser(), name);
+
+  assert.equal((await editor.call(adminPages, { method: 'POST', body: { action: 'verify', slug: 'augy' } })).status, 403, 'editors cannot');
+  const added = await admin.call(adminPages, { method: 'POST', body: { action: 'verify', slug: ' Augy ', role: 'Moderator' } });
+  assert.equal(added.status, 200);
+  assert.equal(added.json.page.slug, 'augy');
+  assert.equal(added.json.page.team.role, 'Moderator');
+  const again = await admin.call(adminPages, { method: 'POST', body: { action: 'verify', slug: 'augy', role: 'Intern' } });
+  assert.equal(again.json.error, 'already_verified');
+  assert.equal(fake.table('gftvonelink_pages').find((p) => p.slug === 'augy').team_role, 'Moderator', 'the role is unchanged');
+  assert.equal((await admin.call(adminPages, { method: 'POST', body: { action: 'verify', slug: 'nobody' } })).json.error, 'page_not_found');
+  assert.equal((await admin.call(adminPages, { method: 'POST', body: { action: 'ban', slug: 'augy', reason: 'x' } })).json.error, 'bad_request', 'only verify takes a page name');
+
+  await admin.call(adminPages, { method: 'POST', body: { action: 'verify', slug: 'zulu' } });
+  await admin.call(adminPages, { method: 'POST', body: { action: 'verify', slug: 'mike' } });
+  const list = (await admin.call(adminPages, { query: { status: 'team' } })).json;
+  assert.equal(list.total, 3);
+  assert.deepEqual(list.pages.map((p) => p.slug), ['augy', 'mike', 'zulu'], 'by name');
+  assert.deepEqual((await admin.call(adminPages, { query: { status: 'team', q: 'mik' } })).json.pages.map((p) => p.slug), ['mike']);
+});
+
+test('the public /team list shows only verified pages a visitor can open', async () => {
+  const { secret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', secret);
+  for (const name of ['augy', 'bravo', 'charlie', 'delta']) await makePage(browser(), name);
+  const id = (slug) => fake.table('gftvonelink_pages').find((p) => p.slug === slug).id;
+  assert.deepEqual((await browser().call(publicTeam)).json.members, []);
+  await admin.call(adminPages, { method: 'POST', body: { action: 'verify', id: id('bravo'), role: 'Moderator' } });
+  await admin.call(adminPages, { method: 'POST', body: { action: 'verify', id: id('augy') } });
+  await admin.call(adminPages, { method: 'POST', body: { action: 'verify', id: id('charlie') } });
+  await admin.call(adminPages, { method: 'POST', body: { action: 'verify', id: id('delta') } });
+  // Not shown: quarantined, dormant.
+  fake.table('gftvonelink_pages').find((p) => p.slug === 'charlie').quarantined_at = new Date().toISOString();
+  fake.table('gftvonelink_pages').find((p) => p.slug === 'delta').last_sign_in_at = new Date(Date.now() - 400 * 86400_000).toISOString();
+  const { members } = (await browser().call(publicTeam)).json;
+  assert.deepEqual(members.map((m) => [m.slug, m.role]), [['augy', null], ['bravo', 'Moderator']]);
+  assert.deepEqual(Object.keys(members[0]).sort(), ['avatarUrl', 'displayName', 'role', 'slug', 'verifiedAt']);
+  assert.deepEqual(leaks(members), []);
+  assert.equal((await browser().call(slug, { query: { slug: 'team' } })).json.available, false, '/team cannot be claimed');
+});
+
 test('links: shorteners refused, Safe Browsing checked on save and again daily', async () => {
   const owner = browser();
   await makePage(owner);
@@ -1097,7 +1190,7 @@ test('owners send testimonials, which wait for an admin or editor', async () => 
   const send = (body) => owner.call(meTestimonial, { method: 'POST', body });
 
   assert.equal((await send({ quote: 'Love it' })).json.error, 'testimonial_consent', 'agreeing to be shown is required');
-  assert.equal((await send({ quote: '', consent: true })).json.error, 'testimonial_required');
+  assert.equal((await send({ quote: '', consent: true })).json.error, 'own_testimonial_required');
   assert.equal((await send({ quote: 'Go to bit[.]ly/x', consent: true })).json.error, 'text_address');
   const sent = await send({ quote: 'Made my con badge QR in a minute', consent: true });
   assert.equal(sent.json.testimonial.status, 'pending');

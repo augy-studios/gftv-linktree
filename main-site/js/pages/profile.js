@@ -56,6 +56,7 @@ function pageUrl() {
 function render() {
   root.removeAttribute('aria-busy');
   root.replaceChildren();
+  footerTeamNote(data.state === 'active' ? data.page.team : null);
 
   if (data.state !== 'active') {
     const COPY = {
@@ -115,9 +116,10 @@ function render() {
   root.append(...[
     // Offline, the service worker serves the copy saved on an earlier visit.
     navigator.onLine === false ? el('p', { class: 'callout warn profile-saved', role: 'status', text: t('profile.saved-copy') }) : null,
-    avatar,
+    teamAvatar(avatar, page.team),
     el('h1', { text: page.displayName }),
     el('p', { class: 'handle', text: `links.gftv.asia/${page.slug}` }),
+    teamNote(page.team),
     page.bio ? el('p', { class: 'bio', text: page.bio }) : null,
     page.links.length > 0 ? list : el('p', { class: 'profile-empty', text: t('profile.empty') }),
     el('div', { class: 'profile-actions' }, [share, report]),
@@ -130,6 +132,58 @@ function render() {
   hydrateIcons(root);
   $('profileStatus')?.remove();
   keepForOffline();
+}
+
+// --- GFTV team ----------------------------------------------------------------
+//
+// A page an admin has marked as someone on the GFTV team gets a ring and a
+// tick on its picture, a label under the name, and a note at the top of the
+// footer saying what the mark means; the label jumps to the note. The mark comes from the server, never from anything the owner
+// typed or uploaded, so it is a way for anyone to check that a person is on
+// the team.
+
+function teamLabel(team) {
+  return team.role ? t('team.label-role', { role: team.role }) : t('team.label');
+}
+
+function teamAvatar(avatar, team, small = false) {
+  if (!team) return avatar;
+  const tick = el('span', { class: 'team-tick', 'aria-hidden': 'true' }, [iconNode('check')]);
+  return el('div', { class: `avatar-wrap team${small ? ' small' : ''}`, title: t('team.label') }, [avatar, tick]);
+}
+
+function teamNote(team) {
+  if (!team) return null;
+  return el('p', { class: 'team-note' }, [
+    el('a', { class: 'team-pill', href: '#teamNote', onclick: jumpToTeamNote }, [iconNode('check'), el('span', { text: teamLabel(team) })]),
+  ]);
+}
+
+// Down to the note, gently unless the visitor asked for less motion, and
+// focus it so a screen reader reads it next.
+function jumpToTeamNote(event) {
+  const note = document.getElementById('teamNote');
+  if (!note) return;
+  event.preventDefault();
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  note.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'center' });
+  note.focus({ preventScroll: true });
+}
+
+// The explanation, at the top of the footer. Replaced on every render (a
+// language change redraws the page) and removed when there is no mark.
+function footerTeamNote(team) {
+  document.getElementById('teamNote')?.remove();
+  if (!team) return;
+  const when = new Intl.DateTimeFormat(document.documentElement.lang || undefined, { dateStyle: 'long' }).format(new Date(team.verifiedAt));
+  const note = el('p', { class: 'footer-team-note', id: 'teamNote', tabindex: '-1' }, [
+    el('span', { class: 'footer-team-mark', 'aria-hidden': 'true' }, [iconNode('check')]),
+    ' ',
+    t('team.explain', { date: when }),
+    ' ',
+    el('a', { href: '/team', text: t('team.see-all') }),
+  ]);
+  document.querySelector('.site-footer')?.prepend(note);
 }
 
 // One visit per page load for the owner's insights, sent alongside so it
@@ -161,9 +215,10 @@ function renderRedirect(page) {
   const report = el('button', { class: 'btn btn-quiet', type: 'button', onclick: () => openReport(null) }, [iconNode('flag'), el('span', { text: t('report.page') })]);
 
   root.append(el('div', { class: 'glass-card redirect-card u-mx-auto' }, [
-    el('div', { class: 'redirect-from' }, [avatar, el('div', {}, [
+    el('div', { class: 'redirect-from' }, [teamAvatar(avatar, page.team, true), el('div', {}, [
       el('div', { class: 'name', text: page.displayName }),
       el('div', { class: 'handle', text: `links.gftv.asia/${page.slug}` }),
+      page.team ? el('div', { class: 'team-inline' }, [iconNode('check'), el('span', { text: teamLabel(page.team) })]) : null,
     ])]),
     el('h1', { text: t('redirect.heading') }),
     el('p', { class: 'redirect-host', text: target.hostname.replace(/^www\./, '') }),

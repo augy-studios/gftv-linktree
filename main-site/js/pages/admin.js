@@ -193,6 +193,41 @@ function pageBadges(p) {
     p.quarantined ? badge(t('status.quarantined'), 'danger') : null,
     p.dormant ? badge(t('status.dormant'), 'warn') : null,
     p.redirectUrl ? badge(t('admin.redirects')) : null,
+    p.team ? badge(p.team.role ? t('admin.team-badge-role', { role: p.team.role }) : t('team.label'), 'ok') : null,
+  ];
+}
+
+// Admins mark a page as someone on the GFTV team, which puts a ring and a
+// tick on its picture. The role is optional and shows beside the mark.
+function teamActions(p, after) {
+  if (!isAdmin() || p.status !== 'active') return [];
+  const ask = (titleKey) => askReason({
+    title: t(titleKey, { slug: p.slug }),
+    body: t('admin.team-verify-body'),
+    required: false,
+    label: t('admin.team-role'),
+    maxlength: 40,
+    initial: p.team?.role || '',
+    run: async (role) => {
+      await post('/api/admin/pages', { action: 'verify', id: p.id, role });
+      toast(t('admin.team-verified', { slug: p.slug }));
+      after();
+    },
+  });
+  if (!p.team) return [actionButton('admin.team-verify', 'shield', () => ask('admin.team-verify-title'), 'btn-primary')];
+  return [
+    actionButton('admin.team-change-role', 'edit', () => ask('admin.team-change-title')),
+    actionButton('admin.team-unverify', 'close', () => askReason({
+      title: t('admin.team-unverify-title', { slug: p.slug }),
+      body: t('admin.team-unverify-body'),
+      required: false,
+      hideText: true,
+      run: async () => {
+        await post('/api/admin/pages', { action: 'unverify', id: p.id });
+        toast(t('admin.team-unverified', { slug: p.slug }));
+        after();
+      },
+    }), 'btn-danger'),
   ];
 }
 
@@ -227,19 +262,25 @@ function approveAction(p, after) {
 // The shared "give a reason" dialog. confirm, when given, is a page name the
 // staff member has to type before an action that cannot be undone.
 let reasonAction = null;
-function askReason({ title, body = '', required = true, showRemove = false, confirm = null, run }) {
+// label, maxlength and initial reuse it for a short note such as a team
+// role; hideText leaves only the confirm button.
+function askReason({ title, body = '', required = true, showRemove = false, confirm = null, label = null, maxlength = 500, initial = '', hideText = false, run }) {
   reasonAction = { run, required, confirm };
   $('reasonTitle').textContent = title;
   $('reasonBody').textContent = body;
-  $('reasonText').value = '';
+  $('reasonText').value = initial;
+  $('reasonText').maxLength = maxlength;
+  $('reasonText').rows = maxlength <= 60 ? 1 : 3;
+  $('reasonText').classList.toggle('single-line', maxlength <= 60);
+  $('reasonTextRow').hidden = hideText;
   $('reasonError').textContent = '';
   $('reasonRemoveRow').hidden = !showRemove;
   $('reasonRemoveLink').checked = false;
   $('reasonConfirmRow').hidden = !confirm;
   $('reasonConfirm').value = '';
   if (confirm) $('reasonConfirmLabel').textContent = t('admin.delete-confirm', { slug: confirm });
-  $('reasonLabel').textContent = t(required ? 'field.reason' : 'field.note');
-  openModal('reasonModal', { initialFocus: $('reasonText') });
+  $('reasonLabel').textContent = label || t(required ? 'field.reason' : 'field.note');
+  openModal('reasonModal', { initialFocus: hideText ? $('reasonSubmit') : $('reasonText') });
 }
 $('reasonForm').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -448,6 +489,12 @@ function deleteAction(p) {
   }), 'btn-danger');
 }
 
+// After a change made in a page's dialog: the lists that may show that page.
+function refreshLists() {
+  loaders.pages?.();
+  loaders.team?.();
+}
+
 function pageRow(p) {
   const info = el('div', {}, [
     el('div', { class: 'primary' }, [el('a', { class: 'text-link', href: `/${p.slug}`, target: '_blank', rel: 'noopener noreferrer', text: `/${p.slug}` }), p.displayName ? ` · ${p.displayName}` : '']),
@@ -467,6 +514,71 @@ function pageRow(p) {
     el('div', { class: 'row-actions' }, [approveAction(p, () => loaders.pages()), releaseAction(p, () => loaders.pages()), actionButton('admin.view-page', 'eye', () => openPage(p.id)), ...banActions(p, () => loaders.pages())].filter(Boolean)),
   ]);
 }
+
+// ---------------------------------------------------------------------------
+// Team (admins only): who has the GFTV team mark, adding someone by page
+// name, and changing or removing a role, in one place as the team grows.
+// ---------------------------------------------------------------------------
+
+let teamOffset = 0;
+loaders.team = async (offset = teamOffset) => {
+  if (!isAdmin()) return;
+  teamOffset = offset;
+  const list = $('adminTeamList');
+  loading(list);
+  try {
+    const q = encodeURIComponent($('teamQuery').value.trim());
+    const data = await api(`/api/admin/pages?status=team&q=${q}&offset=${offset}`);
+    $('adminTeamTitle').textContent = t('admin.team-list-count', { count: data.total, n: formatNumber(data.total) });
+    fill(list, data.pages.map(teamRow), q ? 'admin.team-empty-search' : 'admin.team-empty');
+    pager($('adminTeamPager'), data, loaders.team);
+  } catch (error) {
+    if (!guardSession(error)) fill(list, [el('li', { class: 'callout danger', text: errorText(error) })], 'admin.team-empty');
+  }
+};
+
+function teamRow(p) {
+  const avatar = el('div', { class: 'avatar small', 'aria-hidden': 'true' });
+  fillAvatar(avatar, p.avatarUrl, p.displayName || p.slug);
+  const tick = el('span', { class: 'team-tick', 'aria-hidden': 'true' }, [iconNode('check')]);
+  return el('li', { class: 'data-row team-row' }, [
+    el('div', { class: 'team-row-who' }, [
+      el('div', { class: 'avatar-wrap small team', 'aria-hidden': 'true' }, [avatar, tick]),
+      el('div', {}, [
+        el('div', { class: 'primary' }, [el('a', { class: 'text-link', href: `/${p.slug}`, target: '_blank', rel: 'noopener noreferrer', text: `/${p.slug}` }), p.displayName && p.displayName !== p.slug ? ` · ${p.displayName}` : '']),
+        el('div', { class: 'secondary', text: [p.team.role || t('admin.team-no-role'), t('admin.team-since-short', { when: formatDate(p.team.verifiedAt) })].join(' · ') }),
+      ]),
+    ]),
+    el('div', { class: 'row-actions' }, [...teamActions(p, () => loaders.team()), actionButton('admin.view-page', 'eye', () => openPage(p.id))]),
+  ]);
+}
+
+// The page name as typed, or pasted as an address: "augy", "/augy",
+// "links.gftv.asia/augy" and "https://links.gftv.asia/augy/" are all augy.
+function teamSlugFrom(input) {
+  return String(input || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^(www\.)?links\.gftv\.asia/, '').replace(/^\/+|\/+$/g, '');
+}
+
+$('teamAdd').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const slug = teamSlugFrom($('teamAddSlug').value);
+  $('teamAddError').textContent = '';
+  if (!slug) {
+    $('teamAddError').textContent = t('admin.team-slug-required');
+    $('teamAddSlug').focus();
+    return;
+  }
+  withBusy($('teamAddSubmit'), $('teamAddError'), async () => {
+    await post('/api/admin/pages', { action: 'verify', slug, role: $('teamAddRole').value });
+    toast(t('admin.team-verified', { slug }));
+    $('teamAddSlug').value = '';
+    $('teamAddRole').value = '';
+    $('teamQuery').value = '';
+    loaders.team(0);
+    loaders.pages?.();
+  });
+});
+$('teamSearch').addEventListener('submit', (e) => { e.preventDefault(); loaders.team(0); });
 
 async function openPage(id) {
   const body = $('pageModalBody');
@@ -500,7 +612,8 @@ async function openPage(id) {
       p.redirectUrl ? el('p', { class: 'small', text: t('admin.redirects-to', { url: p.redirectUrl }) }) : null,
       p.quarantineReason ? el('p', { class: 'callout danger', text: t('admin.quarantine-reason', { reason: p.quarantineReason }) }) : null,
       p.banReason ? el('p', { class: 'callout danger', text: t('admin.ban-reason', { reason: p.banReason }) }) : null,
-      el('div', { class: 'actions inline' }, [approveAction(p, () => { refresh(); loaders.pages?.(); }), releaseAction(p, () => { refresh(); loaders.pages?.(); }), ...banActions(p, () => { refresh(); loaders.pages?.(); }), deleteAction(p)].filter(Boolean)),
+      p.team ? el('p', { class: 'callout ok', text: t('admin.team-since', { when: formatDate(p.team.verifiedAt) }) }) : null,
+      el('div', { class: 'actions inline' }, [approveAction(p, () => { refresh(); refreshLists(); }), releaseAction(p, () => { refresh(); refreshLists(); }), ...teamActions(p, () => { refresh(); refreshLists(); }), ...banActions(p, () => { refresh(); refreshLists(); }), deleteAction(p)].filter(Boolean)),
       el('p', { class: 'modal-section-label', text: t('admin.tab-links') }),
       data.linkCap ? el('div', { class: 'row between' }, [
         el('p', { class: 'small u-m-0', text: t(data.linkCap.custom ? 'admin.caps-page-own' : 'admin.caps-page-default', { used: formatNumber(data.linkCap.used), limit: formatNumber(data.linkCap.limit) }) }),

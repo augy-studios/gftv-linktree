@@ -7,7 +7,7 @@ import { nameIsUnwelcome } from './name-filter.js';
 // a few names that would read as GFTV speaking officially.
 export const RESERVED_SLUGS = new Set([
   'admin', 'api', 'auth', 'callback', 'dashboard', 'edit', 'help', 'health',
-  'login', 'logout', 'mod', 'privacy', 'register', 'report', 'reset',
+  'login', 'logout', 'mod', 'privacy', 'register', 'report', 'reset', 'team',
   'robots.txt', 'settings', 'sitemap.xml', 'static', 'status', 'terms', 'webhook',
   // served by this site
   '404', 'index', 'assets', 'js', 'images', 'shell', 'www', 'offline',
@@ -285,7 +285,7 @@ export const LINK_ICONS = new Set([
   // places
   'map', 'map-pin', 'compass', 'calendar', 'clock', 'sun', 'moon', 'cloud', 'briefcase',
   // social
-  'instagram', 'x', 'threads', 'bluesky', 'facebook', 'tiktok', 'mastodon', 'tumblr', 'reddit', 'snapchat', 'pinterest', 'xiaohongshu', 'linktree',
+  'instagram', 'x', 'threads', 'bluesky', 'facebook', 'tiktok', 'mastodon', 'tumblr', 'reddit', 'snapchat', 'pinterest', 'xiaohongshu', 'vk', 'sinaweibo', 'barq', 'linktree',
   // streaming
   'youtube', 'twitch', 'kick', 'vimeo', 'bilibili',
   // audio
@@ -311,7 +311,7 @@ export const STALE_PENDING_MS = 3600_000;
 // The most links any page can be allowed, whatever an admin sets. Each page's
 // actual limit is lower (link-cap.js, migration 013), 20 by default.
 export const MAX_LINKS = 200;
-export const LIMITS = Object.freeze({ displayName: 60, bio: 512, title: 80, reportDetails: 500, reason: 500, label: 60, quote: 280, author: 60 });
+export const LIMITS = Object.freeze({ displayName: 60, bio: 512, title: 80, reportDetails: 500, reason: 500, label: 60, quote: 280, author: 60, teamRole: 40 });
 
 // A page whose owner has not signed in for this long stops being shown until
 // they sign in again; the Telegram reminder goes out this long before that.
