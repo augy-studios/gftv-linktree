@@ -499,6 +499,7 @@ function pageRow(p) {
   const info = el('div', {}, [
     el('div', { class: 'primary' }, [el('a', { class: 'text-link', href: `/${p.slug}`, target: '_blank', rel: 'noopener noreferrer', text: `/${p.slug}` }), p.displayName ? ` · ${p.displayName}` : '']),
     el('div', { class: 'secondary', text: t('admin.created', { when: formatDate(p.createdAt) }) }),
+    p.renamedFrom ? el('div', { class: 'secondary', text: t('admin.renamed-from', { slug: p.renamedFrom.slug, when: formatDate(p.renamedFrom.at) }) }) : null,
     p.banReason ? el('div', { class: 'secondary', text: t('admin.ban-reason', { reason: p.banReason }) }) : null,
     p.redirectUrl ? el('div', { class: 'secondary', text: t('admin.redirects-to', { url: p.redirectUrl }) }) : null,
     p.quarantineReason ? el('div', { class: 'secondary', text: t('admin.quarantine-reason', { reason: p.quarantineReason }) }) : null,
@@ -609,6 +610,7 @@ async function openPage(id) {
       el('p', { class: 'muted small', text: [p.displayName, t('admin.created', { when: formatDate(p.createdAt) })].filter(Boolean).join(' · ') }),
       p.bio ? el('pre', { text: p.bio }) : null,
       el('div', { class: 'tags row u-mt-05' }, pageBadges(p).filter(Boolean)),
+      p.renamedFrom ? el('p', { class: 'small', text: t('admin.renamed-from', { slug: p.renamedFrom.slug, when: formatDate(p.renamedFrom.at) }) }) : null,
       p.redirectUrl ? el('p', { class: 'small', text: t('admin.redirects-to', { url: p.redirectUrl }) }) : null,
       p.quarantineReason ? el('p', { class: 'callout danger', text: t('admin.quarantine-reason', { reason: p.quarantineReason }) }) : null,
       p.banReason ? el('p', { class: 'callout danger', text: t('admin.ban-reason', { reason: p.banReason }) }) : null,

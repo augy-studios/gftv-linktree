@@ -10,6 +10,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { startServer } from './server.js';
+import { forgetReviewPatterns } from '../../api/_lib/guards.js';
+import { randomToken, sha256 } from '../../api/_lib/crypto.js';
+import { OWNER_COOKIE } from '../../api/_lib/session.js';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 const OUT = new URL('./out/', import.meta.url);
@@ -370,6 +373,49 @@ try {
   await p.screenshot({ path: shot('public-zh') });
   await p.context().close();
   ok(`in a Chinese browser the pill reads "${zh}"`);
+
+  // Renaming, last: everything above uses /augy.
+  server.fake.table('gftvonelink_review_patterns').push({ id: crypto.randomUUID(), pattern: 'furcon', reason: null, created_at: new Date().toISOString() });
+  forgetReviewPatterns();
+  // The take down above signed the owner out everywhere: a fresh session.
+  const augy = server.fake.table('gftvonelink_pages').find((x) => x.slug === 'augy');
+  const token = randomToken(32);
+  server.fake.table('gftvonelink_sessions').push({ id: crypto.randomUUID(), page_id: augy.id, token_hash: sha256(token), expires_at: new Date(Date.now() + 86400_000).toISOString(), last_seen_at: new Date().toISOString(), created_at: new Date().toISOString() });
+  server.cookies.renamer = [[OWNER_COOKIE, token]];
+  const r = await open(b, '/edit', 'renamer', { viewport: { width: 390, height: 844 } });
+  await r.waitForSelector('#addLink:not([disabled])');
+  await r.click('#tab-security');
+  await r.waitForSelector('#renameSection:not([hidden])');
+  assert.equal(await r.textContent('#renameState'), 'links.gftv.asia/augy');
+  await r.click('#renameOpen');
+  await r.waitForSelector('#renameModal:not(.hidden)');
+  const renameStatus = async (name) => {
+    await r.evaluate(() => document.getElementById('renameStatus').replaceChildren());
+    await r.fill('#renameSlug', name);
+    await r.waitForFunction(() => { const s = document.getElementById('renameStatus'); return s.textContent && !s.querySelector('.spinner'); });
+    return { text: (await r.textContent('#renameStatus')).trim(), tone: await r.getAttribute('#renameStatus', 'class') };
+  };
+  assert.equal((await renameStatus('augy')).text, 'That is already your page name.');
+  assert.equal((await renameStatus('rando')).text, 'That name is taken. Try another.');
+  const review = await renameStatus('sgfurcon');
+  assert.match(review.text, /checks names like this one/);
+  assert.match(review.tone, /warn/);
+  assert.match((await renameStatus('augy-fox')).tone, /ok/);
+  await r.fill('#renamePassword', 'correct horse battery');
+  assert.ok(await r.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no sideways scroll on a phone');
+  await r.screenshot({ path: shot('edit-rename') });
+  await r.click('#renameSubmit');
+  await r.waitForSelector('#renameModal.hidden', { state: 'attached' });
+  assert.equal(await r.textContent('#renameState'), 'links.gftv.asia/augy-fox');
+  assert.equal(await r.isDisabled('#renameOpen'), true, 'once every 30 days');
+  assert.match(await r.textContent('#renameNote'), /links\.gftv\.asia\/augy are sent here until/);
+  assert.match(await r.textContent('#pageUrl'), /\/augy-fox$/);
+  await r.screenshot({ path: shot('edit-renamed'), fullPage: true });
+  await r.goto(`${BASE}/augy`);
+  await r.waitForSelector('#profile h1');
+  assert.equal(new URL(r.url()).pathname, '/augy-fox', 'the old address sends visitors on');
+  await r.context().close();
+  ok('owner renames the page from Security: own, taken and review names are flagged as typed, and the old address sends visitors on');
 } catch (error) {
   console.error(`not ok ${step + 1} - ${error.message}`);
   process.exitCode = 1;

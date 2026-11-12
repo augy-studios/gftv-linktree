@@ -5,9 +5,12 @@ import { db, T } from './supabase.js';
 import { normaliseSlug, isDormant } from './validate.js';
 import { blockLists } from './guards.js';
 import { publicPage } from './serialize.js';
+import { slugMovedTo } from './slug-changes.js';
 
 // { state: "active", page } | { state: "banned" | "dormant" | "review", slug }
-// | { state: "missing" }. Dormant: live, but the owner has not signed in for
+// | { state: "moved", slug } | { state: "missing" }. Moved: slug is a name
+// the page was renamed away from, still held for it, and slug in the answer
+// is its name now. Dormant: live, but the owner has not signed in for
 // a year, so it is not shown until they do. Review: its name is on the staff
 // review list and nobody has approved it yet.
 export async function loadPublicPage(slugInput) {
@@ -20,7 +23,11 @@ export async function loadPublicPage(slugInput) {
     .eq('slug', slug)
     .maybeSingle();
   if (error) throw error;
-  if (!page || page.status === 'pending') return { state: 'missing' };
+  if (!page) {
+    const to = await slugMovedTo(slug);
+    return to ? { state: 'moved', slug: to } : { state: 'missing' };
+  }
+  if (page.status === 'pending') return { state: 'missing' };
   if (page.status === 'banned') return { state: 'banned', slug: page.slug };
   // Quarantined pages read the same as ones awaiting approval: being checked.
   if ((page.needs_review && !page.reviewed_at) || page.quarantined_at) return { state: 'review', slug: page.slug };

@@ -7,6 +7,9 @@
 //                                team pages)
 // GET ?id=                       one page with its links, reports and link
 //                                limit
+// Pages carry renamedFrom: { slug, at } when the owner changed the page's
+// name, the latest old name (migration 016), so staff reviewing a renamed
+// page see what it was.
 // POST { action: "ban", id, reason }     admin only; signs the owner out
 // POST { action: "unban", id }           admin only
 // POST { action: "delete", id, reason, confirmSlug }   admin only; deletes the
@@ -38,6 +41,7 @@ import { adminPageRow, adminLinkRow, adminReportRow } from '../_lib/serialize.js
 import { deleteAvatarFile } from '../_lib/avatar.js';
 import { PAGE_SIZE, offsetOf, searchTerm, pattern } from '../_lib/admin.js';
 import { linkCapFor, linksUsed } from '../_lib/link-cap.js';
+import { previousSlugs } from '../_lib/slug-changes.js';
 
 const PAGE_COLUMNS = 'id, slug, display_name, bio, avatar_path, status, ban_reason, banned_at, created_at, activated_at, telegram_chat_id, redirect_url, last_sign_in_at, needs_review, reviewed_at, quarantined_at, quarantine_reason, team_verified_at, team_role';
 
@@ -51,16 +55,17 @@ export default route('admin/pages', async (req, res) => {
     const id = query(req, 'id');
     if (id) {
       if (!isUuid(id)) return fail(res, 400, 'bad_request');
-      const [{ data: page, error }, { data: links, error: linkError }, { data: reports, error: reportError }, cap] = await Promise.all([
+      const [{ data: page, error }, { data: links, error: linkError }, { data: reports, error: reportError }, cap, renames] = await Promise.all([
         db().from(T.pages).select(PAGE_COLUMNS).eq('id', id).maybeSingle(),
         db().from(T.links).select('id, page_id, title, url, icon, is_active, click_count, removed_at, removed_reason, created_at, order_index').eq('page_id', id).order('order_index'),
         db().from(T.reports).select('id, page_id, reason, details, status, resolution_note, resolved_at, created_at, link:gftvonelink_links ( id, title, url, removed_at )').eq('page_id', id).order('created_at', { ascending: false }).limit(50),
         linkCapFor(id),
+        previousSlugs([id]),
       ]);
       if (error || linkError || reportError) throw error || linkError || reportError;
       if (!page) return fail(res, 404, 'page_not_found');
       return ok(res, {
-        page: adminPageRow(page),
+        page: adminPageRow(page, { renamedFrom: renames.get(page.id) ?? null }),
         links: (links ?? []).map(adminLinkRow),
         reports: (reports ?? []).map(adminReportRow),
         // custom: the page has a limit of its own (migration 013). Changed
@@ -89,12 +94,13 @@ export default route('admin/pages', async (req, res) => {
     if (term) q = q.or(`slug.ilike."${pattern(term)}",display_name.ilike."${pattern(term)}"`);
     const { data, error, count } = await q;
     if (error) throw error;
+    const renames = await previousSlugs((data ?? []).map((p) => p.id));
     return ok(res, {
       total: count ?? 0,
       offset,
       pageSize: PAGE_SIZE,
       pages: (data ?? []).map((p) =>
-        adminPageRow(p, { linkCount: p.links?.[0]?.count ?? 0, reportCount: p.reports?.[0]?.count ?? 0 })
+        adminPageRow(p, { linkCount: p.links?.[0]?.count ?? 0, reportCount: p.reports?.[0]?.count ?? 0, renamedFrom: renames.get(p.id) ?? null })
       ),
     });
   }

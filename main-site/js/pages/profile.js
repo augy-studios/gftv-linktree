@@ -42,6 +42,8 @@ async function load() {
       const result = await api(`/api/public/page?slug=${encodeURIComponent(slugFromPath())}`);
       data = { state: 'active', page: result.page };
     } catch (error) {
+      // Renamed: go to the page's name now.
+      if (error.code === 'page_moved' && error.detail.slug) return void window.location.replace(`/${error.detail.slug}`);
       const state = { page_dormant: 'dormant', page_in_review: 'review', page_unavailable: 'banned', offline: 'offline' }[error.code];
       data = { state: state || 'missing', slug: slugFromPath() };
     }

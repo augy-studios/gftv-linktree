@@ -44,6 +44,7 @@ export const T = Object.freeze({
   testimonials: 'gftvonelink_testimonials',
   settings: 'gftvonelink_settings',
   linkCapRequests: 'gftvonelink_link_cap_requests',
+  slugChanges: 'gftvonelink_slug_changes',
   audit: 'gftvonelink_audit_logs',
   // Owned by gftv.asia. Read here, and the only write is spending a staff
   // backup code, which every GFTV site that accepts them does.

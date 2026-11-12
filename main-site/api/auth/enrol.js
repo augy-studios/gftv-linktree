@@ -19,6 +19,9 @@ import { registrationOptions, finishRegistration } from '../_lib/webauthn.js';
 import { cleanText, LIMITS } from '../_lib/validate.js';
 import { limited, audit } from '../_lib/guards.js';
 import { issueBackupCodes } from '../_lib/factors.js';
+import { notifyStaff } from '../_lib/telegram.js';
+import { newPageReviewMessage } from '../_lib/telegram-messages.js';
+import { siteUrl } from '../_lib/env.js';
 import {
   findChallenge,
   failChallengeAttempt,
@@ -38,7 +41,7 @@ export default route('auth/enrol', async (req, res) => {
 
   const { data: page, error } = await db()
     .from(T.pages)
-    .select('id, slug, status')
+    .select('id, slug, status, needs_review')
     .eq('id', challenge.subject_id)
     .maybeSingle();
   if (error) throw error;
@@ -102,5 +105,11 @@ async function activate(req, res, page, challenge, fields, method) {
   await deleteChallenge(challenge);
   await createOwnerSession(res, page.id);
   await audit(req, { action: 'page.activate', actorType: 'owner', actorId: page.id, pageId: page.id, details: { method } });
+  // A name on the review list: the page is set up but hidden, so staff hear
+  // about it now rather than at registration, which may never be finished.
+  if (page.needs_review) {
+    const sent = await notifyStaff(newPageReviewMessage({ slug: page.slug, adminUrl: `${siteUrl()}/admin` }));
+    if (sent) await audit(req, { action: 'mod.staff_alerted', pageId: page.id, details: { about: 'new_page_review', slug: page.slug, chats: sent } });
+  }
   ok(res, { slug: page.slug, backupCodes });
 }

@@ -13,6 +13,7 @@ import { passkeysSupported, createPasskey, passkeyErrorCode } from '../passkeys.
 import { fillAvatar } from '../avatar.js';
 import { editAvatar } from '../avatar-composer.js';
 import { drawColumns, fillBarList, dayLabel } from '../insights.js';
+import { wireSlugCheck, normaliseSlugInput } from '../slug-check.js';
 
 const $ = (id) => document.getElementById(id);
 let page = null;
@@ -815,7 +816,61 @@ function renderSecurity() {
   $('keepLiveState').textContent = page.dormantFrom
     ? t('security.keep-live-until', { date: new Intl.DateTimeFormat(getLocale(), { dateStyle: 'long' }).format(new Date(page.dormantFrom)) })
     : '';
+
+  renderRename();
 }
+
+// ---------------------------------------------------------------------------
+// Page name
+// ---------------------------------------------------------------------------
+
+const longDate = (iso) => new Intl.DateTimeFormat(getLocale(), { dateStyle: 'long' }).format(new Date(iso));
+
+function renderRename() {
+  const rename = page.rename;
+  // Hidden until the server can keep the old name held (migration 016).
+  $('renameSection').hidden = !rename || !rename.available;
+  if (!rename || !rename.available) return;
+  $('renameState').textContent = `links.gftv.asia/${page.slug}`;
+  $('renameOpen').disabled = Boolean(rename.nextAt);
+  const notes = [];
+  if (rename.previous) notes.push(t('rename.previous', { slug: rename.previous.slug, date: longDate(rename.previous.heldUntil) }));
+  if (rename.nextAt) notes.push(t('rename.next', { date: longDate(rename.nextAt) }));
+  $('renameNote').textContent = notes.join(' ');
+  $('renameNote').hidden = notes.length === 0;
+}
+
+const renameCheck = wireSlugCheck($('renameSlug'), $('renameStatus'), {
+  current: () => page && page.slug,
+  reviewKey: 'rename.review',
+  reviewTone: 'warn',
+});
+
+$('renameOpen').addEventListener('click', () => {
+  $('renameSlug').value = '';
+  $('renameStatus').replaceChildren();
+  $('renameStatus').className = 'field-status';
+  $('renamePassword').value = '';
+  $('renameError').textContent = '';
+  openModal('renameModal', { initialFocus: $('renameSlug') });
+});
+
+$('renameForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const error = $('renameError');
+  const slug = normaliseSlugInput($('renameSlug').value);
+  if (!slug) return void (error.textContent = t('slug.invalid'));
+  if (slug === page.slug) return void (error.textContent = t('error.slug_same'));
+  const known = renameCheck();
+  // A name that needs approval hides the page until then: say so once more.
+  if (known && known.slug === slug && known.review && !window.confirm(t('rename.review-confirm', { slug }))) return;
+  withBusy($('renameSubmit'), error, async () => {
+    const data = await post('/api/me/security', { action: 'rename', slug, password: $('renamePassword').value });
+    closeModal('renameModal');
+    setPage(data.page);
+    toast(t(data.review ? 'rename.done-review' : 'rename.done', { slug: data.page.slug }));
+  });
+});
 
 // Ask for the password, then run fn(password). A wrong password keeps the
 // dialog open with the error; success closes it and hands the answer on.

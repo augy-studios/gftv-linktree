@@ -716,6 +716,7 @@ button.text-link { padding: 0; }
 .field-status { margin-top: 0.3rem; font-size: 0.875rem; font-weight: 600; min-height: 1.3em; }
 .field-status.ok { color: var(--ok); }
 .field-status.bad { color: var(--danger); }
+.field-status.warn { color: var(--warn); }
 .field-status .spinner { --spinner-size: 0.9rem; vertical-align: -2px; margin-inline-end: 0.35rem; }
 .actions { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.5rem; }
 .actions.inline { flex-direction: row; flex-wrap: wrap; }

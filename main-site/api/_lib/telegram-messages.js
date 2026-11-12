@@ -113,3 +113,54 @@ export function linkCapMessage({ slug, outcome, requested, granted, note }) {
     .join('\n\n');
   return { markdown, fallback };
 }
+
+// To the staff chat (telegram.js notifyStaff): an owner renamed their page to
+// a name on the review list, so the page is hidden until someone approves it
+// (me/security.js, action "rename").
+export function renameReviewMessage({ oldSlug, newSlug, displayName, adminUrl }) {
+  const page = `links.gftv.asia/${newSlug}`;
+  const summary = `links.gftv.asia/${oldSlug} was renamed to ${page}, a name on the review list. The page is hidden until someone approves it.`;
+  const rows = [
+    ['New name', newSlug],
+    ['Old name', oldSlug],
+  ];
+  if (displayName) rows.push(['Display name', displayName]);
+
+  const markdown = [
+    '## Page name to review',
+    '',
+    escapeMd(summary),
+    '',
+    richTable(['Detail'], rows),
+    '',
+    escapeMd(`Approve it, or take it down, under Pages > Awaiting review at ${adminUrl}.`),
+  ].join('\n');
+
+  const fallback = [
+    'Page name to review',
+    summary,
+    displayName ? `Display name: ${displayName}` : null,
+    `Approve it, or take it down, under Pages > Awaiting review at ${adminUrl}.`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+  return { markdown, fallback };
+}
+
+// To the staff chat: a new page on a name on the review list finished setup
+// and is hidden until someone approves it (auth/enrol.js).
+export function newPageReviewMessage({ slug, adminUrl }) {
+  const page = `links.gftv.asia/${slug}`;
+  const summary = `A new page, ${page}, has a name on the review list. It is set up but hidden until someone approves it.`;
+  const markdown = [
+    '## New page name to review',
+    '',
+    escapeMd(summary),
+    '',
+    richTable(['Detail'], [['Name', slug]]),
+    '',
+    escapeMd(`Approve it, or take it down, under Pages > Awaiting review at ${adminUrl}.`),
+  ].join('\n');
+  const fallback = ['New page name to review', summary, `Approve it, or take it down, under Pages > Awaiting review at ${adminUrl}.`].join('\n\n');
+  return { markdown, fallback };
+}

@@ -8,6 +8,12 @@
 //   /unlink          unlink this chat from every page it is linked to
 //   anything else    the help message, as a rich message
 //
+// /chatid answers with the chat's id, for TELEGRAM_STAFF_CHAT_ID (staff
+// alerts, _lib/telegram.js): in a group, the group's; in a DM, the person's.
+// In a group the bot answers nothing else. A private message from someone
+// listed in TELEGRAM_STAFF_CHAT_ID by @username also lets the bot DM them
+// alerts from then on.
+//
 // The one-line confirmations stay plain text; only the help, which has
 // headings and a table, goes out as a rich message.
 //
@@ -19,7 +25,7 @@ import { db, T } from '../_lib/supabase.js';
 import { optionalEnv } from '../_lib/env.js';
 import { safeEqual } from '../_lib/crypto.js';
 import { audit } from '../_lib/guards.js';
-import { sendTelegram, sendRichTelegram, spendLinkToken } from '../_lib/telegram.js';
+import { sendTelegram, sendRichTelegram, spendLinkToken, rememberStaffChat } from '../_lib/telegram.js';
 import { helpMessage } from '../_lib/telegram-messages.js';
 
 export default route('telegram/webhook', async (req, res) => {
@@ -45,11 +51,25 @@ export default route('telegram/webhook', async (req, res) => {
   const message = update.message;
   const chat = message?.chat;
   const text = typeof message?.text === 'string' ? message.text.trim() : '';
+  if (chat && (chat.type === 'group' || chat.type === 'supergroup') && /^\/chatid(?:@\w+)?$/.test(text)) {
+    await sendTelegram(chat.id, `This chat's id is ${chat.id}. Set TELEGRAM_STAFF_CHAT_ID to it to send staff alerts here.`).catch((cause) =>
+      console.warn('[onelink] telegram chatid:', cause?.message ?? cause)
+    );
+    return send(res, 200, { ok: true });
+  }
   // Private chats only: a code must never land in a group.
   if (!chat || chat.type !== 'private' || !text) return send(res, 200, { ok: true });
 
   const reply = (body) =>
     sendTelegram(chat.id, body).catch((cause) => console.warn('[onelink] telegram reply:', cause?.message ?? cause));
+
+  const staff = await rememberStaffChat(message.from?.username, chat.id);
+  if (/^\/chatid(?:@\w+)?$/.test(text)) {
+    await reply(staff
+      ? `Your chat id is ${chat.id}. You are on the staff alert list, so alerts will come here.`
+      : `Your chat id is ${chat.id}. Add it to TELEGRAM_STAFF_CHAT_ID to get staff alerts here.`);
+    return send(res, 200, { ok: true });
+  }
 
   const start = text.match(/^\/start(?:@\w+)?(?:\s+(\S+))?$/);
   if (start && start[1]) {

@@ -69,6 +69,14 @@ export default route('render', async (req, res) => {
   }
 
   const result = await loadPublicPage(asked);
+  // A name the page was renamed away from: on to its name now, temporarily,
+  // since the old name is only held for a while.
+  if (result.state === 'moved') {
+    res.statusCode = 307;
+    res.setHeader('Location', `/${result.slug}`);
+    res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=10');
+    return res.end();
+  }
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('X-Content-Type-Options', 'nosniff');
 

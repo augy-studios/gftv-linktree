@@ -44,6 +44,7 @@ import publicTurnstile from '../api/public/turnstile.js';
 import meLinkCap from '../api/me/link-cap.js';
 import adminLinkCaps from '../api/admin/link-caps.js';
 import publicTeam from '../api/public/team.js';
+import { notifyStaff, staffChatTargets } from '../api/_lib/telegram.js';
 
 let fake;
 beforeEach(() => {
@@ -1791,5 +1792,302 @@ test('the owner hears about a review on Telegram, and a failed send does not sto
     console.warn = warn;
     delete process.env.TELEGRAM_BOT_TOKEN;
     delete process.env.TELEGRAM_BOT_USERNAME;
+  }
+});
+
+// Renaming a page (me/security.js "rename", migration 016). Each call clears
+// the rate limits, since renaming asks for the password like any re-auth.
+async function renameTo(b, slug, password = 'correct horse battery') {
+  fake.table('gftvonelink_rate_limits').length = 0;
+  return b.call(security, { method: 'POST', body: { action: 'rename', slug, password } });
+}
+// Moves every rename this many days into the past.
+function ageRenames(days) {
+  for (const row of fake.table('gftvonelink_slug_changes')) {
+    row.created_at = new Date(new Date(row.created_at).getTime() - days * 86400_000).toISOString();
+  }
+}
+
+test('owners can rename their page; the old name is held for it and sends visitors on', async () => {
+  const owner = browser();
+  const { password } = await makePage(owner);
+  await makePage(browser(), 'taken', 'another long password', { ip: '198.51.100.2' });
+  const page = fake.table('gftvonelink_pages').find((p) => p.slug === 'augy');
+  fake.table('gftvonelink_testimonials').push({ id: crypto.randomUUID(), quote: 'Nice', author: 'Augy', page_id: page.id, page_slug: 'augy', status: 'approved', is_visible: true, order_index: 0, created_at: new Date().toISOString() });
+
+  const before = (await owner.call(mePage)).json.page.rename;
+  assert.deepEqual(before, { available: true, nextAt: null, previous: null });
+
+  assert.equal((await renameTo(owner, 'augy-two', 'wrong password')).json.error, 'password_wrong');
+  assert.equal((await renameTo(owner, 'A')).json.error, 'slug_invalid');
+  assert.equal((await renameTo(owner, 'augy')).json.error, 'slug_same');
+  assert.equal((await renameTo(owner, 'admin')).json.error, 'slug_reserved');
+  assert.equal((await renameTo(owner, 'taken')).json.error, 'slug_taken');
+  assert.equal(fake.table('gftvonelink_slug_changes').length, 0, 'refusals record nothing');
+
+  const done = await renameTo(owner, 'Augy-Two', password);
+  assert.equal(done.status, 200, done.body);
+  assert.equal(done.json.review, false);
+  assert.equal(done.json.page.slug, 'augy-two');
+  assert.equal(done.json.page.rename.previous.slug, 'augy');
+  assert.ok(done.json.page.rename.nextAt, 'the next rename waits');
+  assert.equal(page.slug, 'augy-two');
+  assert.equal(fake.table('gftvonelink_testimonials')[0].page_slug, 'augy-two', 'the testimonial follows');
+  assert.ok(fake.table('gftvonelink_audit_logs').some((r) => r.action === 'security.slug_changed' && r.details.from === 'augy' && r.details.to === 'augy-two'));
+
+  // The old address sends visitors on; the new one is the page.
+  const old = await browser().call(render, { query: { slug: 'augy' } });
+  assert.equal(old.status, 307);
+  assert.equal(old.headers.location, '/augy-two');
+  assert.equal((await browser().call(render, { query: { slug: 'augy-two' } })).status, 200);
+  assert.deepEqual((await browser().call(publicPage, { query: { slug: 'augy' } })).json, { ok: false, error: 'page_moved', slug: 'augy-two' });
+
+  // Nobody else can have the old name, but its page can take it back.
+  assert.equal((await browser().call(slug, { query: { slug: 'augy' } })).json.available, false);
+  assert.equal((await owner.call(slug, { query: { slug: 'augy' } })).json.available, true);
+  assert.equal((await browser().call(register, { method: 'POST', body: { slug: 'augy', password: 'some other password' }, ip: '198.51.100.3' })).json.error, 'slug_taken');
+
+  // Signing in uses the new name.
+  assert.equal((await browser().call(login, { method: 'POST', body: { slug: 'augy', password } })).json.error, 'invalid_credentials');
+  assert.equal((await browser().call(login, { method: 'POST', body: { slug: 'augy-two', password } })).status, 200);
+
+  // One rename every 30 days.
+  const soon = await renameTo(owner, 'augy-three');
+  assert.equal(soon.status, 429);
+  assert.equal(soon.json.error, 'rename_too_soon');
+  assert.ok(soon.json.nextRenameAt);
+
+  // After 30 days, taking the old name back is allowed.
+  ageRenames(31);
+  assert.equal((await renameTo(owner, 'augy')).status, 200);
+  assert.equal((await browser().call(render, { query: { slug: 'augy' } })).status, 200);
+  assert.equal((await browser().call(render, { query: { slug: 'augy-two' } })).headers.location, '/augy');
+
+  // After 30 days the old names are free for anyone.
+  ageRenames(31);
+  assert.equal((await owner.call(mePage)).json.page.rename.previous, null);
+  assert.equal((await browser().call(render, { query: { slug: 'augy-two' } })).status, 404);
+  assert.equal((await browser().call(slug, { query: { slug: 'augy-two' } })).json.available, true);
+  await makePage(browser(), 'augy-two', 'a third long password', { ip: '198.51.100.4' });
+
+  // Deleting the page lets go of everything it held.
+  ageRenames(-31);
+  await owner.call(security, { method: 'POST', body: { action: 'delete-page', password, confirmSlug: 'augy' } });
+  assert.equal(fake.table('gftvonelink_slug_changes').length, 0);
+});
+
+test('a rename to a name on the review list hides the page and tells staff on Telegram', async () => {
+  const { secret } = await makeStaff({ username: 'ed', role: 'editor' });
+  const editor = browser();
+  await staffSignIn(editor, 'ed', secret);
+  const { secret: adminSecret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', adminSecret);
+  await admin.call(adminBlocklist, { method: 'POST', body: { action: 'add-review', value: 'furcon', reason: 'event names' } });
+
+  const owner = browser();
+  await makePage(owner);
+  const page = fake.table('gftvonelink_pages')[0];
+  page.display_name = 'Augy *the* <fox>';
+  assert.equal((await owner.call(slug, { query: { slug: 'sgfurcon' } })).json.review, true, 'the form can warn first');
+
+  const calls = [];
+  let failing = false;
+  const realFetch = globalThis.fetch;
+  const warn = console.warn;
+  process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+  process.env.TELEGRAM_BOT_USERNAME = 'onelink_test_bot';
+  process.env.TELEGRAM_STAFF_CHAT_ID = '-1001234567890';
+  console.warn = () => {};
+  globalThis.fetch = async (url, init) => {
+    calls.push({ method: String(url).split('/').pop(), body: JSON.parse(init.body) });
+    if (failing) throw new Error('network down');
+    return new Response('{"ok":true}');
+  };
+  try {
+    // A plain name tells nobody.
+    assert.equal((await renameTo(owner, 'augy-two')).json.review, false);
+    assert.equal(calls.length, 0);
+
+    ageRenames(31);
+    const r = await renameTo(owner, 'sgfurcon');
+    assert.equal(r.status, 200, r.body);
+    assert.equal(r.json.review, true);
+    assert.equal(r.json.page.awaitingReview, true, 'the owner is told');
+    assert.equal((await browser().call(publicPage, { query: { slug: 'sgfurcon' } })).json.error, 'page_in_review');
+    assert.equal((await browser().call(render, { query: { slug: 'augy-two' } })).headers.location, '/sgfurcon');
+
+    // Staff hear about it in their chat, with the data escaped.
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].method, 'sendRichMessage');
+    assert.equal(calls[0].body.chat_id, '-1001234567890');
+    const md = calls[0].body.rich_message.markdown;
+    assert.match(md, /Page name to review/);
+    assert.match(md, /sgfurcon/);
+    assert.match(md, /augy-two/);
+    assert.ok(md.includes(String.raw`Augy \*the\* \<fox\>`), 'the display name is escaped');
+    assert.match(md, /https:\/\/links\.gftv\.asia\/admin/);
+    assert.ok(fake.table('gftvonelink_audit_logs').some((x) => x.action === 'mod.staff_alerted'));
+
+    // ...and in the dashboard's review list, with the name it had before.
+    assert.equal((await editor.call(adminOverview)).json.counts.awaitingReview, 1);
+    const listed = (await editor.call(adminPages, { query: { status: 'review' } })).json.pages;
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].renamedFrom.slug, 'augy-two');
+    assert.equal((await editor.call(adminPages, { query: { id: page.id } })).json.page.renamedFrom.slug, 'augy-two');
+
+    assert.equal((await editor.call(adminPages, { method: 'POST', body: { action: 'approve', id: page.id } })).status, 200);
+    assert.equal((await browser().call(publicPage, { query: { slug: 'sgfurcon' } })).status, 200);
+
+    // An approved name does not cover the next one: back in review. Telegram
+    // being down does not stop the rename.
+    failing = true;
+    ageRenames(31);
+    const again = await renameTo(owner, 'furcon-sg');
+    assert.equal(again.status, 200, again.body);
+    assert.equal(again.json.page.awaitingReview, true);
+    assert.equal(page.reviewed_at, null);
+
+    // Without a staff chat, nothing is sent; the dashboard still has it.
+    failing = false;
+    delete process.env.TELEGRAM_STAFF_CHAT_ID;
+    const sent = calls.length;
+    ageRenames(31);
+    assert.equal((await renameTo(owner, 'furcon-asia')).json.review, true);
+    assert.equal(calls.length, sent);
+
+    // A plain name ends the review it would have needed.
+    ageRenames(31);
+    assert.equal((await renameTo(owner, 'augy')).json.page.awaitingReview, false);
+  } finally {
+    globalThis.fetch = realFetch;
+    console.warn = warn;
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    delete process.env.TELEGRAM_BOT_USERNAME;
+    delete process.env.TELEGRAM_STAFF_CHAT_ID;
+  }
+});
+
+test('before migration 016 is run, renaming is off and nothing else breaks', async () => {
+  fake.missing('gftvonelink_slug_changes');
+  const owner = browser();
+  await makePage(owner);
+  assert.equal((await owner.call(mePage)).json.page.rename.available, false);
+  const r = await renameTo(owner, 'augy-two');
+  assert.equal(r.status, 503);
+  assert.equal(r.json.error, 'rename_unavailable');
+  assert.equal(fake.table('gftvonelink_pages')[0].slug, 'augy');
+  assert.equal((await browser().call(slug, { query: { slug: 'free-name' } })).json.available, true);
+  assert.equal((await browser().call(render, { query: { slug: 'nobody' } })).status, 404);
+  await makePage(browser(), 'second', 'another long password', { ip: '198.51.100.2' });
+});
+
+test('the bot gives a group its chat id for staff alerts, and nothing else', async () => {
+  process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+  process.env.TELEGRAM_WEBHOOK_SECRET = 'hook-secret';
+  const sent = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    sent.push(JSON.parse(init.body));
+    return new Response('{"ok":true}');
+  };
+  try {
+    const hook = (chat, text) => browser().call(webhook, { method: 'POST', body: { message: { chat, text } }, headers: { 'x-telegram-bot-api-secret-token': 'hook-secret' } });
+    await hook({ id: -1001234567890, type: 'supergroup' }, '/chatid@onelink_test_bot');
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].text, /-1001234567890/);
+    await hook({ id: -1001234567890, type: 'supergroup' }, '/start sometoken');
+    assert.equal(sent.length, 1, 'other commands in a group are ignored');
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    delete process.env.TELEGRAM_WEBHOOK_SECRET;
+  }
+});
+
+test('a new page on a name on the review list tells staff once it is set up', async () => {
+  const { secret } = await makeStaff({ username: 'boss', role: 'admin' });
+  const admin = browser();
+  await staffSignIn(admin, 'boss', secret);
+  await admin.call(adminBlocklist, { method: 'POST', body: { action: 'add-review', value: 'furcon', reason: 'event names' } });
+
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+  process.env.TELEGRAM_STAFF_CHAT_ID = '-1001234567890';
+  globalThis.fetch = async (url, init) => {
+    calls.push(JSON.parse(init.body));
+    return new Response('{"ok":true}');
+  };
+  try {
+    // Registering alone says nothing: an abandoned sign-up is not news.
+    await browser().call(register, { method: 'POST', body: { slug: 'abandoned-furcon', password: 'correct horse battery' } });
+    assert.equal(calls.length, 0);
+
+    await makePage(browser(), 'sgfurcon', 'correct horse battery', { ip: '198.51.100.2' });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].chat_id, '-1001234567890');
+    assert.match(calls[0].rich_message.markdown, /New page name to review/);
+    assert.match(calls[0].rich_message.markdown, /sgfurcon/);
+
+    await makePage(browser(), 'plain-name', 'correct horse battery', { ip: '198.51.100.3' });
+    assert.equal(calls.length, 1, 'a plain name tells nobody');
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    delete process.env.TELEGRAM_STAFF_CHAT_ID;
+  }
+});
+
+test('staff alerts go to every listed chat: groups, channels, and staff DMs by id or by username', async () => {
+  const warn = console.warn;
+  console.warn = () => {};
+  assert.deepEqual(staffChatTargets('-1001234567890, 555\n@StaffAlice @gftv_news,@staffalice  not-a-chat @abc'), ['-1001234567890', '555', '@staffalice', '@gftv_news']);
+
+  const sent = [];
+  const realFetch = globalThis.fetch;
+  process.env.TELEGRAM_BOT_TOKEN = 'test-token';
+  process.env.TELEGRAM_WEBHOOK_SECRET = 'hook-secret';
+  process.env.TELEGRAM_STAFF_CHAT_ID = '-1001234567890, 555, @StaffAlice, @gftv_news';
+  globalThis.fetch = async (url, init) => {
+    const body = JSON.parse(init.body);
+    sent.push({ method: String(url).split('/').pop(), ...body });
+    // Telegram cannot find a person by username.
+    if (body.chat_id === '@staffalice') return new Response('{"ok":false,"description":"Bad Request: chat not found"}', { status: 400 });
+    return new Response('{"ok":true}');
+  };
+  const dm = (from, id, text) => browser().call(webhook, { method: 'POST', body: { message: { chat: { id, type: 'private' }, from: { username: from }, text } }, headers: { 'x-telegram-bot-api-secret-token': 'hook-secret' } });
+  const alert = { markdown: '## Test', fallback: 'Test' };
+  const richTo = () => sent.filter((x) => x.method === 'sendRichMessage').map((x) => x.chat_id).sort();
+  try {
+    // Before Alice has messaged the bot, her @name cannot be reached.
+    assert.equal(await notifyStaff(alert), 3);
+    assert.deepEqual(richTo(), ['-1001234567890', '555', '@gftv_news', '@staffalice'].sort());
+
+    // Someone not on the list is not remembered.
+    sent.length = 0;
+    await dm('somebody_else', 999, '/chatid');
+    assert.match(sent[0].text, /Your chat id is 999\. Add it to TELEGRAM_STAFF_CHAT_ID/);
+    assert.equal(fake.table('gftvonelink_settings').length, 0);
+
+    // Alice messages the bot once; from then on alerts reach her DMs.
+    sent.length = 0;
+    await dm('StaffAlice', 777, '/chatid');
+    assert.match(sent[0].text, /You are on the staff alert list/);
+    sent.length = 0;
+    assert.equal(await notifyStaff(alert), 4);
+    assert.deepEqual(richTo(), ['-1001234567890', '555', '777', '@gftv_news'].sort());
+
+    // Off without the list or the bot token.
+    sent.length = 0;
+    process.env.TELEGRAM_STAFF_CHAT_ID = '';
+    assert.equal(await notifyStaff(alert), 0);
+    assert.equal(sent.length, 0);
+  } finally {
+    globalThis.fetch = realFetch;
+    console.warn = warn;
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    delete process.env.TELEGRAM_WEBHOOK_SECRET;
+    delete process.env.TELEGRAM_STAFF_CHAT_ID;
   }
 });

@@ -58,9 +58,9 @@ the browser shows `error.<code>` from the locale file.
 
 | Route | Who | What |
 | --- | --- | --- |
-| `GET /api/slug?slug=` | anyone | Is this name free? |
+| `GET /api/slug?slug=` | anyone | Is this name free? A name held after a rename reads as taken, except to its page's owner. |
 | `POST /api/auth/register` | anyone | Name, password and Turnstile token. Returns a setup challenge; the page stays private until a second factor is set up. |
-| `POST /api/auth/enrol` | setup challenge | First authenticator or passkey. Activates the page, returns ten backup codes, signs in. |
+| `POST /api/auth/enrol` | setup challenge | First authenticator or passkey. Activates the page, returns ten backup codes, signs in. A name on the review list alerts the staff chat. |
 | `POST /api/auth/login` | anyone | Password step, with a Turnstile token. Returns a challenge and the second factors this page can use. |
 | `POST /api/auth/verify` | login challenge | Authenticator, passkey, backup code or Telegram code. Signs in. |
 | `POST /api/auth/recover` | anyone | Forgotten password: a Turnstile token to start, then a Telegram code and the authenticator or a backup code. |
@@ -68,7 +68,7 @@ the browser shows `error.<code>` from the locale file.
 | `GET/PATCH /api/me/page` | owner | The editor view; name and bio. |
 | `POST/PATCH/DELETE /api/me/links` | owner | Add, edit, show/hide, reorder, delete links. Adding is refused once the page is at its link limit. |
 | `GET/POST/DELETE /api/me/link-cap` | owner | The link limit; ask for a higher one, or withdraw the request. |
-| `POST /api/me/security` | owner | Second factors, backup codes, Telegram, password, sign out elsewhere, delete page. Asks for the password again. |
+| `POST /api/me/security` | owner | Second factors, backup codes, Telegram, password, sign out elsewhere, rename, delete page. Asks for the password again. |
 | `GET /api/public/page` | anyone | A page as visitors see it. |
 | `POST /api/public/click` | anyone | Count a click. |
 | `POST /api/public/report` | anyone | Report a page or link, with a Turnstile token. |
@@ -171,6 +171,31 @@ hand in the same style (`OWN_BRANDS` in `tools/make-icon-data.mjs`).
 Icons come in categories (`ICON_CATEGORIES` in `js/icons.js`), from general
 icons to service logos. `LINK_ICONS` in `api/_lib/validate.js` is the server's
 list; the tests check the two agree.
+
+### Changing the page name
+
+An owner can change their page name under **Security** in the editor
+(`me/security.js`, action `rename`; migration 016). The new name follows the
+sign-up rules: shape, reserved names, the staff block list and patterns. It
+is also what they sign in with from then on.
+
+- **Review.** A new name on the staff review list puts the page back in
+  review, even if an earlier name was approved, and it is hidden until staff
+  approve it, as a new page would be. It shows in **Awaiting review** with
+  the name it had before, and the staff Telegram chat gets an alert when
+  `TELEGRAM_STAFF_CHAT_ID` is set (SETUP.md 4.5). New pages on such a name
+  alert the same chat once they are set up. A plain name ends a review
+  the old name was waiting on.
+- **The old name.** For 30 days it stays with the page: `/<old>` sends
+  visitors on to the new address (307), nobody else can register it or
+  rename to it, and the page can take it back. After that it is free.
+- **How often.** Once every 30 days, so a page holds at most one old
+  name at a time.
+- Testimonials credited to the page follow the new name. Each rename is in
+  the audit log as `security.slug_changed`.
+
+The authenticator app entry and passkeys keep the old name as their label.
+They still work, since they belong to the page, not to its name.
 
 ### GFTV team pages
 

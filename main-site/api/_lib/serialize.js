@@ -102,7 +102,7 @@ export function ownerCapRequest(row) {
 }
 
 // security: { passkeys, backupCodesLeft, telegramReady }, assembled by the caller.
-// limits: { linkCap, capRequest }, the same.
+// limits: { linkCap, capRequest, rename }, the same.
 export function ownerPage(page, links, security, limits = null) {
   return {
     slug: page.slug,
@@ -122,6 +122,8 @@ export function ownerPage(page, links, security, limits = null) {
     links: (links ?? []).sort((a, b) => a.order_index - b.order_index).map(ownerLink),
     linkCap: limits ? limits.linkCap : null,
     linkCapRequest: limits ? limits.capRequest : null,
+    // Changing the page name: { available, nextAt, previous } (slug-changes.js).
+    rename: limits?.rename ?? null,
     security: {
       totp: Boolean(page.totp_secret),
       passkeys: security.passkeys.map(ownerPasskey),

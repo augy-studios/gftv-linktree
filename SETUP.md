@@ -33,6 +33,11 @@ In the Supabase project that already holds the `gftvhello_` tables, open
   default, set by admins), per-page limits, and owners' requests for a higher one
 - `014_allowed_domains.sql`: domains staff allow past the threat lists (the
   HaGeZi blocklists and Google Safe Browsing), for a site caught by mistake
+- `015_team_verification.sql`: admins marking pages as belonging to someone
+  on the GFTV team, with an optional role
+- `016_slug_changes.sql`: owners changing their page name, with the old name
+  held for the page for 30 days and sending visitors on. Until it is run,
+  the editor does not offer renaming
 
 **Check:** in **Table Editor** you see the `gftvonelink_` tables, each marked
 **RLS enabled**.
@@ -162,7 +167,7 @@ In Telegram, open [@BotFather](https://t.me/BotFather):
      ```
 
    - `/setjoingroups` > **Disable**. Codes must only ever go to private chats,
-     and the bot ignores groups anyway.
+     and in groups the bot answers nothing but `/chatid` (section 4.5).
 
 Add the three `TELEGRAM_` variables in Vercel and **redeploy**, so the
 functions see them.
@@ -219,6 +224,45 @@ Seeing that line means the rich path needs a look; nobody misses a code.
 - **Token leaked:** in BotFather send `/revoke`, pick the bot, put the new
   token in `TELEGRAM_BOT_TOKEN`, redeploy, and run 4.2 again. Also pick a new
   `TELEGRAM_WEBHOOK_SECRET` while you are there.
+
+### 4.5 Staff alerts (optional)
+
+The bot can tell staff when a page is hidden until someone approves its
+name: a new page on a name on the review list once it is set up, or an owner
+renaming their page to one. Such pages are always in **Pages > Awaiting
+review** in `/admin` and in the overview count; the alert just means nobody
+has to keep checking.
+
+`TELEGRAM_STAFF_CHAT_ID` lists where alerts go, separated by commas (spaces
+or new lines work too). Mix any of these:
+
+| Entry | Where it goes | How to get it |
+| --- | --- | --- |
+| `-1001234567890` | a staff group | see below |
+| `123456789` | one person's DMs | they send `/chatid` to the bot in a DM |
+| `@channelname` | a public channel | add the bot as an admin of the channel |
+| `@username` | one person's DMs | they send the bot any message once |
+
+For example: `-1001234567890, 123456789, @alice_gftv`.
+
+A bot cannot start a conversation, so everyone who gets alerts in their DMs
+must have messaged the bot first. A Telegram username alone does not let a
+bot reach someone, so for an `@username` entry the bot remembers that
+person's chat when they message it, and alerts go there from then on. Until
+they do, nothing reaches them. A numeric id is the sturdier choice: it keeps
+working if they change their username.
+
+For a staff group:
+
+1. In BotFather, `/setjoingroups` > **Enable** for a moment.
+2. Add the bot to the group, and send `/chatid` there. The bot answers with
+   the group's id, a negative number.
+3. `/setjoingroups` > **Disable** again. The bot stays in the group.
+
+Put the list in `TELEGRAM_STAFF_CHAT_ID` in Vercel and redeploy. Without it,
+nothing is sent. Every chat on the list gets each alert; one that fails is
+logged (`staff alert to ...` in Vercel's function logs) and never stops the
+others, the sign-up or the rename.
 
 ## 5. Staff access
 

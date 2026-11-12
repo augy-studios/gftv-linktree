@@ -14,6 +14,7 @@ import { checkSlug, checkPassword, STALE_PENDING_MS } from '../_lib/validate.js'
 import { hashPassword } from '../_lib/crypto.js';
 import { limited, slugRefusal, nameNeedsReview, audit, refusedForBan } from '../_lib/guards.js';
 import { createChallenge } from '../_lib/session.js';
+import { slugHeldBy } from '../_lib/slug-changes.js';
 import { refusedForTurnstile } from '../_lib/turnstile.js';
 
 export default route('auth/register', async (req, res) => {
@@ -30,6 +31,8 @@ export default route('auth/register', async (req, res) => {
   if (!passwordCheck.ok) return fail(res, 400, passwordCheck.error);
   const refusal = await slugRefusal(slugCheck.slug);
   if (refusal) return fail(res, 400, refusal);
+  // A name a page was renamed away from is held for that page for a while.
+  if (await slugHeldBy(slugCheck.slug)) return fail(res, 409, 'slug_taken');
 
   // Release this slug if somebody started on it and never finished.
   await db()

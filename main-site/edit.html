@@ -280,6 +280,13 @@
 
                     <section class="glass-card panel">
                         <h2 data-i18n="security.account-title">Password and devices</h2>
+                        <div class="panel-section" id="renameSection" hidden>
+                            <div class="factor-row">
+                                <div class="what"><span data-icon="user"></span><div><span data-i18n="rename.label">Page name</span><small id="renameState"></small></div></div>
+                                <button class="btn btn-small" type="button" id="renameOpen"><span data-i18n="rename.change">Change</span></button>
+                            </div>
+                            <p class="muted small u-mt-05" id="renameNote"></p>
+                        </div>
                         <div class="panel-section">
                             <div class="factor-row">
                                 <div class="what"><span data-icon="lock"></span><span data-i18n="field.password">Password</span></div>
@@ -560,6 +567,31 @@
             </label>
             <div class="callout danger" id="changePasswordError" role="alert"></div>
             <div class="actions"><button class="btn btn-primary" type="submit" id="changePasswordSubmit"><span data-i18n="common.save">Save</span></button></div>
+        </form>
+    </div>
+
+    <div class="modal-backdrop hidden" id="renameModal">
+        <form class="modal glass-card" role="dialog" aria-modal="true" aria-labelledby="renameTitle" id="renameForm" novalidate>
+            <div class="modal-head">
+                <h2 id="renameTitle" data-i18n="rename.title">Change page name</h2>
+                <button class="icon-btn small" type="button" data-close-modal="renameModal" aria-label="Close" data-i18n-attr="aria-label:common.close"><span data-icon="close"></span></button>
+            </div>
+            <p class="small" data-i18n="rename.body">Your page moves to the new address, and you sign in with the new name. For 30 days the old address sends visitors to the new one and nobody else can take it; after that it is free for anyone. You can change the name once every 30 days.</p>
+            <div class="field u-mt-1">
+                <label for="renameSlug" data-i18n="rename.new">New page name</label>
+                <div class="slug-input">
+                    <span class="slug-host" aria-hidden="true">links.gftv.asia/</span>
+                    <input id="renameSlug" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="32" required aria-describedby="renameStatus renameHint">
+                </div>
+                <p class="field-status" id="renameStatus" role="status" aria-live="polite"></p>
+                <p class="field-hint" id="renameHint" data-i18n="field.slug-hint">2 to 32 characters: lowercase letters, numbers and dashes.</p>
+            </div>
+            <label class="field">
+                <span data-i18n="field.password">Password</span>
+                <input id="renamePassword" type="password" autocomplete="current-password" required>
+            </label>
+            <div class="callout danger" id="renameError" role="alert"></div>
+            <div class="actions"><button class="btn btn-primary" type="submit" id="renameSubmit"><span data-i18n="rename.submit">Change name</span></button></div>
         </form>
     </div>
 
