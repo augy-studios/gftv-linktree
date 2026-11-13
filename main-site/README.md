@@ -50,6 +50,9 @@ every locale.
 - **i18n** (`i18n-retrofit-spec.md`): `assets/i18n/`. `en.json` is the source of
   truth, `zh.json` is 华文. The Chinese is a draft and wants a check by a fluent
   reader before launch, as `gftv-official.md` also says of its own copy.
+  The shared scanner `assets/i18n/check-keys.js --scan` finds keys in `t(` calls. OneLink's
+  own code calls `translate(` since help desk #17's job 03, so keys used only there aren't
+  checked against `en.json` until the shared scanner also looks for `translate(`.
 
 ## API
 

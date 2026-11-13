@@ -10,16 +10,16 @@
 // dialog is open or the tab is in the background.
 
 import '../app.js';
-import { t, onChange } from '../../assets/i18n/i18n.js';
+import { t as translate, onChange } from '../../assets/i18n/i18n.js';
 import { api, post } from '../api.js';
-import { openModal, closeModal, withBusy, toast, copyText, el } from '../ui.js';
+import { openModal, closeModal, withBusy, toast, copyText, createElement } from '../ui.js';
 import { iconNode, hydrateIcons } from '../icons.js';
 import { qrSvg, downloadQr } from '../qr.js';
 import { fillAvatar } from '../avatar.js';
 import { humanCheck } from '../turnstile.js';
 
-const $ = (id) => document.getElementById(id);
-const root = $('profile');
+const byId = (id) => document.getElementById(id);
+const root = byId('profile');
 let data = null;
 let reportTarget = null;
 // Turnstile, loaded the first time the report form opens and not before:
@@ -33,7 +33,7 @@ function slugFromPath() {
 
 async function load() {
   try {
-    data = JSON.parse($('pageData').textContent);
+    data = JSON.parse(byId('pageData').textContent);
   } catch {
     data = { state: 'shell' };
   }
@@ -71,68 +71,68 @@ function render() {
     const [title, body] = COPY[data.state] || COPY.missing;
     // A dormant page comes back when its owner signs in, so offer that.
     const signIn = data.state === 'dormant'
-      ? el('a', { class: 'btn', href: `/login?slug=${encodeURIComponent(data.slug || '')}`, text: t('profile.dormant-sign-in') })
+      ? createElement('a', { class: 'btn', href: `/login?slug=${encodeURIComponent(data.slug || '')}`, text: translate('profile.dormant-sign-in') })
       : null;
-    root.append(el('div', { class: 'glass-card page-card not-found u-mx-auto' }, [
-      el('h1', { text: t(title) }),
-      el('p', { text: t(body) }),
-      el('div', { class: 'actions' }, [el('a', { class: 'btn btn-primary', href: '/', text: t('notfound.home') }), signIn]),
+    root.append(createElement('div', { class: 'glass-card page-card not-found u-mx-auto' }, [
+      createElement('h1', { text: translate(title) }),
+      createElement('p', { text: translate(body) }),
+      createElement('div', { class: 'actions' }, [createElement('a', { class: 'btn btn-primary', href: '/', text: translate('notfound.home') }), signIn]),
     ]));
-    $('profileStatus')?.remove();
+    byId('profileStatus')?.remove();
     return;
   }
 
   const page = data.page;
   countVisit();
   if (page.redirectUrl) return renderRedirect(page);
-  const list = el('ul', { class: 'link-list' });
+  const list = createElement('ul', { class: 'link-list' });
   for (const link of page.links) {
-    const a = el('a', {
+    const a = createElement('a', {
       class: 'glass-card link-btn',
       href: link.url,
       // An email link hands over to the mail app; a new tab would stay empty.
       target: link.url.startsWith('mailto:') ? null : '_blank',
       rel: 'noopener noreferrer nofollow',
-    }, [iconNode(link.icon), el('span', { class: 'link-title', text: link.title })]);
+    }, [iconNode(link.icon), createElement('span', { class: 'link-title', text: link.title })]);
     a.addEventListener('click', () => {
       // Counted on the side; the visitor's navigation never waits on it.
       api('/api/public/click', { method: 'POST', body: { id: link.id }, keepalive: true }).catch(() => {});
     });
-    const flag = el('button', {
+    const flag = createElement('button', {
       class: 'icon-btn small link-more',
       type: 'button',
-      'aria-label': t('report.link-named', { title: link.title }),
-      title: t('report.link'),
+      'aria-label': translate('report.link-named', { title: link.title }),
+      title: translate('report.link'),
       onclick: () => openReport(link),
     });
     flag.append(iconNode('flag'));
-    list.append(el('li', { class: 'link-item' }, [a, flag]));
+    list.append(createElement('li', { class: 'link-item' }, [a, flag]));
   }
 
-  const share = el('button', { class: 'btn btn-small', type: 'button', onclick: openShare }, [iconNode('share'), el('span', { text: t('share.share') })]);
-  const report = el('button', { class: 'btn btn-small btn-quiet', type: 'button', onclick: () => openReport(null) }, [iconNode('flag'), el('span', { text: t('report.page') })]);
+  const share = createElement('button', { class: 'btn btn-small', type: 'button', onclick: openShare }, [iconNode('share'), createElement('span', { text: translate('share.share') })]);
+  const report = createElement('button', { class: 'btn btn-small btn-quiet', type: 'button', onclick: () => openReport(null) }, [iconNode('flag'), createElement('span', { text: translate('report.page') })]);
 
-  const avatar = el('div', { class: 'avatar', 'aria-hidden': 'true' });
+  const avatar = createElement('div', { class: 'avatar', 'aria-hidden': 'true' });
   fillAvatar(avatar, page.avatarUrl, page.displayName);
 
   root.append(...[
     // Offline, the service worker serves the copy saved on an earlier visit.
-    navigator.onLine === false ? el('p', { class: 'callout warn profile-saved', role: 'status', text: t('profile.saved-copy') }) : null,
+    navigator.onLine === false ? createElement('p', { class: 'callout warn profile-saved', role: 'status', text: translate('profile.saved-copy') }) : null,
     teamAvatar(avatar, page.team),
-    el('h1', { text: page.displayName }),
-    el('p', { class: 'handle', text: `links.gftv.asia/${page.slug}` }),
+    createElement('h1', { text: page.displayName }),
+    createElement('p', { class: 'handle', text: `links.gftv.asia/${page.slug}` }),
     teamNote(page.team),
-    page.bio ? el('p', { class: 'bio', text: page.bio }) : null,
-    page.links.length > 0 ? list : el('p', { class: 'profile-empty', text: t('profile.empty') }),
-    el('div', { class: 'profile-actions' }, [share, report]),
-    el('p', { class: 'profile-made' }, [
-      el('span', { text: t('profile.made-with') }),
+    page.bio ? createElement('p', { class: 'bio', text: page.bio }) : null,
+    page.links.length > 0 ? list : createElement('p', { class: 'profile-empty', text: translate('profile.empty') }),
+    createElement('div', { class: 'profile-actions' }, [share, report]),
+    createElement('p', { class: 'profile-made' }, [
+      createElement('span', { text: translate('profile.made-with') }),
       ' ',
-      el('a', { class: 'text-link', href: '/register', text: t('profile.make-own') }),
+      createElement('a', { class: 'text-link', href: '/register', text: translate('profile.make-own') }),
     ]),
   ].filter(Boolean));
   hydrateIcons(root);
-  $('profileStatus')?.remove();
+  byId('profileStatus')?.remove();
   keepForOffline();
 }
 
@@ -145,19 +145,19 @@ function render() {
 // the team.
 
 function teamLabel(team) {
-  return team.role ? t('team.label-role', { role: team.role }) : t('team.label');
+  return team.role ? translate('team.label-role', { role: team.role }) : translate('team.label');
 }
 
 function teamAvatar(avatar, team, small = false) {
   if (!team) return avatar;
-  const tick = el('span', { class: 'team-tick', 'aria-hidden': 'true' }, [iconNode('check')]);
-  return el('div', { class: `avatar-wrap team${small ? ' small' : ''}`, title: t('team.label') }, [avatar, tick]);
+  const tick = createElement('span', { class: 'team-tick', 'aria-hidden': 'true' }, [iconNode('check')]);
+  return createElement('div', { class: `avatar-wrap team${small ? ' small' : ''}`, title: translate('team.label') }, [avatar, tick]);
 }
 
 function teamNote(team) {
   if (!team) return null;
-  return el('p', { class: 'team-note' }, [
-    el('a', { class: 'team-pill', href: '#teamNote', onclick: jumpToTeamNote }, [iconNode('check'), el('span', { text: teamLabel(team) })]),
+  return createElement('p', { class: 'team-note' }, [
+    createElement('a', { class: 'team-pill', href: '#teamNote', onclick: jumpToTeamNote }, [iconNode('check'), createElement('span', { text: teamLabel(team) })]),
   ]);
 }
 
@@ -178,12 +178,12 @@ function footerTeamNote(team) {
   document.getElementById('teamNote')?.remove();
   if (!team) return;
   const when = new Intl.DateTimeFormat(document.documentElement.lang || undefined, { dateStyle: 'long' }).format(new Date(team.verifiedAt));
-  const note = el('p', { class: 'footer-team-note', id: 'teamNote', tabindex: '-1' }, [
-    el('span', { class: 'footer-team-mark', 'aria-hidden': 'true' }, [iconNode('check')]),
+  const note = createElement('p', { class: 'footer-team-note', id: 'teamNote', tabindex: '-1' }, [
+    createElement('span', { class: 'footer-team-mark', 'aria-hidden': 'true' }, [iconNode('check')]),
     ' ',
-    t('team.explain', { date: when }),
+    translate('team.explain', { date: when }),
     ' ',
-    el('a', { href: '/team', text: t('team.see-all') }),
+    createElement('a', { href: '/team', text: translate('team.see-all') }),
   ]);
   document.querySelector('.site-footer')?.prepend(note);
 }
@@ -203,35 +203,35 @@ let countdown = null;
 
 function renderRedirect(page) {
   const target = new URL(page.redirectUrl);
-  const avatar = el('div', { class: 'avatar small', 'aria-hidden': 'true' });
+  const avatar = createElement('div', { class: 'avatar small', 'aria-hidden': 'true' });
   fillAvatar(avatar, page.avatarUrl, page.displayName);
 
-  const ring = el('div', { class: 'countdown', 'aria-hidden': 'true' });
+  const ring = createElement('div', { class: 'countdown', 'aria-hidden': 'true' });
   ring.innerHTML = '<svg viewBox="0 0 44 44"><circle class="track" cx="22" cy="22" r="20"/><circle class="progress" cx="22" cy="22" r="20" pathLength="100"/></svg>';
-  const seconds = el('span', { class: 'countdown-number' });
+  const seconds = createElement('span', { class: 'countdown-number' });
   ring.append(seconds);
-  const status = el('p', { class: 'redirect-status', role: 'status' });
+  const status = createElement('p', { class: 'redirect-status', role: 'status' });
 
-  const go = el('a', { class: 'btn btn-primary', href: target.href, rel: 'noopener noreferrer nofollow' }, [iconNode('external'), el('span', { text: t('redirect.go-now') })]);
-  const pause = el('button', { class: 'btn', type: 'button' });
-  const report = el('button', { class: 'btn btn-quiet', type: 'button', onclick: () => openReport(null) }, [iconNode('flag'), el('span', { text: t('report.page') })]);
+  const go = createElement('a', { class: 'btn btn-primary', href: target.href, rel: 'noopener noreferrer nofollow' }, [iconNode('external'), createElement('span', { text: translate('redirect.go-now') })]);
+  const pause = createElement('button', { class: 'btn', type: 'button' });
+  const report = createElement('button', { class: 'btn btn-quiet', type: 'button', onclick: () => openReport(null) }, [iconNode('flag'), createElement('span', { text: translate('report.page') })]);
 
-  root.append(el('div', { class: 'glass-card redirect-card u-mx-auto' }, [
-    el('div', { class: 'redirect-from' }, [teamAvatar(avatar, page.team, true), el('div', {}, [
-      el('div', { class: 'name', text: page.displayName }),
-      el('div', { class: 'handle', text: `links.gftv.asia/${page.slug}` }),
-      page.team ? el('div', { class: 'team-inline' }, [iconNode('check'), el('span', { text: teamLabel(page.team) })]) : null,
+  root.append(createElement('div', { class: 'glass-card redirect-card u-mx-auto' }, [
+    createElement('div', { class: 'redirect-from' }, [teamAvatar(avatar, page.team, true), createElement('div', {}, [
+      createElement('div', { class: 'name', text: page.displayName }),
+      createElement('div', { class: 'handle', text: `links.gftv.asia/${page.slug}` }),
+      page.team ? createElement('div', { class: 'team-inline' }, [iconNode('check'), createElement('span', { text: teamLabel(page.team) })]) : null,
     ])]),
-    el('h1', { text: t('redirect.heading') }),
-    el('p', { class: 'redirect-host', text: target.hostname.replace(/^www\./, '') }),
-    el('p', { class: 'redirect-url', text: target.href }),
+    createElement('h1', { text: translate('redirect.heading') }),
+    createElement('p', { class: 'redirect-host', text: target.hostname.replace(/^www\./, '') }),
+    createElement('p', { class: 'redirect-url', text: target.href }),
     ring,
     status,
-    el('div', { class: 'actions' }, [go, pause, report]),
-    el('p', { class: 'muted small', text: t('redirect.check-address') }),
+    createElement('div', { class: 'actions' }, [go, pause, report]),
+    createElement('p', { class: 'muted small', text: translate('redirect.check-address') }),
   ]));
   hydrateIcons(root);
-  $('profileStatus')?.remove();
+  byId('profileStatus')?.remove();
   keepForOffline();
 
   // Elapsed time adds up only while running, so a pause holds the place.
@@ -243,8 +243,8 @@ function renderRedirect(page) {
     const left = Math.max(0, Math.ceil((total - state.elapsed) / 1000));
     seconds.textContent = String(left);
     ring.style.setProperty('--progress', String(Math.min(100, (state.elapsed / total) * 100)));
-    pause.replaceChildren(iconNode(state.paused ? 'play' : 'pause'), el('span', { text: t(state.paused ? 'redirect.resume' : 'redirect.pause') }));
-    status.textContent = running() ? t('redirect.in', { count: left, n: left }) : t('redirect.paused');
+    pause.replaceChildren(iconNode(state.paused ? 'play' : 'pause'), createElement('span', { text: translate(state.paused ? 'redirect.resume' : 'redirect.pause') }));
+    status.textContent = running() ? translate('redirect.in', { count: left, n: left }) : translate('redirect.paused');
   };
   const tick = (now) => {
     if (state.done) return;
@@ -298,14 +298,14 @@ function keepForOffline() {
 // --- share ------------------------------------------------------------------
 
 function openShare() {
-  $('shareQr').innerHTML = qrSvg(pageUrl(), t('share.qr-label', { slug: data.page.slug }));
-  $('shareUrl').textContent = pageUrl().replace(/^https?:\/\//, '');
-  $('shareNative').hidden = typeof navigator.share !== 'function';
+  byId('shareQr').innerHTML = qrSvg(pageUrl(), translate('share.qr-label', { slug: data.page.slug }));
+  byId('shareUrl').textContent = pageUrl().replace(/^https?:\/\//, '');
+  byId('shareNative').hidden = typeof navigator.share !== 'function';
   openModal('shareModal');
 }
-$('shareCopy').addEventListener('click', () => copyText(pageUrl()));
-$('shareDownload').addEventListener('click', () => downloadQr(pageUrl(), `onelink-${data.page.slug}-qr.png`));
-$('shareNative').addEventListener('click', () => {
+byId('shareCopy').addEventListener('click', () => copyText(pageUrl()));
+byId('shareDownload').addEventListener('click', () => downloadQr(pageUrl(), `onelink-${data.page.slug}-qr.png`));
+byId('shareNative').addEventListener('click', () => {
   navigator.share({ title: data.page.displayName, url: pageUrl() }).catch(() => {});
 });
 
@@ -313,34 +313,34 @@ $('shareNative').addEventListener('click', () => {
 
 function openReport(link) {
   reportTarget = link;
-  $('reportWhat').textContent = link
-    ? t('report.about-link', { title: link.title })
-    : t(data.page.redirectUrl ? 'report.about-redirect' : 'report.about-page', { slug: data.page.slug, url: data.page.redirectUrl });
-  $('reportDetails').value = '';
-  $('reportError').textContent = '';
+  byId('reportWhat').textContent = link
+    ? translate('report.about-link', { title: link.title })
+    : translate(data.page.redirectUrl ? 'report.about-redirect' : 'report.about-page', { slug: data.page.slug, url: data.page.redirectUrl });
+  byId('reportDetails').value = '';
+  byId('reportError').textContent = '';
   // A redirect waits while the visitor is reporting it.
   countdown?.hold('report', true);
-  openModal('reportModal', { initialFocus: $('reportReason'), onClose: () => countdown?.hold('report', false) });
-  reportCheck ??= humanCheck($('reportCheck'));
+  openModal('reportModal', { initialFocus: byId('reportReason'), onClose: () => countdown?.hold('report', false) });
+  reportCheck ??= humanCheck(byId('reportCheck'));
 }
 
-$('reportForm').addEventListener('submit', (e) => {
+byId('reportForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  withBusy($('reportSubmit'), $('reportError'), async () => {
+  withBusy(byId('reportSubmit'), byId('reportError'), async () => {
     const token = await reportCheck.token();
     try {
       await post('/api/public/report', {
         slug: data.page.slug,
         linkId: reportTarget ? reportTarget.id : null,
-        reason: $('reportReason').value,
-        details: $('reportDetails').value,
+        reason: byId('reportReason').value,
+        details: byId('reportDetails').value,
         'cf-turnstile-response': token,
       });
     } finally {
       reportCheck.reset();
     }
     closeModal('reportModal');
-    toast(t('report.thanks'));
+    toast(translate('report.thanks'));
   });
 });
 

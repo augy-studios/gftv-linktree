@@ -27,13 +27,13 @@ let session = null;
 
 async function loadModel(id) {
   const cache = await caches.open(MODEL_CACHE).catch(() => null);
-  let res = cache ? await cache.match(MODEL_URL) : null;
-  if (!res) {
-    res = await fetch(MODEL_URL);
-    if (!res.ok) throw new Error(`model ${res.status}`);
+  let response = cache ? await cache.match(MODEL_URL) : null;
+  if (!response) {
+    response = await fetch(MODEL_URL);
+    if (!response.ok) throw new Error(`model ${response.status}`);
     // Report download progress, then keep a copy.
-    const total = Number(res.headers.get('content-length')) || 0;
-    const reader = res.body.getReader();
+    const total = Number(response.headers.get('content-length')) || 0;
+    const reader = response.body.getReader();
     const chunks = [];
     let loaded = 0;
     for (;;) {
@@ -47,7 +47,7 @@ async function loadModel(id) {
     if (cache) await cache.put(MODEL_URL, new Response(blob)).catch(() => {});
     return new Uint8Array(await blob.arrayBuffer());
   }
-  return new Uint8Array(await res.arrayBuffer());
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 async function getSession(id) {

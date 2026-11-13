@@ -14,20 +14,20 @@
 //             with its share of all visits, or null
 
 import { route, guard, ok } from '../_lib/http.js';
-import { db } from '../_lib/supabase.js';
+import { database } from '../_lib/supabase.js';
 
 const count = (value) => Math.max(0, Number(value) || 0);
 
-export default route('public/insights', async (req, res) => {
-  if (guard(req, res, ['GET'])) return;
-  const { data, error } = await db().rpc('gftvonelink_site_insights');
+export default route('public/insights', async (request, response) => {
+  if (guard(request, response, ['GET'])) return;
+  const { data, error } = await database().rpc('gftvonelink_site_insights');
   if (error) throw error;
   const raw = data ?? {};
   const visits = count(raw.visits);
   const devices = {};
   for (const key of ['mobile', 'tablet', 'desktop', 'others']) devices[key] = count(raw.devices?.[key]);
-  res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=600, stale-while-revalidate=3600');
-  ok(res, {
+  response.setHeader('Cache-Control', 'public, max-age=0, s-maxage=600, stale-while-revalidate=3600');
+  ok(response, {
     visits,
     clicks: count(raw.clicks),
     pages: count(raw.pages),

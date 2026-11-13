@@ -15,7 +15,7 @@
 // was added can turn bad later. Domains staff have allowed are left alone.
 
 import { route, send } from '../_lib/http.js';
-import { db, T } from '../_lib/supabase.js';
+import { database, TABLES } from '../_lib/supabase.js';
 import { optionalEnv } from '../_lib/env.js';
 import { safeEqual } from '../_lib/crypto.js';
 import { DORMANT_AFTER_DAYS, DORMANCY_WARNING_DAYS, dormantFrom, linkHost, lookupUrl } from '../_lib/validate.js';
@@ -45,8 +45,8 @@ const LISTED_REASONS = {
 async function recheckAddresses() {
   if (!safeBrowsingConfigured() && domainBlocklists().length === 0) return null;
   const [{ data: links, error }, { data: pages, error: pageError }] = await Promise.all([
-    db().from(T.links).select('id, page_id, url').is('removed_at', null).limit(5000),
-    db().from(T.pages).select('id, slug, redirect_url').not('redirect_url', 'is', null).limit(5000),
+    database().from(TABLES.links).select('id, page_id, url').is('removed_at', null).limit(5000),
+    database().from(TABLES.pages).select('id, slug, redirect_url').not('redirect_url', 'is', null).limit(5000),
   ]);
   if (error || pageError) throw error || pageError;
   const flagged = await unsafeUrls([...(links ?? []).map((l) => l.url), ...(pages ?? []).map((p) => p.redirect_url)].map(lookupUrl));
@@ -61,8 +61,8 @@ async function recheckAddresses() {
   for (const link of links ?? []) {
     const reason = await verdict(link.url);
     if (!reason) continue;
-    const { error: removeError } = await db()
-      .from(T.links)
+    const { error: removeError } = await database()
+      .from(TABLES.links)
       .update({ removed_at: new Date().toISOString(), removed_reason: reason, removed_by: null })
       .eq('id', link.id);
     if (removeError) throw removeError;
@@ -72,7 +72,7 @@ async function recheckAddresses() {
   for (const page of pages ?? []) {
     const reason = await verdict(page.redirect_url);
     if (!reason) continue;
-    const { error: clearError } = await db().from(T.pages).update({ redirect_url: null }).eq('id', page.id);
+    const { error: clearError } = await database().from(TABLES.pages).update({ redirect_url: null }).eq('id', page.id);
     if (clearError) throw clearError;
     await audit(null, { action: 'mod.redirect_removed', actorType: 'system', pageId: page.id, details: { slug: page.slug, url: page.redirect_url, reason } });
     removed += 1;
@@ -85,8 +85,8 @@ async function recheckAddresses() {
 // while that report is open.
 async function reportAddressesInText() {
   const [{ data: pages, error }, { data: titles, error: titleError }] = await Promise.all([
-    db().from(T.pages).select('id, display_name, bio').eq('status', 'active').limit(5000),
-    db().from(T.links).select('page_id, title').is('removed_at', null).limit(5000),
+    database().from(TABLES.pages).select('id, display_name, bio').eq('status', 'active').limit(5000),
+    database().from(TABLES.links).select('page_id, title').is('removed_at', null).limit(5000),
   ]);
   if (error || titleError) throw error || titleError;
   const titlesByPage = new Map();
@@ -96,10 +96,10 @@ async function reportAddressesInText() {
     const refused = await addressRefusedInText(page.display_name, page.bio, ...(titlesByPage.get(page.id) ?? []));
     if (!refused) continue;
     const details = `Automatic: the page's text mentions ${refused.host} (${refused.error}).`;
-    const { data: open, error: openError } = await db().from(T.reports).select('id').eq('page_id', page.id).eq('status', 'open').eq('details', details).limit(1);
+    const { data: open, error: openError } = await database().from(TABLES.reports).select('id').eq('page_id', page.id).eq('status', 'open').eq('details', details).limit(1);
     if (openError) throw openError;
     if ((open ?? []).length > 0) continue;
-    const { error: insertError } = await db().from(T.reports).insert({ page_id: page.id, reason: 'scam', details });
+    const { error: insertError } = await database().from(TABLES.reports).insert({ page_id: page.id, reason: 'scam', details });
     if (insertError) throw insertError;
     reported += 1;
   }
@@ -112,8 +112,8 @@ async function remindDormant() {
   if (!telegramConfigured()) return 0;
   const cutoff = new Date(Date.now() - (DORMANT_AFTER_DAYS - DORMANCY_WARNING_DAYS) * 86400_000).toISOString();
   const alreadyDormant = new Date(Date.now() - DORMANT_AFTER_DAYS * 86400_000).toISOString();
-  const { data, error } = await db()
-    .from(T.pages)
+  const { data, error } = await database()
+    .from(TABLES.pages)
     .select('id, slug, telegram_chat_id, last_sign_in_at')
     .eq('status', 'active')
     .is('dormancy_warned_at', null)
@@ -124,7 +124,7 @@ async function remindDormant() {
   if (error) throw error;
   let sent = 0;
   for (const page of data ?? []) {
-    const { error: markError } = await db().from(T.pages).update({ dormancy_warned_at: new Date().toISOString() }).eq('id', page.id);
+    const { error: markError } = await database().from(TABLES.pages).update({ dormancy_warned_at: new Date().toISOString() }).eq('id', page.id);
     if (markError) throw markError;
     const date = dormantFrom(page.last_sign_in_at).slice(0, 10);
     try {
@@ -137,24 +137,24 @@ async function remindDormant() {
   return sent;
 }
 
-export default route('cron/cleanup', async (req, res) => {
+export default route('cron/cleanup', async (request, response) => {
   const secret = optionalEnv('CRON_SECRET');
-  const given = String(req.headers.authorization || '');
-  if (!secret || !safeEqual(given, `Bearer ${secret}`)) return send(res, 401, { ok: false });
+  const given = String(request.headers.authorization || '');
+  if (!secret || !safeEqual(given, `Bearer ${secret}`)) return send(response, 401, { ok: false });
 
   const now = new Date().toISOString();
   const dayAgo = new Date(Date.now() - 86400_000).toISOString();
   const visitorCutoff = new Date(Date.now() - VISITOR_HASH_DAYS * 86400_000).toISOString();
 
   const jobs = {
-    sessions: db().from(T.sessions).delete().lt('expires_at', now).select('id'),
-    staffSessions: db().from(T.staffSessions).delete().lt('expires_at', now).select('id'),
-    challenges: db().from(T.challenges).delete().lt('expires_at', now).select('id'),
-    webauthn: db().from(T.webauthn).delete().lt('expires_at', now).select('id'),
-    telegramLinks: db().from(T.telegramLinks).delete().lt('expires_at', dayAgo).select('id'),
-    rateLimits: db().from('gftvonelink_rate_limits').delete().lt('window_start', dayAgo).select('bucket'),
-    abandonedPages: db().from(T.pages).delete().eq('status', 'pending').lt('created_at', dayAgo).select('id'),
-    visitorHashes: db().from(T.audit).update({ visitor_hash: null }).not('visitor_hash', 'is', null).lt('created_at', visitorCutoff).select('id'),
+    sessions: database().from(TABLES.sessions).delete().lt('expires_at', now).select('id'),
+    staffSessions: database().from(TABLES.staffSessions).delete().lt('expires_at', now).select('id'),
+    challenges: database().from(TABLES.challenges).delete().lt('expires_at', now).select('id'),
+    webauthn: database().from(TABLES.webauthn).delete().lt('expires_at', now).select('id'),
+    telegramLinks: database().from(TABLES.telegramLinks).delete().lt('expires_at', dayAgo).select('id'),
+    rateLimits: database().from('gftvonelink_rate_limits').delete().lt('window_start', dayAgo).select('bucket'),
+    abandonedPages: database().from(TABLES.pages).delete().eq('status', 'pending').lt('created_at', dayAgo).select('id'),
+    visitorHashes: database().from(TABLES.audit).update({ visitor_hash: null }).not('visitor_hash', 'is', null).lt('created_at', visitorCutoff).select('id'),
   };
 
   const removed = {};
@@ -189,5 +189,5 @@ export default route('cron/cleanup', async (req, res) => {
   } catch (cause) {
     console.error('[onelink] cleanup text addresses:', cause?.message ?? cause);
   }
-  send(res, 200, { ok: true, removed, reminded, blocklist, unsafe, textReports });
+  send(response, 200, { ok: true, removed, reminded, blocklist, unsafe, textReports });
 });

@@ -1,7 +1,7 @@
 // Loading a page the way a visitor sees it. Shared by the JSON route and the
 // server-rendered /<slug> route.
 
-import { db, T } from './supabase.js';
+import { database, TABLES } from './supabase.js';
 import { normaliseSlug, isDormant } from './validate.js';
 import { blockLists } from './guards.js';
 import { publicPage } from './serialize.js';
@@ -17,8 +17,8 @@ export async function loadPublicPage(slugInput) {
   const slug = normaliseSlug(slugInput);
   if (!/^[a-z0-9-]{2,32}$/.test(slug)) return { state: 'missing' };
 
-  const { data: page, error } = await db()
-    .from(T.pages)
+  const { data: page, error } = await database()
+    .from(TABLES.pages)
     .select('id, slug, display_name, bio, avatar_path, status, redirect_url, last_sign_in_at, needs_review, reviewed_at, quarantined_at, team_verified_at, team_role')
     .eq('slug', slug)
     .maybeSingle();
@@ -34,8 +34,8 @@ export async function loadPublicPage(slugInput) {
   if (isDormant(page.last_sign_in_at)) return { state: 'dormant', slug: page.slug };
 
   const [{ data: links, error: linkError }, blocked] = await Promise.all([
-    db()
-      .from(T.links)
+    database()
+      .from(TABLES.links)
       .select('id, title, url, icon, order_index, is_active, removed_at')
       .eq('page_id', page.id)
       .eq('is_active', true)

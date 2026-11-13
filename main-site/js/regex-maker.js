@@ -6,10 +6,10 @@
 // What it writes stays inside what the server accepts (validate.js
 // checkPattern): no repeated group that itself repeats, so it is never slow.
 
-import { t, onChange } from '../assets/i18n/i18n.js';
+import { t as translate, onChange } from '../assets/i18n/i18n.js';
 import { openModal, closeModal } from './ui.js';
 
-const $ = (id) => document.getElementById(id);
+const byId = (id) => document.getElementById(id);
 
 // Characters people swap in to dodge a filter: g0vt, ad.min, gf7v.
 const LOOK_ALIKES = {
@@ -40,42 +40,42 @@ let wired = false;
 
 function update() {
   const pattern = buildPattern({
-    mode: $('regexMode').value,
-    terms: $('regexTerms').value,
-    lookalike: $('regexLookalike').checked,
-    spaced: $('regexSpaced').checked,
+    mode: byId('regexMode').value,
+    terms: byId('regexTerms').value,
+    lookalike: byId('regexLookalike').checked,
+    spaced: byId('regexSpaced').checked,
   });
-  $('regexOut').textContent = pattern || t('regex.empty');
-  const sample = $('regexTry').value;
-  const result = $('regexTryResult');
+  byId('regexOut').textContent = pattern || translate('regex.empty');
+  const sample = byId('regexTry').value;
+  const result = byId('regexTryResult');
   result.classList.remove('ok', 'bad');
   if (!pattern || !sample) {
     result.textContent = '';
     return pattern;
   }
   const hit = new RegExp(pattern, 'i').test(sample);
-  result.textContent = t(hit ? 'regex.matches' : 'regex.no-match');
+  result.textContent = translate(hit ? 'regex.matches' : 'regex.no-match');
   result.classList.add(hit ? 'bad' : 'ok');
   return pattern;
 }
 
 function wire() {
   for (const id of ['regexMode', 'regexTerms', 'regexLookalike', 'regexSpaced', 'regexTry']) {
-    $(id).addEventListener('input', update);
-    $(id).addEventListener('change', update);
+    byId(id).addEventListener('input', update);
+    byId(id).addEventListener('change', update);
   }
-  $('regexForm').addEventListener('submit', (e) => {
+  byId('regexForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const pattern = update();
     if (!pattern) {
-      $('regexError').textContent = t('regex.need-terms');
-      $('regexTerms').focus();
+      byId('regexError').textContent = translate('regex.need-terms');
+      byId('regexTerms').focus();
       return;
     }
     closeModal('regexModal');
     onUse?.(pattern);
   });
-  onChange(() => { if (!$('regexModal').classList.contains('hidden')) update(); });
+  onChange(() => { if (!byId('regexModal').classList.contains('hidden')) update(); });
 }
 
 // scope: "links" or "names", for the hint about what is matched.
@@ -85,8 +85,8 @@ export function openRegexMaker(scope, use) {
     wired = true;
   }
   onUse = use;
-  $('regexError').textContent = '';
-  $('regexScopeHint').textContent = t(scope === 'links' ? 'regex.hint-links' : 'regex.hint-names');
+  byId('regexError').textContent = '';
+  byId('regexScopeHint').textContent = translate(scope === 'links' ? 'regex.hint-links' : 'regex.hint-names');
   update();
-  openModal('regexModal', { initialFocus: $('regexTerms') });
+  openModal('regexModal', { initialFocus: byId('regexTerms') });
 }

@@ -10,14 +10,14 @@ import {
   generateAuthenticationOptions,
   verifyAuthenticationResponse,
 } from '@simplewebauthn/server';
-import { db, T } from './supabase.js';
+import { database, TABLES } from './supabase.js';
 import { siteUrl } from './env.js';
 
 const CHALLENGE_MINUTES = 5;
 
 const REALMS = Object.freeze({
-  owner: { table: T.passkeys, column: 'page_id', rpName: 'OneLink GFTV' },
-  staff: { table: T.staffPasskeys, column: 'staff_user_id', rpName: 'OneLink GFTV staff' },
+  owner: { table: TABLES.passkeys, column: 'page_id', rpName: 'OneLink GFTV' },
+  staff: { table: TABLES.staffPasskeys, column: 'staff_user_id', rpName: 'OneLink GFTV staff' },
 });
 
 function relyingParty() {
@@ -27,7 +27,7 @@ function relyingParty() {
 
 export async function listPasskeys(realm, subjectId) {
   const { table, column } = REALMS[realm];
-  const { data, error } = await db()
+  const { data, error } = await database()
     .from(table)
     .select('id, credential_id, transports, label, created_at, last_used_at')
     .eq(column, subjectId)
@@ -37,8 +37,8 @@ export async function listPasskeys(realm, subjectId) {
 }
 
 async function storeChallenge(realm, purpose, subjectId, challenge) {
-  await db().from(T.webauthn).delete().eq('realm', realm).eq('purpose', purpose).eq('subject_id', subjectId);
-  const { error } = await db().from(T.webauthn).insert({
+  await database().from(TABLES.webauthn).delete().eq('realm', realm).eq('purpose', purpose).eq('subject_id', subjectId);
+  const { error } = await database().from(TABLES.webauthn).insert({
     realm,
     purpose,
     subject_id: subjectId,
@@ -50,8 +50,8 @@ async function storeChallenge(realm, purpose, subjectId, challenge) {
 
 // Single use: the row is deleted whether or not it is still valid.
 async function takeChallenge(realm, purpose, subjectId) {
-  const { data, error } = await db()
-    .from(T.webauthn)
+  const { data, error } = await database()
+    .from(TABLES.webauthn)
     .select('id, challenge, expires_at')
     .eq('realm', realm)
     .eq('purpose', purpose)
@@ -59,7 +59,7 @@ async function takeChallenge(realm, purpose, subjectId) {
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  await db().from(T.webauthn).delete().eq('id', data.id);
+  await database().from(TABLES.webauthn).delete().eq('id', data.id);
   return new Date(data.expires_at).getTime() > Date.now() ? data.challenge : null;
 }
 
@@ -103,7 +103,7 @@ export async function finishRegistration(realm, { subjectId, response, label }) 
 
   const { credential } = verification.registrationInfo;
   const { table, column } = REALMS[realm];
-  const { data, error } = await db()
+  const { data, error } = await database()
     .from(table)
     .insert({
       [column]: subjectId,
@@ -143,7 +143,7 @@ export async function finishAuthentication(realm, subjectId, response) {
 
   const credentialId = typeof response?.id === 'string' ? response.id : '';
   const { table, column } = REALMS[realm];
-  const { data: row, error } = await db()
+  const { data: row, error } = await database()
     .from(table)
     .select('id, credential_id, public_key, counter, transports')
     .eq(column, subjectId)
@@ -174,7 +174,7 @@ export async function finishAuthentication(realm, subjectId, response) {
   }
   if (!verification.verified) return false;
 
-  await db()
+  await database()
     .from(table)
     .update({ counter: verification.authenticationInfo.newCounter, last_used_at: new Date().toISOString() })
     .eq('id', row.id);
@@ -183,14 +183,14 @@ export async function finishAuthentication(realm, subjectId, response) {
 
 export async function removePasskey(realm, subjectId, passkeyId) {
   const { table, column } = REALMS[realm];
-  const { data, error } = await db().from(table).delete().eq(column, subjectId).eq('id', passkeyId).select('id');
+  const { data, error } = await database().from(table).delete().eq(column, subjectId).eq('id', passkeyId).select('id');
   if (error) throw error;
   return (data ?? []).length > 0;
 }
 
 export async function countPasskeys(realm, subjectId) {
   const { table, column } = REALMS[realm];
-  const { count, error } = await db().from(table).select('id', { count: 'exact', head: true }).eq(column, subjectId);
+  const { count, error } = await database().from(table).select('id', { count: 'exact', head: true }).eq(column, subjectId);
   if (error) throw error;
   return count ?? 0;
 }

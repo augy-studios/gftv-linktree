@@ -8,7 +8,7 @@
 // Before 016 is run nothing is held, and renaming answers
 // rename_unavailable, because neither the hold nor the cooldown could be kept.
 
-import { db, T } from './supabase.js';
+import { database, TABLES } from './supabase.js';
 import { missingSchema } from './link-cap.js';
 
 export const SLUG_HOLD_DAYS = 30;
@@ -19,8 +19,8 @@ const daysAgo = (days) => new Date(Date.now() - days * 86400_000).toISOString();
 // The id of the page holding this old name, or null. A name the page holding
 // it has taken back counts as that page's name, not as held.
 export async function slugHeldBy(slug) {
-  const { data, error } = await db()
-    .from(T.slugChanges)
+  const { data, error } = await database()
+    .from(TABLES.slugChanges)
     .select('page_id, created_at')
     .eq('old_slug', slug)
     .gte('created_at', daysAgo(SLUG_HOLD_DAYS))
@@ -38,7 +38,7 @@ export async function slugHeldBy(slug) {
 export async function slugMovedTo(slug) {
   const pageId = await slugHeldBy(slug);
   if (!pageId) return null;
-  const { data, error } = await db().from(T.pages).select('slug, status').eq('id', pageId).maybeSingle();
+  const { data, error } = await database().from(TABLES.pages).select('slug, status').eq('id', pageId).maybeSingle();
   if (error) throw error;
   if (!data || data.status === 'pending' || data.slug === slug) return null;
   return data.slug;
@@ -47,8 +47,8 @@ export async function slugMovedTo(slug) {
 // The page's latest rename, as { oldSlug, newSlug, at }, or null. Throws
 // { code: 'rename_unavailable' } before migration 016 is run.
 export async function lastRename(pageId) {
-  const { data, error } = await db()
-    .from(T.slugChanges)
+  const { data, error } = await database()
+    .from(TABLES.slugChanges)
     .select('old_slug, new_slug, created_at')
     .eq('page_id', pageId)
     .order('created_at', { ascending: false })
@@ -69,8 +69,8 @@ export function nextRenameAt(last) {
 }
 
 export async function recordRename({ pageId, oldSlug, newSlug, neededReview }) {
-  const { error } = await db()
-    .from(T.slugChanges)
+  const { error } = await database()
+    .from(TABLES.slugChanges)
     .insert({ page_id: pageId, old_slug: oldSlug, new_slug: newSlug, needed_review: neededReview });
   if (error) throw error;
 }
@@ -80,8 +80,8 @@ export async function recordRename({ pageId, oldSlug, newSlug, neededReview }) {
 export async function previousSlugs(pageIds) {
   const result = new Map();
   if (pageIds.length === 0) return result;
-  const { data, error } = await db()
-    .from(T.slugChanges)
+  const { data, error } = await database()
+    .from(TABLES.slugChanges)
     .select('page_id, old_slug, created_at')
     .in('page_id', pageIds)
     .order('created_at', { ascending: false });

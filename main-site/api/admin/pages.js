@@ -32,7 +32,7 @@
 // POST { action: "unverify", id }                admin only
 
 import { route, guard, readJson, ok, fail, query } from '../_lib/http.js';
-import { db, T } from '../_lib/supabase.js';
+import { database, TABLES } from '../_lib/supabase.js';
 import { cleanText, isUuid, normaliseSlug, LIMITS, DORMANT_AFTER_DAYS } from '../_lib/validate.js';
 import { limited, audit, resetRefusedLinks } from '../_lib/guards.js';
 import { requireStaff } from '../_lib/staff.js';
@@ -45,26 +45,26 @@ import { previousSlugs } from '../_lib/slug-changes.js';
 
 const PAGE_COLUMNS = 'id, slug, display_name, bio, avatar_path, status, ban_reason, banned_at, created_at, activated_at, telegram_chat_id, redirect_url, last_sign_in_at, needs_review, reviewed_at, quarantined_at, quarantine_reason, team_verified_at, team_role';
 
-export default route('admin/pages', async (req, res) => {
-  if (guard(req, res, ['GET', 'POST'])) return;
+export default route('admin/pages', async (request, response) => {
+  if (guard(request, response, ['GET', 'POST'])) return;
 
-  if (req.method === 'GET') {
-    const staff = await requireStaff(req, res);
+  if (request.method === 'GET') {
+    const staff = await requireStaff(request, response);
     if (!staff) return;
 
-    const id = query(req, 'id');
+    const id = query(request, 'id');
     if (id) {
-      if (!isUuid(id)) return fail(res, 400, 'bad_request');
+      if (!isUuid(id)) return fail(response, 400, 'bad_request');
       const [{ data: page, error }, { data: links, error: linkError }, { data: reports, error: reportError }, cap, renames] = await Promise.all([
-        db().from(T.pages).select(PAGE_COLUMNS).eq('id', id).maybeSingle(),
-        db().from(T.links).select('id, page_id, title, url, icon, is_active, click_count, removed_at, removed_reason, created_at, order_index').eq('page_id', id).order('order_index'),
-        db().from(T.reports).select('id, page_id, reason, details, status, resolution_note, resolved_at, created_at, link:gftvonelink_links ( id, title, url, removed_at )').eq('page_id', id).order('created_at', { ascending: false }).limit(50),
+        database().from(TABLES.pages).select(PAGE_COLUMNS).eq('id', id).maybeSingle(),
+        database().from(TABLES.links).select('id, page_id, title, url, icon, is_active, click_count, removed_at, removed_reason, created_at, order_index').eq('page_id', id).order('order_index'),
+        database().from(TABLES.reports).select('id, page_id, reason, details, status, resolution_note, resolved_at, created_at, link:gftvonelink_links ( id, title, url, removed_at )').eq('page_id', id).order('created_at', { ascending: false }).limit(50),
         linkCapFor(id),
         previousSlugs([id]),
       ]);
       if (error || linkError || reportError) throw error || linkError || reportError;
-      if (!page) return fail(res, 404, 'page_not_found');
-      return ok(res, {
+      if (!page) return fail(response, 404, 'page_not_found');
+      return ok(response, {
         page: adminPageRow(page, { renamedFrom: renames.get(page.id) ?? null }),
         links: (links ?? []).map(adminLinkRow),
         reports: (reports ?? []).map(adminReportRow),
@@ -74,11 +74,11 @@ export default route('admin/pages', async (req, res) => {
       });
     }
 
-    const offset = offsetOf(req);
-    const term = searchTerm(req);
-    const status = query(req, 'status');
-    let q = db()
-      .from(T.pages)
+    const offset = offsetOf(request);
+    const term = searchTerm(request);
+    const status = query(request, 'status');
+    let q = database()
+      .from(TABLES.pages)
       .select(`${PAGE_COLUMNS}, links:gftvonelink_links ( count ), reports:gftvonelink_reports ( count )`, { count: 'exact' })
       // The team list reads like a directory, by name; the rest newest first.
       .order(status === 'team' ? 'slug' : 'created_at', { ascending: status === 'team' })
@@ -95,7 +95,7 @@ export default route('admin/pages', async (req, res) => {
     const { data, error, count } = await q;
     if (error) throw error;
     const renames = await previousSlugs((data ?? []).map((p) => p.id));
-    return ok(res, {
+    return ok(response, {
       total: count ?? 0,
       offset,
       pageSize: PAGE_SIZE,
@@ -105,30 +105,30 @@ export default route('admin/pages', async (req, res) => {
     });
   }
 
-  const body = await readJson(req, res);
+  const body = await readJson(request, response);
   if (!body) return;
   // Taking a page down is for admins; removing a picture, like removing a
   // link, and approving a name are moderation any editor can do.
-  const staff = await requireStaff(req, res, { admin: !['remove-avatar', 'approve', 'release'].includes(body.action) });
+  const staff = await requireStaff(request, response, { admin: !['remove-avatar', 'approve', 'release'].includes(body.action) });
   if (!staff) return;
-  if (await limited(req, res, 'staffWrite', [`staff:${staff.user.id}`])) return;
+  if (await limited(request, response, 'staffWrite', [`staff:${staff.user.id}`])) return;
   const bySlug = body.action === 'verify' && body.id === undefined && typeof body.slug === 'string';
-  if (!bySlug && !isUuid(body.id)) return fail(res, 400, 'bad_request');
+  if (!bySlug && !isUuid(body.id)) return fail(response, 400, 'bad_request');
 
   const columns = 'id, slug, status, activated_at, avatar_path, needs_review, reviewed_at, quarantined_at, team_verified_at, team_role';
-  const lookup = db().from(T.pages).select(columns);
+  const lookup = database().from(TABLES.pages).select(columns);
   const { data: page, error } = await (bySlug ? lookup.eq('slug', normaliseSlug(body.slug)) : lookup.eq('id', body.id)).maybeSingle();
   if (error) throw error;
-  if (!page) return fail(res, 404, 'page_not_found');
-  if (bySlug && page.team_verified_at) return fail(res, 409, 'already_verified');
+  if (!page) return fail(response, 404, 'page_not_found');
+  if (bySlug && page.team_verified_at) return fail(response, 409, 'already_verified');
 
   if (body.action === 'ban') {
     const reason = cleanText(body.reason, LIMITS.reason, { multiline: true });
-    if (!reason) return fail(res, 400, 'reason_required');
+    if (!reason) return fail(response, 400, 'reason_required');
     // The audit row goes in first, so the log never misses an action that ran.
-    await audit(req, { action: 'mod.page_banned', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug, reason } });
-    const { error: updateError } = await db()
-      .from(T.pages)
+    await audit(request, { action: 'mod.page_banned', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug, reason } });
+    const { error: updateError } = await database()
+      .from(TABLES.pages)
       // A page taken down loses its team mark, so restoring it later does
       // not quietly vouch for whoever has it then.
       .update({ status: 'banned', ban_reason: reason, banned_at: new Date().toISOString(), banned_by: staff.user.id, team_verified_at: null, team_verified_by: null, team_role: null })
@@ -136,67 +136,67 @@ export default route('admin/pages', async (req, res) => {
     if (updateError) throw updateError;
     await endAllOwnerSessions(page.id);
   } else if (body.action === 'unban') {
-    if (page.status !== 'banned') return fail(res, 409, 'not_banned');
-    await audit(req, { action: 'mod.page_unbanned', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug } });
-    const { error: updateError } = await db()
-      .from(T.pages)
+    if (page.status !== 'banned') return fail(response, 409, 'not_banned');
+    await audit(request, { action: 'mod.page_unbanned', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug } });
+    const { error: updateError } = await database()
+      .from(TABLES.pages)
       .update({ status: page.activated_at ? 'active' : 'pending', ban_reason: null, banned_at: null, banned_by: null })
       .eq('id', page.id);
     if (updateError) throw updateError;
   } else if (body.action === 'delete') {
     const reason = cleanText(body.reason, LIMITS.reason, { multiline: true });
-    if (!reason) return fail(res, 400, 'reason_required');
-    if (String(body.confirmSlug ?? '').trim().toLowerCase() !== page.slug) return fail(res, 400, 'confirm_slug');
+    if (!reason) return fail(response, 400, 'reason_required');
+    if (String(body.confirmSlug ?? '').trim().toLowerCase() !== page.slug) return fail(response, 400, 'confirm_slug');
     // Written before the delete, with the slug in the details, since the page
     // row is about to go. Its links, passkeys, sessions, codes and reports go
     // with it (on delete cascade).
-    await audit(req, { action: 'mod.page_deleted', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug, reason } });
-    const { error: deleteError } = await db().from(T.pages).delete().eq('id', page.id);
+    await audit(request, { action: 'mod.page_deleted', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug, reason } });
+    const { error: deleteError } = await database().from(TABLES.pages).delete().eq('id', page.id);
     if (deleteError) throw deleteError;
     await deleteAvatarFile(page.avatar_path);
-    return ok(res, { deleted: true, slug: page.slug });
+    return ok(response, { deleted: true, slug: page.slug });
   } else if (body.action === 'approve') {
-    if (!page.needs_review || page.reviewed_at) return fail(res, 409, 'not_in_review');
-    await audit(req, { action: 'mod.page_approved', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug } });
-    const { error: updateError } = await db()
-      .from(T.pages)
+    if (!page.needs_review || page.reviewed_at) return fail(response, 409, 'not_in_review');
+    await audit(request, { action: 'mod.page_approved', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug } });
+    const { error: updateError } = await database()
+      .from(TABLES.pages)
       .update({ reviewed_at: new Date().toISOString(), reviewed_by: staff.user.id })
       .eq('id', page.id);
     if (updateError) throw updateError;
   } else if (body.action === 'release') {
-    if (!page.quarantined_at) return fail(res, 409, 'not_quarantined');
-    await audit(req, { action: 'mod.page_released', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug } });
-    const { error: updateError } = await db().from(T.pages).update({ quarantined_at: null, quarantine_reason: null }).eq('id', page.id);
+    if (!page.quarantined_at) return fail(response, 409, 'not_quarantined');
+    await audit(request, { action: 'mod.page_released', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug } });
+    const { error: updateError } = await database().from(TABLES.pages).update({ quarantined_at: null, quarantine_reason: null }).eq('id', page.id);
     if (updateError) throw updateError;
     await resetRefusedLinks(page.id);
   } else if (body.action === 'verify') {
-    if (page.status !== 'active') return fail(res, 409, 'not_active');
+    if (page.status !== 'active') return fail(response, 409, 'not_active');
     const role = cleanText(body.role, LIMITS.teamRole) || null;
-    await audit(req, { action: page.team_verified_at ? 'mod.team_role_changed' : 'mod.team_verified', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug, role } });
-    const { error: updateError } = await db()
-      .from(T.pages)
+    await audit(request, { action: page.team_verified_at ? 'mod.team_role_changed' : 'mod.team_verified', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug, role } });
+    const { error: updateError } = await database()
+      .from(TABLES.pages)
       // The first verification's date is kept when only the role changes.
       .update({ team_verified_at: page.team_verified_at || new Date().toISOString(), team_verified_by: staff.user.id, team_role: role })
       .eq('id', page.id);
     if (updateError) throw updateError;
   } else if (body.action === 'unverify') {
-    if (!page.team_verified_at) return fail(res, 409, 'not_verified');
-    await audit(req, { action: 'mod.team_unverified', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug, role: page.team_role || null } });
-    const { error: updateError } = await db().from(T.pages).update({ team_verified_at: null, team_verified_by: null, team_role: null }).eq('id', page.id);
+    if (!page.team_verified_at) return fail(response, 409, 'not_verified');
+    await audit(request, { action: 'mod.team_unverified', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug, role: page.team_role || null } });
+    const { error: updateError } = await database().from(TABLES.pages).update({ team_verified_at: null, team_verified_by: null, team_role: null }).eq('id', page.id);
     if (updateError) throw updateError;
   } else if (body.action === 'remove-avatar') {
-    if (!page.avatar_path) return fail(res, 409, 'no_avatar');
+    if (!page.avatar_path) return fail(response, 409, 'no_avatar');
     const reason = cleanText(body.reason, LIMITS.reason, { multiline: true });
-    if (!reason) return fail(res, 400, 'reason_required');
-    await audit(req, { action: 'mod.avatar_removed', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug, reason } });
-    const { error: updateError } = await db().from(T.pages).update({ avatar_path: null }).eq('id', page.id);
+    if (!reason) return fail(response, 400, 'reason_required');
+    await audit(request, { action: 'mod.avatar_removed', actorType: 'staff', actorId: staff.user.id, pageId: page.id, details: { slug: page.slug, reason } });
+    const { error: updateError } = await database().from(TABLES.pages).update({ avatar_path: null }).eq('id', page.id);
     if (updateError) throw updateError;
     await deleteAvatarFile(page.avatar_path);
   } else {
-    return fail(res, 400, 'bad_request');
+    return fail(response, 400, 'bad_request');
   }
 
-  const { data: fresh, error: freshError } = await db().from(T.pages).select(PAGE_COLUMNS).eq('id', page.id).single();
+  const { data: fresh, error: freshError } = await database().from(TABLES.pages).select(PAGE_COLUMNS).eq('id', page.id).single();
   if (freshError) throw freshError;
-  ok(res, { page: adminPageRow(fresh) });
+  ok(response, { page: adminPageRow(fresh) });
 });

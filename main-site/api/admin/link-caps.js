@@ -21,7 +21,7 @@
 // failed send never fails the review.
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
-import { db, T } from '../_lib/supabase.js';
+import { database, TABLES } from '../_lib/supabase.js';
 import { cleanText, isUuid, LIMITS, MAX_LINKS } from '../_lib/validate.js';
 import { limited, audit } from '../_lib/guards.js';
 import { requireStaff } from '../_lib/staff.js';
@@ -36,7 +36,7 @@ const CUSTOM_LIMIT = 200;
 async function usedByPage(pageIds) {
   const used = new Map(pageIds.map((id) => [id, 0]));
   if (pageIds.length === 0) return used;
-  const { data, error } = await db().from(T.links).select('page_id, removed_at').in('page_id', pageIds);
+  const { data, error } = await database().from(TABLES.links).select('page_id, removed_at').in('page_id', pageIds);
   if (error) throw error;
   for (const l of data ?? []) if (!l.removed_at) used.set(l.page_id, (used.get(l.page_id) ?? 0) + 1);
   return used;
@@ -56,13 +56,13 @@ async function tellOwner(request, outcome, granted, note) {
 async function overview(isAdmin) {
   const [defaultCap, { data: pending, error }, { data: custom, error: customError }] = await Promise.all([
     defaultLinkCap(),
-    db()
-      .from(T.linkCapRequests)
-      .select(`${REQUEST_COLUMNS}, page:${T.pages} ( id, slug, display_name, links_cap )`)
+    database()
+      .from(TABLES.linkCapRequests)
+      .select(`${REQUEST_COLUMNS}, page:${TABLES.pages} ( id, slug, display_name, links_cap )`)
       .eq('status', 'pending')
       .order('created_at'),
     isAdmin
-      ? db().from(T.pages).select('id, slug, display_name, links_cap').not('links_cap', 'is', null).order('slug').limit(CUSTOM_LIMIT)
+      ? database().from(TABLES.pages).select('id, slug, display_name, links_cap').not('links_cap', 'is', null).order('slug').limit(CUSTOM_LIMIT)
       : { data: null, error: null },
   ]);
   if (error || customError) throw error || customError;
@@ -76,73 +76,73 @@ async function overview(isAdmin) {
   return answer;
 }
 
-export default route('admin/link-caps', async (req, res) => {
-  if (guard(req, res, ['GET', 'POST'])) return;
+export default route('admin/link-caps', async (request, response) => {
+  if (guard(request, response, ['GET', 'POST'])) return;
   // Any staff member reviews requests; the default and per-page limits are
   // for admins.
-  const staff = await requireStaff(req, res);
+  const staff = await requireStaff(request, response);
   if (!staff) return;
   const isAdmin = staff.user.is_admin === true;
-  const answer = async () => ok(res, await overview(isAdmin));
-  if (req.method === 'GET') return answer();
+  const answer = async () => ok(response, await overview(isAdmin));
+  if (request.method === 'GET') return answer();
 
-  const body = await readJson(req, res);
+  const body = await readJson(request, response);
   if (!body) return;
-  if (await limited(req, res, 'staffWrite', [`staff:${staff.user.id}`])) return;
+  if (await limited(request, response, 'staffWrite', [`staff:${staff.user.id}`])) return;
   const actor = { actorType: 'staff', actorId: staff.user.id };
-  if ((body.action === 'set-default' || body.action === 'set-page') && !isAdmin) return fail(res, 403, 'admin_only');
+  if ((body.action === 'set-default' || body.action === 'set-page') && !isAdmin) return fail(response, 403, 'admin_only');
 
   if (body.action === 'set-default') {
     const cap = checkCap(body.cap);
-    if (cap === null) return fail(res, 400, 'cap_invalid', { max: MAX_LINKS });
+    if (cap === null) return fail(response, 400, 'cap_invalid', { max: MAX_LINKS });
     const from = await defaultLinkCap();
     await setDefaultLinkCap(cap, staff.user.id);
-    await audit(req, { action: 'mod.link_cap_default', ...actor, details: { from, to: cap } });
+    await audit(request, { action: 'mod.link_cap_default', ...actor, details: { from, to: cap } });
     return answer();
   }
 
-  if (!isUuid(body.id)) return fail(res, 400, 'bad_request');
+  if (!isUuid(body.id)) return fail(response, 400, 'bad_request');
 
   if (body.action === 'set-page') {
     const clearing = body.cap === null || body.cap === '';
     const cap = clearing ? null : checkCap(body.cap);
-    if (!clearing && cap === null) return fail(res, 400, 'cap_invalid', { max: MAX_LINKS });
-    const { data: page, error } = await db().from(T.pages).select('id, slug, links_cap').eq('id', body.id).maybeSingle();
+    if (!clearing && cap === null) return fail(response, 400, 'cap_invalid', { max: MAX_LINKS });
+    const { data: page, error } = await database().from(TABLES.pages).select('id, slug, links_cap').eq('id', body.id).maybeSingle();
     if (error) throw error;
-    if (!page) return fail(res, 404, 'page_not_found');
-    const { error: updateError } = await db().from(T.pages).update({ links_cap: cap }).eq('id', page.id);
+    if (!page) return fail(response, 404, 'page_not_found');
+    const { error: updateError } = await database().from(TABLES.pages).update({ links_cap: cap }).eq('id', page.id);
     if (updateError) throw updateError;
-    await audit(req, { action: 'mod.link_cap_page', ...actor, pageId: page.id, details: { slug: page.slug, from: page.links_cap ?? null, to: cap } });
+    await audit(request, { action: 'mod.link_cap_page', ...actor, pageId: page.id, details: { slug: page.slug, from: page.links_cap ?? null, to: cap } });
     return answer();
   }
 
   if (body.action === 'approve' || body.action === 'decline') {
-    const { data: request, error } = await db()
-      .from(T.linkCapRequests)
-      .select(`id, page_id, requested_cap, status, page:${T.pages} ( slug, telegram_chat_id )`)
+    const { data: capRequest, error } = await database()
+      .from(TABLES.linkCapRequests)
+      .select(`id, page_id, requested_cap, status, page:${TABLES.pages} ( slug, telegram_chat_id )`)
       .eq('id', body.id)
       .maybeSingle();
     if (error) throw error;
-    if (!request) return fail(res, 404, 'cap_request_not_found');
-    if (request.status !== 'pending') return fail(res, 409, 'cap_request_closed');
+    if (!capRequest) return fail(response, 404, 'cap_request_not_found');
+    if (capRequest.status !== 'pending') return fail(response, 409, 'cap_request_closed');
     const note = cleanText(body.note, LIMITS.reason, { multiline: true }) || null;
     const approving = body.action === 'approve';
     const noNumber = body.cap === undefined || body.cap === null || body.cap === '';
     // The range a number has to fall in: above the page's limit now, and up
     // to what was asked (editors) or the ceiling (admins) when approving,
     // below what was asked when declining with a compromise.
-    const { limit } = await linkCapFor(request.page_id);
+    const { limit } = await linkCapFor(capRequest.page_id);
     const min = limit + 1;
-    const max = approving ? (isAdmin ? MAX_LINKS : request.requested_cap) : request.requested_cap - 1;
+    const max = approving ? (isAdmin ? MAX_LINKS : capRequest.requested_cap) : capRequest.requested_cap - 1;
     let granted = null;
     if (approving || !noNumber) {
-      granted = approving && noNumber ? request.requested_cap : checkCap(body.cap);
-      if (granted === null || granted < min || granted > max) return fail(res, 400, 'cap_grant_range', { min, max });
+      granted = approving && noNumber ? capRequest.requested_cap : checkCap(body.cap);
+      if (granted === null || granted < min || granted > max) return fail(response, 400, 'cap_grant_range', { min, max });
     }
     // Only a request still open changes, so two staff answering at once
     // cannot both act on it.
-    const { data: closed, error: closeError } = await db()
-      .from(T.linkCapRequests)
+    const { data: closed, error: closeError } = await database()
+      .from(TABLES.linkCapRequests)
       .update({
         status: approving ? 'approved' : 'declined',
         granted_cap: granted,
@@ -150,24 +150,24 @@ export default route('admin/link-caps', async (req, res) => {
         reviewed_by: staff.user.id,
         reviewed_at: new Date().toISOString(),
       })
-      .eq('id', request.id)
+      .eq('id', capRequest.id)
       .eq('status', 'pending')
       .select('id');
     if (closeError) throw closeError;
-    if (!closed || closed.length === 0) return fail(res, 409, 'cap_request_closed');
+    if (!closed || closed.length === 0) return fail(response, 409, 'cap_request_closed');
     if (granted !== null) {
-      const { error: pageError } = await db().from(T.pages).update({ links_cap: granted }).eq('id', request.page_id);
+      const { error: pageError } = await database().from(TABLES.pages).update({ links_cap: granted }).eq('id', capRequest.page_id);
       if (pageError) throw pageError;
     }
-    await audit(req, {
+    await audit(request, {
       action: approving ? 'mod.link_cap_approved' : 'mod.link_cap_declined',
       ...actor,
-      pageId: request.page_id,
-      details: { slug: request.page?.slug ?? null, requested: request.requested_cap, from: limit, granted },
+      pageId: capRequest.page_id,
+      details: { slug: capRequest.page?.slug ?? null, requested: capRequest.requested_cap, from: limit, granted },
     });
-    await tellOwner(request, approving ? 'approved' : granted !== null ? 'compromise' : 'declined', granted, note);
+    await tellOwner(capRequest, approving ? 'approved' : granted !== null ? 'compromise' : 'declined', granted, note);
     return answer();
   }
 
-  fail(res, 400, 'bad_request');
+  fail(response, 400, 'bad_request');
 });

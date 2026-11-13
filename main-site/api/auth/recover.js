@@ -23,7 +23,7 @@
 // later steps need its challenge, so the whole reset sits behind that check.
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
-import { db, T } from '../_lib/supabase.js';
+import { database, TABLES } from '../_lib/supabase.js';
 import { normaliseSlug, checkPassword } from '../_lib/validate.js';
 import { hashPassword, sha256 } from '../_lib/crypto.js';
 import { limited, audit } from '../_lib/guards.js';
@@ -40,63 +40,63 @@ import {
   endAllOwnerSessions,
 } from '../_lib/session.js';
 
-export default route('auth/recover', async (req, res) => {
-  if (guard(req, res, ['POST'])) return;
-  const body = await readJson(req, res);
+export default route('auth/recover', async (request, response) => {
+  if (guard(request, response, ['POST'])) return;
+  const body = await readJson(request, response);
   if (!body) return;
 
   if (body.action === 'start') {
     const slug = normaliseSlug(body.slug).slice(0, 40);
-    if (await limited(req, res, 'recover', [`slug:${sha256(slug)}`])) return;
-    if (await refusedForTurnstile(req, res, body, 'recover')) return;
-    const { data: page, error } = await db()
-      .from(T.pages)
+    if (await limited(request, response, 'recover', [`slug:${sha256(slug)}`])) return;
+    if (await refusedForTurnstile(request, response, body, 'recover')) return;
+    const { data: page, error } = await database()
+      .from(TABLES.pages)
       .select('id, status, telegram_chat_id')
       .eq('slug', slug)
       .maybeSingle();
     if (error) throw error;
-    if (!page || page.status !== 'active') return fail(res, 404, 'page_not_found');
-    if (!page.telegram_chat_id || !telegramConfigured()) return ok(res, { telegram: false });
+    if (!page || page.status !== 'active') return fail(response, 404, 'page_not_found');
+    if (!page.telegram_chat_id || !telegramConfigured()) return ok(response, { telegram: false });
     const challenge = await createChallenge({ realm: 'owner', purpose: 'recover', subjectId: page.id });
-    return ok(res, { telegram: true, challenge });
+    return ok(response, { telegram: true, challenge });
   }
 
   const challenge = await findChallenge(body.challenge, 'owner', 'recover');
-  if (!challenge) return fail(res, 401, 'challenge_expired');
-  const { data: page, error } = await db()
-    .from(T.pages)
+  if (!challenge) return fail(response, 401, 'challenge_expired');
+  const { data: page, error } = await database()
+    .from(TABLES.pages)
     .select('id, slug, status, totp_secret, telegram_chat_id')
     .eq('id', challenge.subject_id)
     .maybeSingle();
   if (error) throw error;
   if (!page || page.status !== 'active' || !page.telegram_chat_id) {
     await deleteChallenge(challenge);
-    return fail(res, 401, 'challenge_expired');
+    return fail(response, 401, 'challenge_expired');
   }
 
   if (body.action === 'send') {
-    if (await limited(req, res, 'telegramSend', [`page:${page.id}`])) return;
+    if (await limited(request, response, 'telegramSend', [`page:${page.id}`])) return;
     await sendTelegramCode(challenge, page, 'reset');
-    return ok(res, { sent: true });
+    return ok(response, { sent: true });
   }
 
   if (body.action === 'passkey-options') {
-    if (await limited(req, res, 'secondFactor', [`challenge:${challenge.id}`])) return;
+    if (await limited(request, response, 'secondFactor', [`challenge:${challenge.id}`])) return;
     if (!(await telegramCodeOk(challenge, body.telegramCode))) {
       await failChallengeAttempt(challenge);
-      await audit(req, { action: 'recover.failed', actorType: 'visitor', pageId: page.id });
-      return fail(res, 401, 'code_wrong');
+      await audit(request, { action: 'recover.failed', actorType: 'visitor', pageId: page.id });
+      return fail(response, 401, 'code_wrong');
     }
     const options = await authenticationOptions('owner', page.id);
-    if (!options) return fail(res, 400, 'no_passkeys');
-    return ok(res, { options });
+    if (!options) return fail(response, 400, 'no_passkeys');
+    return ok(response, { options });
   }
 
-  if (body.action !== 'finish') return fail(res, 400, 'bad_request');
-  if (await limited(req, res, 'secondFactor', [`challenge:${challenge.id}`])) return;
+  if (body.action !== 'finish') return fail(response, 400, 'bad_request');
+  if (await limited(request, response, 'secondFactor', [`challenge:${challenge.id}`])) return;
 
   const passwordCheck = checkPassword(body.newPassword);
-  if (!passwordCheck.ok) return fail(res, 400, passwordCheck.error);
+  if (!passwordCheck.ok) return fail(response, 400, passwordCheck.error);
 
   // Telegram first, so a wrong Telegram code never spends a backup code or a
   // passkey challenge.
@@ -109,22 +109,22 @@ export default route('auth/recover', async (req, res) => {
   }
   if (!passed) {
     await failChallengeAttempt(challenge);
-    await audit(req, { action: 'recover.failed', actorType: 'visitor', pageId: page.id });
-    return fail(res, 401, 'code_wrong');
+    await audit(request, { action: 'recover.failed', actorType: 'visitor', pageId: page.id });
+    return fail(response, 401, 'code_wrong');
   }
 
-  const { error: updateError } = await db()
-    .from(T.pages)
+  const { error: updateError } = await database()
+    .from(TABLES.pages)
     .update({ password_hash: await hashPassword(body.newPassword), password_changed_at: new Date().toISOString() })
     .eq('id', page.id);
   if (updateError) throw updateError;
 
   await deleteChallenge(challenge);
   await endAllOwnerSessions(page.id);
-  await createOwnerSession(res, page.id);
-  await audit(req, { action: 'recover.password_reset', actorType: 'owner', actorId: page.id, pageId: page.id, details: { factor: body.factor } });
+  await createOwnerSession(response, page.id);
+  await audit(request, { action: 'recover.password_reset', actorType: 'owner', actorId: page.id, pageId: page.id, details: { factor: body.factor } });
   sendTelegram(page.telegram_chat_id, `The password for links.gftv.asia/${page.slug} was just reset, and every other device was signed out.`).catch(
     (cause) => console.warn('[onelink] reset notice not sent:', cause?.message ?? cause)
   );
-  ok(res, { slug: page.slug });
+  ok(response, { slug: page.slug });
 });

@@ -35,7 +35,7 @@
 // commas (one domain, or *.domain, per line; # starts a comment), or "off".
 
 import { createHash } from 'node:crypto';
-import { db } from './supabase.js';
+import { database } from './supabase.js';
 import { optionalEnv } from './env.js';
 
 const HAGEZI = (name) => `https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/wildcard/${name}.txt`;
@@ -85,7 +85,7 @@ const signature = (lists) => lists.map((l) => `${l.category}:${l.url}`).join(','
 // ---------------------------------------------------------------------------
 
 async function readMeta() {
-  const { data, error } = await db().storage.from(LIST_BUCKET).download(META_FILE);
+  const { data, error } = await database().storage.from(LIST_BUCKET).download(META_FILE);
   if (error || !data) return null;
   try {
     return JSON.parse(await data.text());
@@ -139,7 +139,7 @@ export async function rebuildDomainBlocklist({ force = false } = {}) {
   const fresh = meta && meta.signature === signature(lists) && Date.now() - Date.parse(meta.builtAt) < refreshDays() * 86400_000;
   if (fresh && !force) return { built: false, meta };
 
-  const bucket = db().storage.from(LIST_BUCKET);
+  const bucket = database().storage.from(LIST_BUCKET);
   const categories = {};
   for (const category of CATEGORIES) {
     const urls = lists.filter((l) => l.category === category).map((l) => l.url);
@@ -176,7 +176,7 @@ async function load() {
   if (cache.indexes && cache.builtAt === meta.builtAt) return { indexes: cache.indexes, builtAt: meta.builtAt };
   const indexes = {};
   for (const category of Object.keys(meta.categories)) {
-    const { data, error } = await db().storage.from(LIST_BUCKET).download(indexFile(category));
+    const { data, error } = await database().storage.from(LIST_BUCKET).download(indexFile(category));
     if (error || !data) throw new Error(`index ${category}: ${error?.message ?? 'empty'}`);
     const buffer = await data.arrayBuffer();
     indexes[category] = new BigUint64Array(buffer, 0, Math.floor(buffer.byteLength / 8));

@@ -12,7 +12,7 @@
 // would write to the shared account.
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
-import { db, T } from '../_lib/supabase.js';
+import { database, TABLES } from '../_lib/supabase.js';
 import { verifyPassword, sha256, normaliseCode, safeEqual } from '../_lib/crypto.js';
 import { verifyTotp } from '../_lib/totp.js';
 import { limited, audit } from '../_lib/guards.js';
@@ -28,7 +28,7 @@ async function findStaffByIdentifier(identifier) {
   if (!value || value.length > 254 || /\s/.test(value)) return null;
   // Two exact lookups rather than one .or() filter built from user input.
   const column = value.includes('@') ? 'email' : 'username';
-  const { data, error } = await db().from(T.staffUsers).select(STAFF_AUTH_COLUMNS).eq(column, value).maybeSingle();
+  const { data, error } = await database().from(TABLES.staffUsers).select(STAFF_AUTH_COLUMNS).eq(column, value).maybeSingle();
   if (error) throw error;
   return data;
 }
@@ -38,7 +38,7 @@ async function findStaffByIdentifier(identifier) {
 // of the uppercased code with its hyphen removed (gftv-redirects-portal).
 // Both are accepted; the matching row is deleted, as every site does.
 async function spendStaffBackupCode(userId, typed) {
-  const { data, error } = await db().from(T.staffBackupCodes).select('id, code_hash').eq('user_id', userId);
+  const { data, error } = await database().from(TABLES.staffBackupCodes).select('id, code_hash').eq('user_id', userId);
   if (error) throw error;
   const lower = normaliseCode(typed);
   if (lower.length < 6) return false;
@@ -50,14 +50,14 @@ async function spendStaffBackupCode(userId, typed) {
     if (isMatch && !matched) matched = row;
   }
   if (!matched) return false;
-  const { data: spent, error: spendError } = await db().from(T.staffBackupCodes).delete().eq('id', matched.id).select('id');
+  const { data: spent, error: spendError } = await database().from(TABLES.staffBackupCodes).delete().eq('id', matched.id).select('id');
   if (spendError) throw spendError;
   return (spent ?? []).length === 1;
 }
 
 async function staffMethods(user) {
-  const { count, error } = await db()
-    .from(T.staffBackupCodes)
+  const { count, error } = await database()
+    .from(TABLES.staffBackupCodes)
     .select('id', { count: 'exact', head: true })
     .eq('user_id', user.id);
   if (error) throw error;
@@ -68,53 +68,53 @@ async function staffMethods(user) {
   };
 }
 
-export default route('admin/auth', async (req, res) => {
-  if (guard(req, res, ['GET', 'POST'])) return;
+export default route('admin/auth', async (request, response) => {
+  if (guard(request, response, ['GET', 'POST'])) return;
 
-  if (req.method === 'GET') {
-    const staff = await currentStaff(req);
-    if (!staff) return fail(res, 401, 'signed_out');
-    return ok(res, { staff: publicStaff(staff.user) });
+  if (request.method === 'GET') {
+    const staff = await currentStaff(request);
+    if (!staff) return fail(response, 401, 'signed_out');
+    return ok(response, { staff: publicStaff(staff.user) });
   }
 
-  const body = await readJson(req, res);
+  const body = await readJson(request, response);
   if (!body) return;
 
   if (body.action === 'logout') {
-    await endStaffSession(req, res);
-    return ok(res);
+    await endStaffSession(request, response);
+    return ok(response);
   }
 
   if (body.action === 'login') {
     const subject = `id:${sha256(String(body.identifier ?? '').trim().toLowerCase())}`;
-    if (await limited(req, res, 'staffLogin', [subject])) return;
+    if (await limited(request, response, 'staffLogin', [subject])) return;
     const user = await findStaffByIdentifier(body.identifier);
     const passwordOk = await verifyPassword(body.password, user?.password_hash);
-    if (!user || !passwordOk) return fail(res, 401, 'invalid_credentials');
+    if (!user || !passwordOk) return fail(response, 401, 'invalid_credentials');
     if (!hasDashboardAccess(user)) {
-      await audit(req, { action: 'staff.denied', actorType: 'staff', actorId: user.id, details: { reason: 'role' } });
-      return fail(res, 403, 'no_access');
+      await audit(request, { action: 'staff.denied', actorType: 'staff', actorId: user.id, details: { reason: 'role' } });
+      return fail(response, 403, 'no_access');
     }
     const methods = await staffMethods(user);
-    if (!methods.totp && !methods.passkey) return fail(res, 403, 'staff_needs_2fa');
+    if (!methods.totp && !methods.passkey) return fail(response, 403, 'staff_needs_2fa');
     const challenge = await createChallenge({ realm: 'staff', purpose: 'login', subjectId: user.id });
-    return ok(res, { challenge, methods });
+    return ok(response, { challenge, methods });
   }
 
-  if (body.action !== 'verify') return fail(res, 400, 'bad_request');
-  if (await limited(req, res, 'secondFactor', [`staff:${sha256(String(body.challenge ?? ''))}`])) return;
+  if (body.action !== 'verify') return fail(response, 400, 'bad_request');
+  if (await limited(request, response, 'secondFactor', [`staff:${sha256(String(body.challenge ?? ''))}`])) return;
 
   const challenge = await findChallenge(body.challenge, 'staff', 'login');
-  if (!challenge) return fail(res, 401, 'challenge_expired');
-  const { data: user, error } = await db()
-    .from(T.staffUsers)
+  if (!challenge) return fail(response, 401, 'challenge_expired');
+  const { data: user, error } = await database()
+    .from(TABLES.staffUsers)
     .select(STAFF_AUTH_COLUMNS)
     .eq('id', challenge.subject_id)
     .maybeSingle();
   if (error) throw error;
   if (!user || !hasDashboardAccess(user)) {
     await deleteChallenge(challenge);
-    return fail(res, 403, 'no_access');
+    return fail(response, 403, 'no_access');
   }
 
   let passed = false;
@@ -127,24 +127,24 @@ export default route('admin/auth', async (req, res) => {
       break;
     case 'passkey-options': {
       const options = await authenticationOptions('staff', user.id);
-      if (!options) return fail(res, 400, 'no_passkeys');
-      return ok(res, { options });
+      if (!options) return fail(response, 400, 'no_passkeys');
+      return ok(response, { options });
     }
     case 'passkey':
       passed = await finishAuthentication('staff', user.id, body.response);
       break;
     default:
-      return fail(res, 400, 'bad_request');
+      return fail(response, 400, 'bad_request');
   }
 
   if (!passed) {
     await failChallengeAttempt(challenge);
-    await audit(req, { action: 'staff.login_failed', actorType: 'staff', actorId: user.id, details: { method: body.method } });
-    return fail(res, 401, 'code_wrong');
+    await audit(request, { action: 'staff.login_failed', actorType: 'staff', actorId: user.id, details: { method: body.method } });
+    return fail(response, 401, 'code_wrong');
   }
 
   await deleteChallenge(challenge);
-  await createStaffSession(res, user.id);
-  await audit(req, { action: 'staff.login', actorType: 'staff', actorId: user.id, details: { method: body.method } });
-  ok(res, { staff: publicStaff(user) });
+  await createStaffSession(response, user.id);
+  await audit(request, { action: 'staff.login', actorType: 'staff', actorId: user.id, details: { method: body.method } });
+  ok(response, { staff: publicStaff(user) });
 });

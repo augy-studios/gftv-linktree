@@ -76,7 +76,7 @@ export function allowedHostnames() {
 // Checks a token for action. Returns { ok: true } or { ok: false, status,
 // error, reason }, where error is what the page is told and reason is for
 // the logs and tests only.
-export async function verifyTurnstile(req, token, action) {
+export async function verifyTurnstile(request, token, action) {
   const key = secret();
   if (!key && isProduction()) return { ok: false, status: 503, error: 'human_check_unavailable', reason: 'no-secret' };
   if (!key || switchedOff()) {
@@ -91,7 +91,7 @@ export async function verifyTurnstile(req, token, action) {
   try {
     const response = await fetch(ENDPOINT, {
       method: 'POST',
-      body: new URLSearchParams({ secret: key, response: token, remoteip: clientIp(req) }),
+      body: new URLSearchParams({ secret: key, response: token, remoteip: clientIp(request) }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -129,9 +129,9 @@ export function turnstileToken(body) {
 // Answers the request and returns true when it needed a passed check for
 // action ("register", "login", "recover" or "report", as the widget was
 // given) and has none.
-export async function refusedForTurnstile(req, res, body, action) {
-  const result = await verifyTurnstile(req, turnstileToken(body), action);
+export async function refusedForTurnstile(request, response, body, action) {
+  const result = await verifyTurnstile(request, turnstileToken(body), action);
   if (result.ok) return false;
-  fail(res, result.status, result.error);
+  fail(response, result.status, result.error);
   return true;
 }

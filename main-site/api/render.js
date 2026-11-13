@@ -59,31 +59,31 @@ function metaFor(page) {
   ].join('\n    ');
 }
 
-export default route('render', async (req, res) => {
+export default route('render', async (request, response) => {
   // Slugs are lowercase; /Augy goes to /augy rather than to a 404.
-  const asked = query(req, 'slug');
+  const asked = query(request, 'slug');
   if (asked !== asked.toLowerCase() && /^[A-Za-z0-9-]{2,32}$/.test(asked)) {
-    res.statusCode = 308;
-    res.setHeader('Location', `/${asked.toLowerCase()}`);
-    return res.end();
+    response.statusCode = 308;
+    response.setHeader('Location', `/${asked.toLowerCase()}`);
+    return response.end();
   }
 
   const result = await loadPublicPage(asked);
   // A name the page was renamed away from: on to its name now, temporarily,
   // since the old name is only held for a while.
   if (result.state === 'moved') {
-    res.statusCode = 307;
-    res.setHeader('Location', `/${result.slug}`);
-    res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=10');
-    return res.end();
+    response.statusCode = 307;
+    response.setHeader('Location', `/${result.slug}`);
+    response.setHeader('Cache-Control', 'public, max-age=0, s-maxage=10');
+    return response.end();
   }
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
+  response.setHeader('Content-Type', 'text/html; charset=utf-8');
+  response.setHeader('X-Content-Type-Options', 'nosniff');
 
   if (result.state === 'missing') {
-    res.statusCode = 404;
-    res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=10');
-    return res.end(NOT_FOUND);
+    response.statusCode = 404;
+    response.setHeader('Cache-Control', 'public, max-age=0, s-maxage=10');
+    return response.end(NOT_FOUND);
   }
 
   // Banned, dormant and in-review pages get the shell with their state and
@@ -96,9 +96,9 @@ export default route('render', async (req, res) => {
     html = html.replace('<meta name="robots" content="index">', '<meta name="robots" content="noindex">');
   }
 
-  res.statusCode = result.state === 'active' ? 200 : result.state === 'review' ? 404 : 410;
+  response.statusCode = result.state === 'active' ? 200 : result.state === 'review' ? 404 : 410;
   // A few seconds at the edge, so a busy page is not a query per visit, while
   // an edit or a ban still shows within seconds.
-  res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=10, stale-while-revalidate=30');
-  res.end(html);
+  response.setHeader('Cache-Control', 'public, max-age=0, s-maxage=10, stale-while-revalidate=30');
+  response.end(html);
 });
