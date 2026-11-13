@@ -23,7 +23,9 @@ export function useVisitorId(promise) {
 }
 
 function visitorHeader() {
-  if (!visitorId) return null;
+  if (!visitorId) {
+    return null;
+  }
   const late = new Promise((resolve) => { setTimeout(() => resolve(null), VISITOR_WAIT_MS); });
   return Promise.race([visitorId, late]).catch(() => null);
 }
@@ -31,7 +33,9 @@ function visitorHeader() {
 export async function api(path, { method = 'GET', body, keepalive = false } = {}) {
   const init = { method, credentials: 'same-origin', headers: { Accept: 'application/json' }, keepalive };
   const visitor = await visitorHeader();
-  if (typeof visitor === 'string' && visitor) init.headers['X-OLG-Visitor'] = visitor;
+  if (typeof visitor === 'string' && visitor) {
+    init.headers['X-OLG-Visitor'] = visitor;
+  }
   if (body !== undefined) {
     init.headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(body);
@@ -49,7 +53,21 @@ export async function api(path, { method = 'GET', body, keepalive = false } = {}
     /* not JSON: handled below */
   }
   if (!response.ok || !data || data.ok === false) {
-    throw new ApiError((data && data.error) || (response.status === 503 ? 'offline' : 'generic'), response.status, data || {});
+    // The server's own error code when it sent one. Without one, a 503 reads
+    // as offline and anything else as generic.
+    let code;
+    if (data && data.error) {
+      code = data.error;
+    } else if (response.status === 503) {
+      code = 'offline';
+    } else {
+      code = 'generic';
+    }
+    let detail = {};
+    if (data) {
+      detail = data;
+    }
+    throw new ApiError(code, response.status, detail);
   }
   return data;
 }

@@ -9,7 +9,11 @@ import { errorText } from './ui.js';
 const SHAPE = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){1,31}$/;
 
 export function normaliseSlugInput(value) {
-  return String(value || '').trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  let text = '';
+  if (value) {
+    text = String(value);
+  }
+  return text.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 }
 
 // Wires an input and a status element. Returns a function that resolves to
@@ -24,43 +28,83 @@ export function wireSlugCheck(input, status, { current = null, reviewKey = 'slug
   let last = null;
   let state = { key: '', params: undefined, tone: '' };
 
+  // Draws one message: a translation key and its params, or the text of an
+  // error when key is '__error'. Remembered, so a language change redraws it.
   function show(key, params, tone) {
     state = { key, params, tone };
     status.classList.toggle('ok', tone === 'ok');
     status.classList.toggle('bad', tone === 'bad');
     status.classList.toggle('warn', tone === 'warn');
     status.replaceChildren();
-    if (!key) return;
+    if (!key) {
+      return;
+    }
     if (tone === 'busy') {
       const spin = document.createElement('span');
       spin.className = 'delayed';
       spin.setAttribute('aria-hidden', 'true');
-      const s = document.createElement('span');
-      s.className = 'spinner';
-      spin.appendChild(s);
+      const spinner = document.createElement('span');
+      spinner.className = 'spinner';
+      spin.appendChild(spinner);
       status.appendChild(spin);
     }
-    status.append(key === '__error' ? params : translate(key, params));
+    let text;
+    if (key === '__error') {
+      text = params;
+    } else {
+      text = translate(key, params);
+    }
+    status.append(text);
   }
 
+  // Tidies the field, checks the shape here, then asks the server. Only the
+  // newest check may draw: an older answer arriving late is dropped.
   async function check() {
     const slug = normaliseSlugInput(input.value);
-    if (input.value !== slug) input.value = slug;
+    if (input.value !== slug) {
+      input.value = slug;
+    }
     const mine = ++sequence;
     last = null;
-    if (!slug) return show('', undefined, '');
-    if (!SHAPE.test(slug)) return show('slug.invalid', undefined, 'bad');
-    if (current && slug === current()) return show('error.slug_same', undefined, 'bad');
+    if (!slug) {
+      return show('', undefined, '');
+    }
+    if (!SHAPE.test(slug)) {
+      return show('slug.invalid', undefined, 'bad');
+    }
+    if (current && slug === current()) {
+      return show('error.slug_same', undefined, 'bad');
+    }
     show('slug.checking', undefined, 'busy');
     try {
       const data = await api(`/api/slug?slug=${encodeURIComponent(slug)}`);
-      if (mine !== sequence) return;
+      if (mine !== sequence) {
+        return;
+      }
       last = { available: data.available, slug, review: Boolean(data.review) };
       // A free name on the staff review list can be taken, but says so.
-      if (data.available) show(data.review ? reviewKey : 'slug.available', { slug }, data.review ? reviewTone : 'ok');
-      else show(`error.${data.reason || 'slug_taken'}`, undefined, 'bad');
+      if (data.available) {
+        let key;
+        let tone;
+        if (data.review) {
+          key = reviewKey;
+          tone = reviewTone;
+        } else {
+          key = 'slug.available';
+          tone = 'ok';
+        }
+        show(key, { slug }, tone);
+      } else {
+        let reason = data.reason;
+        if (!reason) {
+          reason = 'slug_taken';
+        }
+        show(`error.${reason}`, undefined, 'bad');
+      }
     } catch (error) {
-      if (mine !== sequence) return;
+      if (mine !== sequence) {
+        return;
+      }
       show('__error', errorText(error), 'bad');
     }
   }
@@ -70,8 +114,12 @@ export function wireSlugCheck(input, status, { current = null, reviewKey = 'slug
     timer = setTimeout(check, 350);
   });
   onChange(() => {
-    if (state.key && state.key !== '__error') show(state.key, state.params, state.tone);
+    if (state.key && state.key !== '__error') {
+      show(state.key, state.params, state.tone);
+    }
   });
-  if (input.value) check();
+  if (input.value) {
+    check();
+  }
   return () => last;
 }

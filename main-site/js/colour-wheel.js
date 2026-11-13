@@ -12,57 +12,82 @@
 // preview swatch beside it shows the result.
 
 const KEY_HUE = 5;
-const KEY_SAT = 0.05;
+const KEY_SATURATION = 0.05;
 
 // --- colour maths (from colorguess js/color.js) ---------------------------
 
-function fromChannels(r, g, b) {
-  const c = (v) => Math.max(0, Math.min(255, Math.round(v)));
-  return (c(r) << 16) | (c(g) << 8) | c(b);
+function fromChannels(red, green, blue) {
+  const clamp = (value) => Math.max(0, Math.min(255, Math.round(value)));
+  return (clamp(red) << 16) | (clamp(green) << 8) | clamp(blue);
 }
 
-export function toHex(n) {
-  return `#${n.toString(16).padStart(6, '0').toUpperCase()}`;
+export function toHex(colour) {
+  return `#${colour.toString(16).padStart(6, '0').toUpperCase()}`;
 }
 
 export function parseHex(text) {
-  const m = String(text || '').trim().match(/^#?([0-9a-f]{6}|[0-9a-f]{3})$/i);
-  if (!m) return null;
-  const hex = m[1].length === 3 ? m[1].replace(/./g, (c) => c + c) : m[1];
+  let value = '';
+  if (text) {
+    value = String(text);
+  }
+  const match = value.trim().match(/^#?([0-9a-f]{6}|[0-9a-f]{3})$/i);
+  if (!match) {
+    return null;
+  }
+  // Three digits stand for six: #F80 is #FF8800.
+  let hex;
+  if (match[1].length === 3) {
+    hex = match[1].replace(/./g, (character) => character + character);
+  } else {
+    hex = match[1];
+  }
   return parseInt(hex, 16);
 }
 
-// h in degrees, s and v from 0 to 1.
-function hsvToColor(h, s, v) {
-  const f = (k) => {
-    const x = (k + h / 60) % 6;
-    return v - v * s * Math.max(0, Math.min(x, 4 - x, 1));
+// hue in degrees, saturation and brightness from 0 to 1.
+function hsvToColor(hue, saturation, brightness) {
+  const channel = (offset) => {
+    const position = (offset + hue / 60) % 6;
+    return brightness - brightness * saturation * Math.max(0, Math.min(position, 4 - position, 1));
   };
-  return fromChannels(f(5) * 255, f(3) * 255, f(1) * 255);
+  return fromChannels(channel(5) * 255, channel(3) * 255, channel(1) * 255);
 }
 
-function colorToHsv(n) {
-  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => c / 255);
-  const max = Math.max(r, g, b);
-  const d = max - Math.min(r, g, b);
-  let h = 0;
-  if (d) {
-    if (max === r) h = ((g - b) / d) % 6;
-    else if (max === g) h = (b - r) / d + 2;
-    else h = (r - g) / d + 4;
-    h *= 60;
-    if (h < 0) h += 360;
+function colorToHsv(colour) {
+  const [red, green, blue] = [(colour >> 16) & 255, (colour >> 8) & 255, colour & 255].map((channel) => channel / 255);
+  const max = Math.max(red, green, blue);
+  const chroma = max - Math.min(red, green, blue);
+  let hue = 0;
+  if (chroma) {
+    if (max === red) {
+      hue = ((green - blue) / chroma) % 6;
+    } else if (max === green) {
+      hue = (blue - red) / chroma + 2;
+    } else {
+      hue = (red - green) / chroma + 4;
+    }
+    hue *= 60;
+    if (hue < 0) {
+      hue += 360;
+    }
   }
-  return { h, s: max ? d / max : 0, v: max };
+  let saturation;
+  if (max) {
+    saturation = chroma / max;
+  } else {
+    saturation = 0;
+  }
+  return { h: hue, s: saturation, v: max };
 }
 
 // --- the wheel (from colorguess js/wheel.js) ------------------------------
 
 export class ColourWheel {
-  // els: { wrap, canvas, marker, slider, hex, preview }
+  // elements: { wrap, canvas, marker, slider, hex, preview }, kept as this.els.
   // onChange(hex) is called with '#RRGGBB' whenever the colour changes.
-  constructor(els, onChange, describe) {
-    this.els = els;
+  // Wires the pointer, the arrow keys, the slider, the hex field and resizing.
+  constructor(elements, onChange, describe) {
+    this.els = elements;
     this.onChange = onChange;
     this.describe = describe;
     this.h = 0;
@@ -70,23 +95,31 @@ export class ColourWheel {
     this.v = 1;
     this.drawnFor = null;
 
-    const { wrap, slider, hex } = els;
-    wrap.addEventListener('pointerdown', (e) => {
-      wrap.setPointerCapture(e.pointerId);
-      this.pointAt(e);
+    const { wrap, slider, hex } = elements;
+    wrap.addEventListener('pointerdown', (event) => {
+      wrap.setPointerCapture(event.pointerId);
+      this.pointAt(event);
       wrap.focus({ preventScroll: true });
-      e.preventDefault();
+      event.preventDefault();
     });
-    wrap.addEventListener('pointermove', (e) => {
-      if (wrap.hasPointerCapture(e.pointerId)) this.pointAt(e);
+    wrap.addEventListener('pointermove', (event) => {
+      if (wrap.hasPointerCapture(event.pointerId)) {
+        this.pointAt(event);
+      }
     });
-    wrap.addEventListener('keydown', (e) => {
-      const turn = { ArrowLeft: KEY_HUE, ArrowRight: -KEY_HUE }[e.key];
-      const sat = { ArrowUp: KEY_SAT, ArrowDown: -KEY_SAT }[e.key];
-      if (turn === undefined && sat === undefined) return;
-      e.preventDefault();
-      if (turn) this.h = (this.h + turn + 360) % 360;
-      if (sat) this.s = Math.max(0, Math.min(1, this.s + sat));
+    wrap.addEventListener('keydown', (event) => {
+      const turn = { ArrowLeft: KEY_HUE, ArrowRight: -KEY_HUE }[event.key];
+      const saturationStep = { ArrowUp: KEY_SATURATION, ArrowDown: -KEY_SATURATION }[event.key];
+      if (turn === undefined && saturationStep === undefined) {
+        return;
+      }
+      event.preventDefault();
+      if (turn) {
+        this.h = (this.h + turn + 360) % 360;
+      }
+      if (saturationStep) {
+        this.s = Math.max(0, Math.min(1, this.s + saturationStep));
+      }
       this.changed();
     });
     slider.addEventListener('input', () => {
@@ -96,9 +129,16 @@ export class ColourWheel {
     // The hex field moves the wheel only once it holds a whole colour, so
     // typing is never fought; leaving it puts back the current value.
     hex.addEventListener('input', () => {
-      const n = parseHex(hex.value);
-      hex.setAttribute('aria-invalid', String(n === null && hex.value.trim() !== ''));
-      if (n !== null) this.set(n, { fromHex: true });
+      const colour = parseHex(hex.value);
+      // Invalid only when something is typed and it is not a colour.
+      let invalid = false;
+      if (colour === null && hex.value.trim() !== '') {
+        invalid = true;
+      }
+      hex.setAttribute('aria-invalid', String(invalid));
+      if (colour !== null) {
+        this.set(colour, { fromHex: true });
+      }
     });
     hex.addEventListener('blur', () => {
       hex.value = toHex(this.color);
@@ -115,75 +155,102 @@ export class ColourWheel {
   }
 
   // Move to a colour from elsewhere: a swatch, or the hex field.
-  set(n, { fromHex = false, quiet = false } = {}) {
-    const at = colorToHsv(n);
+  set(colour, { fromHex = false, quiet = false } = {}) {
+    const at = colorToHsv(colour);
     this.h = at.h;
     this.s = at.s;
     this.v = at.v;
-    this.changed({ fromHex, quiet, exact: n });
+    this.changed({ fromHex, quiet, exact: colour });
   }
 
-  pointAt(e) {
-    const rect = this.els.wrap.getBoundingClientRect();
-    const r = rect.width / 2;
-    const x = (e.clientX - rect.left - r) / r;
-    const y = (rect.top + r - e.clientY) / r;
-    this.h = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-    this.s = Math.min(1, Math.hypot(x, y));
+  // The hue and saturation under the pointer: the angle and the distance
+  // from the centre, with the wheel's radius as 1.
+  pointAt(event) {
+    const bounds = this.els.wrap.getBoundingClientRect();
+    const radius = bounds.width / 2;
+    const horizontal = (event.clientX - bounds.left - radius) / radius;
+    const vertical = (bounds.top + radius - event.clientY) / radius;
+    this.h = ((Math.atan2(vertical, horizontal) * 180) / Math.PI + 360) % 360;
+    this.s = Math.min(1, Math.hypot(horizontal, vertical));
     this.changed();
   }
 
-  place(el, h, s) {
-    const a = (h * Math.PI) / 180;
-    el.style.left = `${50 + 50 * s * Math.cos(a)}%`;
-    el.style.top = `${50 - 50 * s * Math.sin(a)}%`;
+  place(element, hue, saturation) {
+    const angle = (hue * Math.PI) / 180;
+    element.style.left = `${50 + 50 * saturation * Math.cos(angle)}%`;
+    element.style.top = `${50 - 50 * saturation * Math.sin(angle)}%`;
   }
 
   changed({ fromHex = false, quiet = false, exact = null } = {}) {
     const { slider, marker, preview, wrap, hex } = this.els;
     // A colour typed or chosen exactly keeps its exact value, rather than the
     // nearest one the HSV round trip lands on.
-    const colour = exact ?? this.color;
+    let colour = exact;
+    if (colour === null || colour === undefined) {
+      colour = this.color;
+    }
     const text = toHex(colour);
     slider.value = String(Math.round(this.v * 100));
     this.place(marker, this.h, this.s);
     marker.style.background = text;
     preview.style.background = text;
-    if (!fromHex) hex.value = text;
-    wrap.setAttribute('aria-valuetext', this.describe ? this.describe(this, text) : text);
+    if (!fromHex) {
+      hex.value = text;
+    }
+    let valueText;
+    if (this.describe) {
+      valueText = this.describe(this, text);
+    } else {
+      valueText = text;
+    }
+    wrap.setAttribute('aria-valuetext', valueText);
     this.draw();
-    if (!quiet) this.onChange?.(text);
+    if (!quiet && this.onChange !== null && this.onChange !== undefined) {
+      this.onChange(text);
+    }
   }
 
+  // Paints the wheel pixel by pixel at the current brightness: the angle
+  // from the centre is the hue and the distance is the saturation.
   // Redrawn only when the brightness or the size changes.
   draw() {
     const { canvas } = this.els;
-    const size = Math.round(canvas.clientWidth * (window.devicePixelRatio || 1));
-    if (!size) return;
+    let pixelRatio = window.devicePixelRatio;
+    if (!pixelRatio) {
+      pixelRatio = 1;
+    }
+    const size = Math.round(canvas.clientWidth * pixelRatio);
+    if (!size) {
+      return;
+    }
     const key = `${size}|${this.v.toFixed(2)}`;
-    if (this.drawnFor === key) return;
+    if (this.drawnFor === key) {
+      return;
+    }
     this.drawnFor = key;
     canvas.width = size;
     canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    const img = ctx.createImageData(size, size);
-    const r = size / 2;
-    for (let py = 0; py < size; py += 1) {
-      for (let px = 0; px < size; px += 1) {
-        const x = (px + 0.5 - r) / r;
-        const y = (r - py - 0.5) / r;
-        const d = Math.hypot(x, y);
+    const context = canvas.getContext('2d');
+    const image = context.createImageData(size, size);
+    const radius = size / 2;
+    for (let pixelY = 0; pixelY < size; pixelY += 1) {
+      for (let pixelX = 0; pixelX < size; pixelX += 1) {
+        const horizontal = (pixelX + 0.5 - radius) / radius;
+        const vertical = (radius - pixelY - 0.5) / radius;
+        const distance = Math.hypot(horizontal, vertical);
         // A pixel's worth of soft edge, so the rim is not jagged.
-        const alpha = Math.max(0, Math.min(1, (1 - d) * r));
-        if (!alpha) continue;
-        const c = hsvToColor(((Math.atan2(y, x) * 180) / Math.PI + 360) % 360, Math.min(1, d), this.v);
-        const i = (py * size + px) * 4;
-        img.data[i] = (c >> 16) & 255;
-        img.data[i + 1] = (c >> 8) & 255;
-        img.data[i + 2] = c & 255;
-        img.data[i + 3] = Math.round(alpha * 255);
+        const alpha = Math.max(0, Math.min(1, (1 - distance) * radius));
+        if (!alpha) {
+          continue;
+        }
+        const colour = hsvToColor(((Math.atan2(vertical, horizontal) * 180) / Math.PI + 360) % 360, Math.min(1, distance), this.v);
+        const offset = (pixelY * size + pixelX) * 4;
+        image.data[offset] = (colour >> 16) & 255;
+        image.data[offset + 1] = (colour >> 8) & 255;
+        image.data[offset + 2] = colour & 255;
+        image.data[offset + 3] = Math.round(alpha * 255);
       }
     }
-    ctx.putImageData(img, 0, 0);
+    context.putImageData(image, 0, 0);
   }
 }

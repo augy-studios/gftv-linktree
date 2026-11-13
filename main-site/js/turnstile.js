@@ -16,32 +16,55 @@ const SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=exp
 let keyPromise = null;
 let scriptPromise = null;
 
+// Asked once per page. A failure is not remembered, so the next form asks again.
 function siteKey() {
-  keyPromise ??= api('/api/public/turnstile').then((d) => d.siteKey || null).catch(() => {
-    keyPromise = null;
-    return null;
-  });
+  if (keyPromise === null || keyPromise === undefined) {
+    keyPromise = api('/api/public/turnstile').then((data) => {
+      if (data.siteKey) {
+        return data.siteKey;
+      }
+      return null;
+    }).catch(() => {
+      keyPromise = null;
+      return null;
+    });
+  }
   return keyPromise;
 }
 
+// Cloudflare's script, added once. A failed load is removed and tried again
+// next time.
 function loadScript() {
-  scriptPromise ??= new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = SCRIPT;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => (window.turnstile ? resolve(window.turnstile) : reject(new Error('turnstile')));
-    script.onerror = () => {
-      scriptPromise = null;
-      script.remove();
-      reject(new Error('turnstile'));
-    };
-    document.head.append(script);
-  });
+  if (scriptPromise === null || scriptPromise === undefined) {
+    scriptPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = SCRIPT;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        if (window.turnstile) {
+          resolve(window.turnstile);
+        } else {
+          reject(new Error('turnstile'));
+        }
+      };
+      script.onerror = () => {
+        scriptPromise = null;
+        script.remove();
+        reject(new Error('turnstile'));
+      };
+      document.head.append(script);
+    });
+  }
   return scriptPromise;
 }
 
-const mode = () => (document.documentElement.getAttribute('data-mode') === 'dark' ? 'dark' : 'light');
+const mode = () => {
+  if (document.documentElement.getAttribute('data-mode') === 'dark') {
+    return 'dark';
+  }
+  return 'light';
+};
 
 // A widget in container, for action ("register", "login", "recover" or
 // "report"; by default the container's data-action). Returns
@@ -57,12 +80,19 @@ export function humanCheck(container, action = container.dataset.action) {
 
   const ready = (async () => {
     const key = await siteKey();
-    if (!key) return;
+    if (!key) {
+      return;
+    }
     enabled = true;
     const turnstile = await loadScript();
+    // Drawn again in the new mode whenever the page's mode changes.
     const draw = () => {
-      if (drawnIn === mode()) return;
-      if (widget !== null) turnstile.remove(widget);
+      if (drawnIn === mode()) {
+        return;
+      }
+      if (widget !== null) {
+        turnstile.remove(widget);
+      }
       current = null;
       drawnIn = mode();
       widget = turnstile.render(container, {
@@ -82,13 +112,19 @@ export function humanCheck(container, action = container.dataset.action) {
   return {
     async token() {
       await ready;
-      if (!enabled) return undefined;
-      if (!current) throw new ApiError('human_check_pending', 0);
+      if (!enabled) {
+        return undefined;
+      }
+      if (!current) {
+        throw new ApiError('human_check_pending', 0);
+      }
       return current;
     },
     reset() {
       current = null;
-      if (widget !== null && window.turnstile) window.turnstile.reset(widget);
+      if (widget !== null && window.turnstile) {
+        window.turnstile.reset(widget);
+      }
     },
   };
 }

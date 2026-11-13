@@ -13,13 +13,18 @@
 
 import { useVisitorId } from './api.js';
 
-const fp = window.FingerprintJS;
-if (fp && typeof fp.load === 'function') {
+const fingerprintLibrary = window.FingerprintJS;
+if (fingerprintLibrary && typeof fingerprintLibrary.load === 'function') {
   useVisitorId(
-    fp
+    fingerprintLibrary
       .load({ monitoring: false })
       .then((agent) => agent.get())
-      .then((result) => (typeof result?.visitorId === 'string' ? result.visitorId : null))
+      .then((result) => {
+        if (result !== null && result !== undefined && typeof result.visitorId === 'string') {
+          return result.visitorId;
+        }
+        return null;
+      })
       .catch(() => null)
   );
 }

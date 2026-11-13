@@ -21,27 +21,35 @@ import { openModal, wireModals } from './ui.js';
 import { initUpdateBar } from './update-bar.js';
 import { initPasswordToggles } from './password-toggle.js';
 
-function hour(h) {
-  return `${String(h).padStart(2, '0')}:00`;
+function hour(hourOfDay) {
+  return `${String(hourOfDay).padStart(2, '0')}:00`;
 }
 
 function syncThemeButton() {
-  const btn = document.getElementById('themeBtn');
-  if (!btn) return;
+  const themeButton = document.getElementById('themeBtn');
+  if (!themeButton) {
+    return;
+  }
   const mode = getStoredMode();
-  btn.innerHTML = icon(mode === 'dark' ? 'moon' : 'sun');
-  btn.setAttribute('aria-label', translate('theme.button', { mode: translate(`theme.mode.${mode}`) }));
+  if (mode === 'dark') {
+    themeButton.innerHTML = icon('moon');
+  } else {
+    themeButton.innerHTML = icon('sun');
+  }
+  themeButton.setAttribute('aria-label', translate('theme.button', { mode: translate(`theme.mode.${mode}`) }));
 }
 
+// Bring the theme dialog in line with what is stored: the pressed mode button,
+// the time-based note, the pressed swatch, and the header button.
 function syncThemeModal() {
   const preference = getModePreference();
   const resolved = getStoredMode();
   const colorTheme = getStoredColorTheme();
 
-  document.querySelectorAll('#modeToggle .mode-btn').forEach((b) => {
-    const active = b.dataset.mode === preference;
-    b.classList.toggle('active', active);
-    b.setAttribute('aria-pressed', String(active));
+  document.querySelectorAll('#modeToggle .mode-btn').forEach((modeButton) => {
+    const active = modeButton.dataset.mode === preference;
+    modeButton.classList.toggle('active', active);
+    modeButton.setAttribute('aria-pressed', String(active));
   });
 
   const note = document.getElementById('modeNote');
@@ -59,10 +67,10 @@ function syncThemeModal() {
     }
   }
 
-  document.querySelectorAll('#swatchGrid .swatch').forEach((s) => {
-    const active = s.dataset.theme === colorTheme;
-    s.classList.toggle('active', active);
-    s.setAttribute('aria-pressed', String(active));
+  document.querySelectorAll('#swatchGrid .swatch').forEach((swatch) => {
+    const active = swatch.dataset.theme === colorTheme;
+    swatch.classList.toggle('active', active);
+    swatch.setAttribute('aria-pressed', String(active));
   });
 
   syncThemeButton();
@@ -72,7 +80,9 @@ function syncThemeModal() {
 // attribute, which the Content-Security-Policy would refuse.
 function buildSwatches() {
   const grid = document.getElementById('swatchGrid');
-  if (!grid) return;
+  if (!grid) {
+    return;
+  }
   grid.replaceChildren();
   for (const theme of COLOR_THEMES) {
     const button = document.createElement('button');
@@ -92,26 +102,40 @@ function buildSwatches() {
   }
 }
 
+// The header's theme button opens the theme dialog; the dialog's mode buttons
+// and swatches apply at once.
 function wireTheme() {
   buildSwatches();
 
-  const btn = document.getElementById('themeBtn');
-  if (btn) btn.addEventListener('click', () => { syncThemeModal(); openModal('themeModal'); });
+  const themeButton = document.getElementById('themeBtn');
+  if (themeButton) {
+    themeButton.addEventListener('click', () => { syncThemeModal(); openModal('themeModal'); });
+  }
 
   // Picking a mode or a swatch updates the modal in place and leaves it open.
-  document.getElementById('modeToggle')?.addEventListener('click', (e) => {
-    const b = e.target.closest('.mode-btn');
-    if (!b) return;
-    applyMode(b.dataset.mode);
-    syncThemeModal();
-  });
+  const modeToggle = document.getElementById('modeToggle');
+  if (modeToggle) {
+    modeToggle.addEventListener('click', (event) => {
+      const modeButton = event.target.closest('.mode-btn');
+      if (!modeButton) {
+        return;
+      }
+      applyMode(modeButton.dataset.mode);
+      syncThemeModal();
+    });
+  }
 
-  document.getElementById('swatchGrid')?.addEventListener('click', (e) => {
-    const s = e.target.closest('.swatch');
-    if (!s) return;
-    applyColorTheme(s.dataset.theme);
-    syncThemeModal();
-  });
+  const swatchGrid = document.getElementById('swatchGrid');
+  if (swatchGrid) {
+    swatchGrid.addEventListener('click', (event) => {
+      const swatch = event.target.closest('.swatch');
+      if (!swatch) {
+        return;
+      }
+      applyColorTheme(swatch.dataset.theme);
+      syncThemeModal();
+    });
+  }
 
   // A tab left open across 09:00 or 18:00 redraws rather than showing the
   // answer from before dinner.
@@ -120,16 +144,26 @@ function wireTheme() {
   syncThemeModal();
 }
 
+// The header gets .stuck once it reaches the top of the window and the page
+// has scrolled, at most once a frame.
 function wireStickyHeader() {
   const header = document.querySelector('.site-header');
-  if (!header) return;
+  if (!header) {
+    return;
+  }
   let ticking = false;
   const update = () => {
     ticking = false;
-    header.classList.toggle('stuck', header.getBoundingClientRect().top <= 0 && window.scrollY > 0);
+    let stuck = false;
+    if (header.getBoundingClientRect().top <= 0 && window.scrollY > 0) {
+      stuck = true;
+    }
+    header.classList.toggle('stuck', stuck);
   };
   window.addEventListener('scroll', () => {
-    if (ticking) return;
+    if (ticking) {
+      return;
+    }
     ticking = true;
     requestAnimationFrame(update);
   }, { passive: true });
@@ -137,17 +171,23 @@ function wireStickyHeader() {
 }
 
 function wireFooterYear() {
-  const el = document.getElementById('currentYear');
-  if (el) el.textContent = String(new Date().getFullYear());
+  const yearElement = document.getElementById('currentYear');
+  if (yearElement) {
+    yearElement.textContent = String(new Date().getFullYear());
+  }
 }
 
 // A hidden way in for staff: triple-clicking "Global Furry Television" in the
 // footer opens /admin. event.detail is the browser's own click count.
 function wireFooterAdminLink() {
-  const el = document.querySelector('.site-footer [data-i18n="footer.by"]');
-  if (!el) return;
-  el.addEventListener('click', (e) => {
-    if (e.detail === 3 && location.pathname !== '/admin') location.assign('/admin');
+  const byline = document.querySelector('.site-footer [data-i18n="footer.by"]');
+  if (!byline) {
+    return;
+  }
+  byline.addEventListener('click', (event) => {
+    if (event.detail === 3 && location.pathname !== '/admin') {
+      location.assign('/admin');
+    }
   });
 }
 

@@ -17,14 +17,20 @@ const check = humanCheck(byId('humanCheck'));
 
 // Somebody already signed in goes straight to their editor.
 api('/api/auth/session')
-  .then((s) => { if (s.signedIn) window.location.replace('/edit'); })
+  .then((session) => {
+    if (session.signedIn) {
+      window.location.replace('/edit');
+    }
+  })
   .catch(() => {});
 
 const prefill = normaliseSlugInput(new URLSearchParams(window.location.search).get('slug'));
-if (prefill) byId('slug').value = prefill;
+if (prefill) {
+  byId('slug').value = prefill;
+}
 
-byId('passwordForm').addEventListener('submit', (e) => {
-  e.preventDefault();
+byId('passwordForm').addEventListener('submit', (event) => {
+  event.preventDefault();
   withBusy(byId('passwordSubmit'), byId('passwordError'), async () => {
     const token = await check.token();
     let data;
@@ -39,19 +45,36 @@ byId('passwordForm').addEventListener('submit', (e) => {
   });
 });
 
+// After the password: show only the second factors this page has (and this
+// browser can use), and open the first of them.
 function showFactors(methods) {
+  // A passkey counts only when the browser supports them.
+  let passkeyUsable = methods.passkey;
+  if (passkeyUsable) {
+    passkeyUsable = passkeysSupported();
+  }
   const usable = {
     totp: methods.totp,
-    passkey: methods.passkey && passkeysSupported(),
+    passkey: passkeyUsable,
     telegram: methods.telegram,
     backup: true,
   };
-  document.querySelectorAll('#methodPicker [data-method]').forEach((b) => { b.hidden = !usable[b.dataset.method]; });
+  document.querySelectorAll('#methodPicker [data-method]').forEach((button) => { button.hidden = !usable[button.dataset.method]; });
   byId('stepPassword').hidden = true;
   byId('stepFactor').hidden = false;
   // The authenticator app first. Picking Telegram sends nothing by itself:
   // the code goes out only when "Send me a code" is pressed.
-  pick(usable.totp ? 'totp' : usable.passkey ? 'passkey' : usable.telegram ? 'telegram' : 'backup');
+  let firstMethod;
+  if (usable.totp) {
+    firstMethod = 'totp';
+  } else if (usable.passkey) {
+    firstMethod = 'passkey';
+  } else if (usable.telegram) {
+    firstMethod = 'telegram';
+  } else {
+    firstMethod = 'backup';
+  }
+  pick(firstMethod);
   const heading = document.querySelector('#stepFactor h1');
   heading.tabIndex = -1;
   heading.focus();
@@ -59,30 +82,52 @@ function showFactors(methods) {
 
 const HELP = { totp: 'login.help-totp', passkey: 'login.help-passkey', telegram: 'login.help-telegram', backup: 'login.help-backup' };
 
+// Switch to one second factor: press its button, and set the help, the code
+// field (digits only for the authenticator and Telegram) and which rows show.
 function pick(name) {
   method = name;
-  document.querySelectorAll('#methodPicker [data-method]').forEach((b) => {
-    b.setAttribute('aria-pressed', String(b.dataset.method === name));
+  document.querySelectorAll('#methodPicker [data-method]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.method === name));
   });
   byId('codeHelp').textContent = translate(HELP[name]);
   const code = byId('code');
   code.value = '';
   byId('codeError').textContent = '';
-  const numeric = name === 'totp' || name === 'telegram';
-  code.inputMode = numeric ? 'numeric' : 'text';
-  code.maxLength = numeric ? 6 : 16;
+  let numeric = false;
+  if (name === 'totp' || name === 'telegram') {
+    numeric = true;
+  }
+  if (numeric) {
+    code.inputMode = 'numeric';
+    code.maxLength = 6;
+  } else {
+    code.inputMode = 'text';
+    code.maxLength = 16;
+  }
   code.classList.toggle('code-input', numeric);
-  byId('codeLabel').textContent = translate(name === 'backup' ? 'field.backup-code' : name === 'telegram' ? 'field.telegram-code' : 'field.code');
+  let labelKey;
+  if (name === 'backup') {
+    labelKey = 'field.backup-code';
+  } else if (name === 'telegram') {
+    labelKey = 'field.telegram-code';
+  } else {
+    labelKey = 'field.code';
+  }
+  byId('codeLabel').textContent = translate(labelKey);
   byId('codeField').hidden = name === 'passkey';
   byId('codeSubmitRow').hidden = name === 'passkey';
   byId('passkeyRow').hidden = name !== 'passkey';
   byId('telegramSendRow').hidden = name !== 'telegram';
 }
 
-document.querySelectorAll('#methodPicker [data-method]').forEach((b) => {
-  b.addEventListener('click', () => pick(b.dataset.method));
+document.querySelectorAll('#methodPicker [data-method]').forEach((button) => {
+  button.addEventListener('click', () => pick(button.dataset.method));
 });
-onChange(() => { if (method) pick(method); });
+onChange(() => {
+  if (method) {
+    pick(method);
+  }
+});
 
 function signedIn() {
   window.location.replace('/edit');
@@ -96,8 +141,8 @@ function handleExpiry(error) {
   }
 }
 
-byId('codeForm').addEventListener('submit', (e) => {
-  e.preventDefault();
+byId('codeForm').addEventListener('submit', (event) => {
+  event.preventDefault();
   withBusy(byId('codeSubmit'), byId('codeError'), async () => {
     try {
       await post('/api/auth/verify', { challenge, method, code: byId('code').value });
