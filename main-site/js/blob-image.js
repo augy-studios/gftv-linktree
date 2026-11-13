@@ -12,9 +12,9 @@ const loaded = new Map();
 
 function blobUrl(url) {
   if (!loaded.has(url)) {
-    const job = fetch(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' }).then(async (res) => {
-      if (!res.ok) throw new Error(`image ${res.status}`);
-      return URL.createObjectURL(await res.blob());
+    const job = fetch(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' }).then(async (response) => {
+      if (!response.ok) throw new Error(`image ${response.status}`);
+      return URL.createObjectURL(await response.blob());
     });
     // A failure is not remembered, so the next try fetches again.
     job.catch(() => loaded.delete(url));

@@ -2,7 +2,7 @@
 // pages and the editor's rename form.
 // The server is the authority; this is the same rule shown early.
 
-import { t, onChange } from '../assets/i18n/i18n.js';
+import { t as translate, onChange } from '../assets/i18n/i18n.js';
 import { api } from './api.js';
 import { errorText } from './ui.js';
 
@@ -40,7 +40,7 @@ export function wireSlugCheck(input, status, { current = null, reviewKey = 'slug
       spin.appendChild(s);
       status.appendChild(spin);
     }
-    status.append(key === '__error' ? params : t(key, params));
+    status.append(key === '__error' ? params : translate(key, params));
   }
 
   async function check() {

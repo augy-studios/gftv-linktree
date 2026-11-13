@@ -29,7 +29,7 @@
 // last one is refused rather than leaving the page on a password alone.
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
-import { db, T } from '../_lib/supabase.js';
+import { database, TABLES } from '../_lib/supabase.js';
 import { checkPassword, checkSlug, cleanText, isUuid, LIMITS, STALE_PENDING_MS } from '../_lib/validate.js';
 import { encryptSecret, decryptSecret, hashPassword } from '../_lib/crypto.js';
 import { generateTotpSecret, verifyTotp, otpauthUri } from '../_lib/totp.js';
@@ -54,32 +54,32 @@ import {
 
 const NO_PASSWORD = new Set(['totp-finish', 'passkey-finish']);
 
-export default route('me/security', async (req, res) => {
-  if (guard(req, res, ['POST'])) return;
-  const owner = await requireOwner(req, res);
+export default route('me/security', async (request, response) => {
+  if (guard(request, response, ['POST'])) return;
+  const owner = await requireOwner(request, response);
   if (!owner) return;
-  const body = await readJson(req, res);
+  const body = await readJson(request, response);
   if (!body) return;
   const page = owner.page;
   const action = String(body.action ?? '');
 
   if (!NO_PASSWORD.has(action)) {
-    if (await limited(req, res, 'login', [`reauth:${page.id}`])) return;
+    if (await limited(request, response, 'login', [`reauth:${page.id}`])) return;
     if (!(await pagePasswordOk(page.id, body.password))) {
-      await audit(req, { action: 'security.reauth_failed', actorType: 'owner', actorId: page.id, pageId: page.id, details: { action } });
-      return fail(res, 401, 'password_wrong');
+      await audit(request, { action: 'security.reauth_failed', actorType: 'owner', actorId: page.id, pageId: page.id, details: { action } });
+      return fail(response, 401, 'password_wrong');
     }
-  } else if (await limited(req, res, 'secondFactor', [`page:${page.id}`])) {
+  } else if (await limited(request, response, 'secondFactor', [`page:${page.id}`])) {
     return;
   }
 
   const record = (name, details = {}) =>
-    audit(req, { action: `security.${name}`, actorType: 'owner', actorId: page.id, pageId: page.id, details });
-  const done = async (extra = {}) => ok(res, { ...extra, page: await loadOwnerView(page.id) });
+    audit(request, { action: `security.${name}`, actorType: 'owner', actorId: page.id, pageId: page.id, details });
+  const done = async (extra = {}) => ok(response, { ...extra, page: await loadOwnerView(page.id) });
 
   switch (action) {
     case 'totp-start': {
-      if (page.totp_secret) return fail(res, 409, 'totp_exists');
+      if (page.totp_secret) return fail(response, 409, 'totp_exists');
       const secret = generateTotpSecret();
       const challenge = await createChallenge({
         realm: 'owner',
@@ -87,19 +87,19 @@ export default route('me/security', async (req, res) => {
         subjectId: page.id,
         fields: { pending_totp_secret: encryptSecret(secret) },
       });
-      return ok(res, { secret, uri: otpauthUri({ account: `links.gftv.asia/${page.slug}`, secret }), challenge });
+      return ok(response, { secret, uri: otpauthUri({ account: `links.gftv.asia/${page.slug}`, secret }), challenge });
     }
 
     case 'totp-finish': {
       const challenge = await findChallenge(body.challenge, 'owner', 'enrol');
-      if (!challenge || challenge.subject_id !== page.id) return fail(res, 401, 'challenge_expired');
+      if (!challenge || challenge.subject_id !== page.id) return fail(response, 401, 'challenge_expired');
       const secret = decryptSecret(challenge.pending_totp_secret);
-      if (!secret) return fail(res, 400, 'totp_not_started');
+      if (!secret) return fail(response, 400, 'totp_not_started');
       if (!verifyTotp(body.code, secret)) {
         await failChallengeAttempt(challenge);
-        return fail(res, 401, 'code_wrong');
+        return fail(response, 401, 'code_wrong');
       }
-      const { error } = await db().from(T.pages).update({ totp_secret: challenge.pending_totp_secret }).eq('id', page.id);
+      const { error } = await database().from(TABLES.pages).update({ totp_secret: challenge.pending_totp_secret }).eq('id', page.id);
       if (error) throw error;
       await deleteChallenge(challenge);
       await record('totp_added');
@@ -108,8 +108,8 @@ export default route('me/security', async (req, res) => {
 
     case 'totp-remove': {
       if (!page.totp_secret) return done();
-      if ((await secondFactorCount(page)) <= 1) return fail(res, 409, 'last_factor');
-      const { error } = await db().from(T.pages).update({ totp_secret: null }).eq('id', page.id);
+      if ((await secondFactorCount(page)) <= 1) return fail(response, 409, 'last_factor');
+      const { error } = await database().from(TABLES.pages).update({ totp_secret: null }).eq('id', page.id);
       if (error) throw error;
       await record('totp_removed');
       return done();
@@ -117,7 +117,7 @@ export default route('me/security', async (req, res) => {
 
     case 'passkey-options': {
       const options = await registrationOptions('owner', { subjectId: page.id, userName: page.slug });
-      return ok(res, { options });
+      return ok(response, { options });
     }
 
     case 'passkey-finish': {
@@ -126,14 +126,14 @@ export default route('me/security', async (req, res) => {
         response: body.response,
         label: cleanText(body.label, LIMITS.label),
       });
-      if (!result.ok) return fail(res, 400, result.error);
+      if (!result.ok) return fail(response, 400, result.error);
       await record('passkey_added');
       return done();
     }
 
     case 'passkey-remove': {
-      if (!isUuid(body.id)) return fail(res, 400, 'bad_request');
-      if ((await secondFactorCount(page)) <= 1) return fail(res, 409, 'last_factor');
+      if (!isUuid(body.id)) return fail(response, 400, 'bad_request');
+      if ((await secondFactorCount(page)) <= 1) return fail(response, 409, 'last_factor');
       await removePasskey('owner', page.id, body.id);
       await record('passkey_removed');
       return done();
@@ -146,14 +146,14 @@ export default route('me/security', async (req, res) => {
     }
 
     case 'telegram-link': {
-      if (!telegramConfigured()) return fail(res, 400, 'telegram_unavailable');
+      if (!telegramConfigured()) return fail(response, 400, 'telegram_unavailable');
       const link = await createLinkToken(page.id);
       await record('telegram_link_started');
-      return ok(res, link);
+      return ok(response, link);
     }
 
     case 'telegram-unlink': {
-      const { error } = await db().from(T.pages).update({ telegram_chat_id: null, telegram_username: null }).eq('id', page.id);
+      const { error } = await database().from(TABLES.pages).update({ telegram_chat_id: null, telegram_username: null }).eq('id', page.id);
       if (error) throw error;
       await record('telegram_unlinked');
       return done();
@@ -161,9 +161,9 @@ export default route('me/security', async (req, res) => {
 
     case 'password-change': {
       const check = checkPassword(body.newPassword);
-      if (!check.ok) return fail(res, 400, check.error);
-      const { error } = await db()
-        .from(T.pages)
+      if (!check.ok) return fail(response, 400, check.error);
+      const { error } = await database()
+        .from(TABLES.pages)
         .update({ password_hash: await hashPassword(body.newPassword), password_changed_at: new Date().toISOString() })
         .eq('id', page.id);
       if (error) throw error;
@@ -180,30 +180,30 @@ export default route('me/security', async (req, res) => {
 
     case 'rename': {
       const check = checkSlug(body.slug);
-      if (!check.ok) return fail(res, 400, check.error);
+      if (!check.ok) return fail(response, 400, check.error);
       const slug = check.slug;
-      if (slug === page.slug) return fail(res, 400, 'slug_same');
+      if (slug === page.slug) return fail(response, 400, 'slug_same');
       const refusal = await slugRefusal(slug);
-      if (refusal) return fail(res, 400, refusal);
+      if (refusal) return fail(response, 400, refusal);
 
       let last;
       try {
         last = await lastRename(page.id);
       } catch (cause) {
-        if (cause.code === 'rename_unavailable') return fail(res, 503, 'rename_unavailable');
+        if (cause.code === 'rename_unavailable') return fail(response, 503, 'rename_unavailable');
         throw cause;
       }
       const wait = nextRenameAt(last);
-      if (wait) return fail(res, 429, 'rename_too_soon', { nextRenameAt: wait });
+      if (wait) return fail(response, 429, 'rename_too_soon', { nextRenameAt: wait });
 
       // Another page's old name is held for it; this page's own is free to
       // take back.
       const holder = await slugHeldBy(slug);
-      if (holder && holder !== page.id) return fail(res, 409, 'slug_taken');
+      if (holder && holder !== page.id) return fail(response, 409, 'slug_taken');
 
       // A sign-up abandoned on this name releases it, as at registration.
-      await db()
-        .from(T.pages)
+      await database()
+        .from(TABLES.pages)
         .delete()
         .eq('slug', slug)
         .eq('status', 'pending')
@@ -214,14 +214,14 @@ export default route('me/security', async (req, res) => {
       // A name on the review list waits for approval, however long ago the
       // last one was approved.
       if (review) Object.assign(fields, { reviewed_at: null, reviewed_by: null });
-      const { error } = await db().from(T.pages).update(fields).eq('id', page.id);
+      const { error } = await database().from(TABLES.pages).update(fields).eq('id', page.id);
       if (error) {
-        if (error.code === '23505') return fail(res, 409, 'slug_taken');
+        if (error.code === '23505') return fail(response, 409, 'slug_taken');
         throw error;
       }
       await recordRename({ pageId: page.id, oldSlug: page.slug, newSlug: slug, neededReview: review });
       // The home page credits a testimonial to the page by name.
-      const { error: quoteError } = await db().from(T.testimonials).update({ page_slug: slug }).eq('page_id', page.id);
+      const { error: quoteError } = await database().from(TABLES.testimonials).update({ page_slug: slug }).eq('page_id', page.id);
       if (quoteError) throw quoteError;
       await record('slug_changed', { from: page.slug, to: slug, review });
 
@@ -232,24 +232,24 @@ export default route('me/security', async (req, res) => {
           displayName: page.display_name || null,
           adminUrl: `${siteUrl()}/admin`,
         }));
-        if (sent) await audit(req, { action: 'mod.staff_alerted', pageId: page.id, details: { about: 'slug_review', slug, chats: sent } });
+        if (sent) await audit(request, { action: 'mod.staff_alerted', pageId: page.id, details: { about: 'slug_review', slug, chats: sent } });
       }
       return done({ review, nextRenameAt: nextRenameAt({ at: new Date().toISOString() }) });
     }
 
     case 'delete-page': {
-      if (String(body.confirmSlug ?? '').trim().toLowerCase() !== page.slug) return fail(res, 400, 'confirm_slug');
+      if (String(body.confirmSlug ?? '').trim().toLowerCase() !== page.slug) return fail(response, 400, 'confirm_slug');
       // Written before the delete, with the slug in the details, since the
       // page row and everything hanging off it is about to go.
       await record('page_deleted', { slug: page.slug });
-      const { error } = await db().from(T.pages).delete().eq('id', page.id);
+      const { error } = await database().from(TABLES.pages).delete().eq('id', page.id);
       if (error) throw error;
       await deleteAvatarFile(page.avatar_path);
-      await endOwnerSession(req, res);
-      return ok(res, { deleted: true });
+      await endOwnerSession(request, response);
+      return ok(response, { deleted: true });
     }
 
     default:
-      return fail(res, 400, 'bad_request');
+      return fail(response, 400, 'bad_request');
   }
 });

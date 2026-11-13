@@ -5,14 +5,14 @@
 // not dormant.
 
 import { route, guard, ok } from '../_lib/http.js';
-import { db, T } from '../_lib/supabase.js';
+import { database, TABLES } from '../_lib/supabase.js';
 import { isDormant } from '../_lib/validate.js';
 import { publicTeamMember } from '../_lib/serialize.js';
 
-export default route('public/team', async (req, res) => {
-  if (guard(req, res, ['GET'])) return;
-  const { data, error } = await db()
-    .from(T.pages)
+export default route('public/team', async (request, response) => {
+  if (guard(request, response, ['GET'])) return;
+  const { data, error } = await database()
+    .from(TABLES.pages)
     .select('slug, display_name, avatar_path, status, last_sign_in_at, needs_review, reviewed_at, quarantined_at, team_verified_at, team_role')
     .eq('status', 'active')
     .not('team_verified_at', 'is', null)
@@ -23,6 +23,6 @@ export default route('public/team', async (req, res) => {
     .filter((p) => !(p.needs_review && !p.reviewed_at) && !isDormant(p.last_sign_in_at))
     .map(publicTeamMember);
   // A few seconds at the edge, like a page: removing someone shows quickly.
-  res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=10, stale-while-revalidate=30');
-  ok(res, { members });
+  response.setHeader('Cache-Control', 'public, max-age=0, s-maxage=10, stale-while-revalidate=30');
+  ok(response, { members });
 });

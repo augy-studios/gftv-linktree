@@ -2,7 +2,7 @@
 
 import '../app.js';
 import '../visitor.js';
-import { t } from '../../assets/i18n/i18n.js';
+import { t as translate } from '../../assets/i18n/i18n.js';
 import { post } from '../api.js';
 import { withBusy, errorText } from '../ui.js';
 import { wireSlugCheck, normaliseSlugInput } from '../slug-check.js';
@@ -11,7 +11,7 @@ import { showCodes } from '../codes.js';
 import { passkeysSupported, createPasskey, passkeyErrorCode } from '../passkeys.js';
 import { humanCheck } from '../turnstile.js';
 
-const $ = (id) => document.getElementById(id);
+const byId = (id) => document.getElementById(id);
 
 // The enrolment challenge survives a reload of this tab, and nothing else.
 const STORE = 'gftv-onelink.enrol';
@@ -31,11 +31,11 @@ let check = null;
 // Focus moves to the new step's heading when the step changes, so a screen
 // reader hears where it is; not on first load, where it starts at the top.
 function step(n, { focus = true } = {}) {
-  if (n === 1) check ??= humanCheck($('humanCheck'));
-  $('stepAccount').hidden = n !== 1;
-  $('stepFactor').hidden = n !== 2;
-  $('stepCodes').hidden = n !== 3;
-  ['step1', 'step2', 'step3'].forEach((id, i) => $(id).classList.toggle('done', i < n));
+  if (n === 1) check ??= humanCheck(byId('humanCheck'));
+  byId('stepAccount').hidden = n !== 1;
+  byId('stepFactor').hidden = n !== 2;
+  byId('stepCodes').hidden = n !== 3;
+  ['step1', 'step2', 'step3'].forEach((id, i) => byId(id).classList.toggle('done', i < n));
   const heading = document.querySelector(`#${['stepAccount', 'stepFactor', 'stepCodes'][n - 1]} h1`);
   if (heading && focus) {
     heading.tabIndex = -1;
@@ -45,24 +45,24 @@ function step(n, { focus = true } = {}) {
 
 // --- step 1 -----------------------------------------------------------------
 
-const slugInput = $('slug');
+const slugInput = byId('slug');
 const prefill = normaliseSlugInput(new URLSearchParams(window.location.search).get('slug'));
 if (prefill) slugInput.value = prefill;
-wireSlugCheck(slugInput, $('slugStatus'));
+wireSlugCheck(slugInput, byId('slugStatus'));
 
-$('accountForm').addEventListener('submit', (e) => {
+byId('accountForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  const error = $('accountError');
-  const password = $('password').value;
+  const error = byId('accountError');
+  const password = byId('password').value;
   if ([...password].length < 10) {
-    error.textContent = t('error.password_too_short');
+    error.textContent = translate('error.password_too_short');
     return;
   }
-  if (password !== $('passwordConfirm').value) {
-    error.textContent = t('error.password_mismatch');
+  if (password !== byId('passwordConfirm').value) {
+    error.textContent = translate('error.password_mismatch');
     return;
   }
-  withBusy($('accountSubmit'), error, async () => {
+  withBusy(byId('accountSubmit'), error, async () => {
     const token = await check.token();
     let data;
     try {
@@ -71,8 +71,8 @@ $('accountForm').addEventListener('submit', (e) => {
       check.reset();
     }
     remember({ slug: data.slug, challenge: data.challenge });
-    $('password').value = '';
-    $('passwordConfirm').value = '';
+    byId('password').value = '';
+    byId('passwordConfirm').value = '';
     startFactor();
   });
 });
@@ -87,8 +87,8 @@ function pickFactor(name) {
   document.querySelectorAll('#stepFactor [data-factor]').forEach((b) => {
     b.setAttribute('aria-pressed', String(b.dataset.factor === name));
   });
-  $('totpSetup').hidden = name !== 'totp';
-  $('passkeySetup').hidden = name !== 'passkey';
+  byId('totpSetup').hidden = name !== 'totp';
+  byId('passkeySetup').hidden = name !== 'passkey';
   if (name === 'totp') startTotp();
 }
 
@@ -99,17 +99,17 @@ document.querySelectorAll('#stepFactor [data-factor]').forEach((b) => {
 async function startTotp() {
   if (totpStarted) return;
   totpStarted = true;
-  const qr = $('totpQr');
+  const qr = byId('totpQr');
   try {
     const data = await post('/api/auth/enrol', { challenge: enrol.challenge, action: 'totp-start' });
-    qr.innerHTML = qrSvg(data.uri, t('totp.qr-label'));
+    qr.innerHTML = qrSvg(data.uri, translate('totp.qr-label'));
     qr.removeAttribute('aria-busy');
-    $('totpSecret').textContent = data.secret.replace(/(.{4})/g, '$1 ').trim();
+    byId('totpSecret').textContent = data.secret.replace(/(.{4})/g, '$1 ').trim();
   } catch (error) {
     totpStarted = false;
     qr.removeAttribute('aria-busy');
     qr.replaceChildren();
-    $('totpError').textContent = errorText(error);
+    byId('totpError').textContent = errorText(error);
     if (error.code === 'challenge_expired') expired();
   }
 }
@@ -117,25 +117,25 @@ async function startTotp() {
 function startFactor({ focus = true } = {}) {
   step(2, { focus });
   if (!passkeysSupported()) {
-    $('passkeyUnsupported').hidden = false;
-    $('passkeyCreate').disabled = true;
+    byId('passkeyUnsupported').hidden = false;
+    byId('passkeyCreate').disabled = true;
   }
   pickFactor(factor);
 }
 
 function expired() {
   remember(null);
-  $('accountError').textContent = t('error.challenge_expired');
+  byId('accountError').textContent = translate('error.challenge_expired');
   totpStarted = false;
   step(1);
 }
 
-$('totpForm').addEventListener('submit', (e) => {
+byId('totpForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  const error = $('totpError');
-  withBusy($('totpSubmit'), error, async () => {
+  const error = byId('totpError');
+  withBusy(byId('totpSubmit'), error, async () => {
     try {
-      const data = await post('/api/auth/enrol', { challenge: enrol.challenge, action: 'totp-finish', code: $('totpCode').value });
+      const data = await post('/api/auth/enrol', { challenge: enrol.challenge, action: 'totp-finish', code: byId('totpCode').value });
       finished(data);
     } catch (err) {
       if (err.code === 'challenge_expired') expired();
@@ -144,9 +144,9 @@ $('totpForm').addEventListener('submit', (e) => {
   });
 });
 
-$('passkeyCreate').addEventListener('click', () => {
-  const error = $('passkeyError');
-  withBusy($('passkeyCreate'), error, async () => {
+byId('passkeyCreate').addEventListener('click', () => {
+  const error = byId('passkeyError');
+  withBusy(byId('passkeyCreate'), error, async () => {
     try {
       const { options } = await post('/api/auth/enrol', { challenge: enrol.challenge, action: 'passkey-options' });
       let response;
@@ -168,22 +168,22 @@ $('passkeyCreate').addEventListener('click', () => {
 
 function finished(data) {
   remember(null);
-  showCodes($('backupCodes'), data.backupCodes, {
-    copyButton: $('codesCopy'),
-    downloadButton: $('codesDownload'),
+  showCodes(byId('backupCodes'), data.backupCodes, {
+    copyButton: byId('codesCopy'),
+    downloadButton: byId('codesDownload'),
     slug: data.slug,
   });
   step(3);
 }
 
-const done = $('codesDone');
-$('codesSaved').addEventListener('change', (e) => {
+const done = byId('codesDone');
+byId('codesSaved').addEventListener('change', (e) => {
   done.setAttribute('aria-disabled', String(!e.target.checked));
 });
 done.addEventListener('click', (e) => {
   if (done.getAttribute('aria-disabled') === 'true') {
     e.preventDefault();
-    $('codesSaved').focus();
+    byId('codesSaved').focus();
   }
 });
 

@@ -14,7 +14,7 @@
 // A picture that is already see-through (a cut-out PNG, say) skips removal:
 // its own alpha is the mask, and the background choices open straight away.
 
-import { t } from '../assets/i18n/i18n.js';
+import { t as translate } from '../assets/i18n/i18n.js';
 import { openModal, closeModal, setBusy, errorText } from './ui.js';
 import { ColourWheel, parseHex } from './colour-wheel.js';
 
@@ -49,7 +49,7 @@ export const BG_GRADIENTS = [
   ['gftv', '#fedc00', '#4a6a8a', 135],
 ];
 
-const $ = (id) => document.getElementById(id);
+const byId = (id) => document.getElementById(id);
 const fail = (code) => Object.assign(new Error(code), { code });
 
 let state = null;
@@ -364,44 +364,44 @@ function draw(ctx, size) {
 }
 
 function render() {
-  const canvas = $('composerCanvas');
+  const canvas = byId('composerCanvas');
   draw(canvas.getContext('2d'), canvas.width);
-  $('composerZoom').value = String(state.view.scale / state.base);
+  byId('composerZoom').value = String(state.view.scale / state.base);
   syncControls();
 }
 
 function syncControls() {
-  const removeBtn = $('composerRemoveBg');
+  const removeBtn = byId('composerRemoveBg');
   removeBtn.hidden = state.seeThrough;
   removeBtn.setAttribute('aria-pressed', String(state.removed));
-  removeBtn.querySelector('span:last-child').textContent = t(state.removed ? 'avatar.restore-bg' : 'avatar.remove-bg');
-  $('composerBg').hidden = !state.removed;
+  removeBtn.querySelector('span:last-child').textContent = translate(state.removed ? 'avatar.restore-bg' : 'avatar.remove-bg');
+  byId('composerBg').hidden = !state.removed;
   document.querySelectorAll('#composerBgMode [data-bg]').forEach((b) => {
     b.setAttribute('aria-pressed', String(b.dataset.bg === state.bg));
   });
-  $('composerColourBlock').hidden = state.bg !== 'colour' && state.bg !== 'gradient';
-  $('composerGradientBlock').hidden = state.bg !== 'gradient';
+  byId('composerColourBlock').hidden = state.bg !== 'colour' && state.bg !== 'gradient';
+  byId('composerGradientBlock').hidden = state.bg !== 'gradient';
   if (state.bg === 'gradient') {
     const { from, to, angle } = state.gradient;
     document.querySelectorAll('#composerStops [data-stop]').forEach((b) => {
       b.setAttribute('aria-pressed', String(b.dataset.stop === state.stop));
     });
-    $('stopFrom').style.background = from;
-    $('stopTo').style.background = to;
-    $('gradientAngle').value = String(angle);
-    $('gradientAngleValue').textContent = t('avatar.gradient-degrees', { angle });
+    byId('stopFrom').style.background = from;
+    byId('stopTo').style.background = to;
+    byId('gradientAngle').value = String(angle);
+    byId('gradientAngleValue').textContent = translate('avatar.gradient-degrees', { angle });
     document.querySelectorAll('#composerGradients [data-gradient]').forEach((b) => {
       const [, f2, t2, a2] = BG_GRADIENTS.find(([name]) => name === b.dataset.gradient);
       b.setAttribute('aria-pressed', String(f2 === from && t2 === to && a2 === angle));
     });
   }
-  $('composerBgImageRow').hidden = state.bg !== 'image';
+  byId('composerBgImageRow').hidden = state.bg !== 'image';
   document.querySelectorAll('#composerColours [data-colour]').forEach((b) => {
     b.setAttribute('aria-pressed', String(b.dataset.colour === activeColour()));
   });
   const preset = BG_COLOURS.some(([, hex]) => hex === activeColour());
-  $('composerCustomToggle').setAttribute('aria-pressed', String(!preset));
-  $('composerZoom').min = state.removed ? '0.5' : '1';
+  byId('composerCustomToggle').setAttribute('aria-pressed', String(!preset));
+  byId('composerZoom').min = state.removed ? '0.5' : '1';
 }
 
 // --- background removal ----------------------------------------------------
@@ -412,7 +412,7 @@ function getWorker() {
 }
 
 function status(text, busy = false) {
-  const el = $('composerStatus');
+  const el = byId('composerStatus');
   el.replaceChildren();
   if (busy) {
     const wrap = document.createElement('span');
@@ -429,7 +429,7 @@ function status(text, busy = false) {
 function removeBackground() {
   const id = (jobId += 1);
   const w = getWorker();
-  status(t('avatar.preparing'), true);
+  status(translate('avatar.preparing'), true);
   return new Promise((resolve, reject) => {
     const onMessage = (event) => {
       const msg = event.data;
@@ -437,9 +437,9 @@ function removeBackground() {
       if (msg.type === 'progress') {
         if (msg.stage === 'download') {
           const mb = (n) => (n / 1e6).toFixed(0);
-          status(msg.total ? t('avatar.downloading', { loaded: mb(msg.loaded), total: mb(msg.total) }) : t('avatar.preparing'), true);
+          status(msg.total ? translate('avatar.downloading', { loaded: mb(msg.loaded), total: mb(msg.total) }) : translate('avatar.preparing'), true);
         } else {
-          status(t('avatar.removing'), true);
+          status(translate('avatar.removing'), true);
         }
       } else {
         w.removeEventListener('message', onMessage);
@@ -472,8 +472,8 @@ function makeCutout(mask) {
 }
 
 async function toggleRemoval() {
-  const button = $('composerRemoveBg');
-  $('composerError').textContent = '';
+  const button = byId('composerRemoveBg');
+  byId('composerError').textContent = '';
   if (state.removed) {
     state.removed = false;
     smartFrame();
@@ -490,7 +490,7 @@ async function toggleRemoval() {
       // The reason, for whoever is looking at why it failed on a device.
       console.warn('[background removal]', error?.message ?? error);
       status('');
-      $('composerError').textContent = errorText(error.code ? error : { code: 'bg_failed' });
+      byId('composerError').textContent = errorText(error.code ? error : { code: 'bg_failed' });
       return;
     } finally {
       setBusy(button, false);
@@ -498,14 +498,14 @@ async function toggleRemoval() {
   }
   state.removed = true;
   smartFrame();
-  status(t('avatar.removed-ok'));
+  status(translate('avatar.removed-ok'));
   render();
 }
 
 // --- interaction -----------------------------------------------------------
 
 function wire() {
-  const canvas = $('composerCanvas');
+  const canvas = byId('composerCanvas');
   let drag = null;
 
   canvas.addEventListener('pointerdown', (e) => {
@@ -547,69 +547,69 @@ function wire() {
     render();
   });
 
-  $('composerZoom').addEventListener('input', (e) => {
+  byId('composerZoom').addEventListener('input', (e) => {
     state.view.scale = state.base * Number(e.target.value);
     clampView();
     render();
   });
-  $('composerReset').addEventListener('click', () => { smartFrame(); render(); });
-  $('composerRemoveBg').addEventListener('click', toggleRemoval);
+  byId('composerReset').addEventListener('click', () => { smartFrame(); render(); });
+  byId('composerRemoveBg').addEventListener('click', toggleRemoval);
 
-  $('composerBgMode').addEventListener('click', (e) => {
+  byId('composerBgMode').addEventListener('click', (e) => {
     const b = e.target.closest('[data-bg]');
     if (!b) return;
     state.bg = b.dataset.bg;
-    if (state.bg === 'image' && !state.bgImage) $('composerBgFile').click();
+    if (state.bg === 'image' && !state.bgImage) byId('composerBgFile').click();
     render();
   });
-  $('composerColours').addEventListener('click', (e) => {
+  byId('composerColours').addEventListener('click', (e) => {
     const b = e.target.closest('[data-colour]');
     if (!b) return;
     setActiveColour(b.dataset.colour);
-    if (!$('composerCustom').hidden) wheel.set(parseHex(activeColour()), { quiet: true });
+    if (!byId('composerCustom').hidden) wheel.set(parseHex(activeColour()), { quiet: true });
     render();
   });
-  $('composerGradients').addEventListener('click', (e) => {
+  byId('composerGradients').addEventListener('click', (e) => {
     const b = e.target.closest('[data-gradient]');
     if (!b) return;
     const [, from, to, angle] = BG_GRADIENTS.find(([name]) => name === b.dataset.gradient);
     state.gradient = { from, to, angle };
-    if (!$('composerCustom').hidden) wheel.set(parseHex(activeColour()), { quiet: true });
+    if (!byId('composerCustom').hidden) wheel.set(parseHex(activeColour()), { quiet: true });
     render();
   });
-  $('composerStops').addEventListener('click', (e) => {
+  byId('composerStops').addEventListener('click', (e) => {
     const b = e.target.closest('[data-stop]');
     if (!b) return;
     state.stop = b.dataset.stop;
-    if (!$('composerCustom').hidden) wheel.set(parseHex(activeColour()), { quiet: true });
+    if (!byId('composerCustom').hidden) wheel.set(parseHex(activeColour()), { quiet: true });
     render();
   });
-  $('gradientAngle').addEventListener('input', (e) => {
+  byId('gradientAngle').addEventListener('input', (e) => {
     state.gradient.angle = Number(e.target.value);
     render();
   });
 
   // Custom colour: the wheel and a hex field, from the colorguess game.
   wheel = new ColourWheel(
-    { wrap: $('wheelWrap'), canvas: $('wheelCanvas'), marker: $('wheelMarker'), slider: $('wheelBrightness'), hex: $('wheelHex'), preview: $('wheelPreview') },
+    { wrap: byId('wheelWrap'), canvas: byId('wheelCanvas'), marker: byId('wheelMarker'), slider: byId('wheelBrightness'), hex: byId('wheelHex'), preview: byId('wheelPreview') },
     (hex) => {
       setActiveColour(hex.toLowerCase());
       render();
     },
-    (w, hex) => t('avatar.wheel-value', { hex, hue: Math.round(w.h), sat: Math.round(w.s * 100), bright: Math.round(w.v * 100) })
+    (w, hex) => translate('avatar.wheel-value', { hex, hue: Math.round(w.h), sat: Math.round(w.s * 100), bright: Math.round(w.v * 100) })
   );
-  $('composerCustomToggle').addEventListener('click', () => {
-    const panel = $('composerCustom');
+  byId('composerCustomToggle').addEventListener('click', () => {
+    const panel = byId('composerCustom');
     const opening = panel.hidden;
     panel.hidden = !opening;
-    $('composerCustomToggle').setAttribute('aria-expanded', String(opening));
+    byId('composerCustomToggle').setAttribute('aria-expanded', String(opening));
     if (opening) {
       wheel.set(parseHex(activeColour()) ?? 0xfedc00, { quiet: true });
       wheel.drawnFor = null;
       wheel.draw();
     }
   });
-  $('composerBgFile').addEventListener('change', async (e) => {
+  byId('composerBgFile').addEventListener('change', async (e) => {
     const file = e.target.files && e.target.files[0];
     e.target.value = '';
     if (!file) return;
@@ -617,22 +617,22 @@ function wire() {
       state.bgImage?.close?.();
       state.bgImage = await loadBitmap(file);
       state.bg = 'image';
-      $('composerError').textContent = '';
+      byId('composerError').textContent = '';
       render();
     } catch (error) {
-      $('composerError').textContent = errorText(error);
+      byId('composerError').textContent = errorText(error);
     }
   });
 
-  $('composerSave').addEventListener('click', async () => {
-    const button = $('composerSave');
+  byId('composerSave').addEventListener('click', async () => {
+    const button = byId('composerSave');
     setBusy(button, true);
-    $('composerError').textContent = '';
+    byId('composerError').textContent = '';
     try {
       await onSave(await exportImage());
       closeModal('avatarModal');
     } catch (error) {
-      $('composerError').textContent = errorText(error);
+      byId('composerError').textContent = errorText(error);
     } finally {
       setBusy(button, false);
     }
@@ -640,7 +640,7 @@ function wire() {
 }
 
 function buildGradients() {
-  const row = $('composerGradients');
+  const row = byId('composerGradients');
   row.replaceChildren();
   for (const [name, from, to, angle] of BG_GRADIENTS) {
     const b = document.createElement('button');
@@ -648,8 +648,8 @@ function buildGradients() {
     b.className = 'colour-swatch gradient-swatch';
     b.dataset.gradient = name;
     b.setAttribute('aria-pressed', 'false');
-    b.setAttribute('aria-label', t(`avatar.gradient-${name}`));
-    b.title = t(`avatar.gradient-${name}`);
+    b.setAttribute('aria-label', translate(`avatar.gradient-${name}`));
+    b.title = translate(`avatar.gradient-${name}`);
     // A preview of the person's background, set through the CSSOM.
     b.style.setProperty('background', `linear-gradient(${angle}deg, ${from}, ${to})`);
     row.appendChild(b);
@@ -657,8 +657,8 @@ function buildGradients() {
 }
 
 function buildSwatches() {
-  const row = $('composerColours');
-  const custom = $('composerCustomToggle');
+  const row = byId('composerColours');
+  const custom = byId('composerCustomToggle');
   row.querySelectorAll('[data-colour]').forEach((b) => b.remove());
   for (const [name, hex] of BG_COLOURS) {
     const b = document.createElement('button');
@@ -666,8 +666,8 @@ function buildSwatches() {
     b.className = 'colour-swatch';
     b.dataset.colour = hex;
     b.setAttribute('aria-pressed', 'false');
-    b.setAttribute('aria-label', t(`avatar.colour-${name}`));
-    b.title = t(`avatar.colour-${name}`);
+    b.setAttribute('aria-label', translate(`avatar.colour-${name}`));
+    b.title = translate(`avatar.colour-${name}`);
     b.style.setProperty('--swatch-color', hex);
     row.insertBefore(b, custom);
   }
@@ -744,9 +744,9 @@ export async function editAvatar(file, save) {
   }
   buildSwatches();
   buildGradients();
-  status(state.seeThrough ? t('avatar.see-through') : '');
-  $('composerError').textContent = '';
-  const canvas = $('composerCanvas');
+  status(state.seeThrough ? translate('avatar.see-through') : '');
+  byId('composerError').textContent = '';
+  const canvas = byId('composerCanvas');
   const px = Math.round(Math.min(320, canvas.clientWidth || 320) * (window.devicePixelRatio || 1));
   canvas.width = px;
   canvas.height = px;

@@ -10,7 +10,7 @@
 // on every insert, with the page row locked, so two links added at the same
 // moment cannot both get under the limit.
 
-import { db, T } from './supabase.js';
+import { database, TABLES } from './supabase.js';
 import { MAX_LINKS } from './validate.js';
 
 export const DEFAULT_LINK_CAP = 20;
@@ -39,7 +39,7 @@ export function linksUsed(links) {
 }
 
 export async function defaultLinkCap() {
-  const { data, error } = await db().from(T.settings).select('value').eq('key', SETTING).maybeSingle();
+  const { data, error } = await database().from(TABLES.settings).select('value').eq('key', SETTING).maybeSingle();
   if (error) {
     if (missingSchema(error)) return DEFAULT_LINK_CAP;
     throw error;
@@ -48,15 +48,15 @@ export async function defaultLinkCap() {
 }
 
 export async function setDefaultLinkCap(cap, staffId) {
-  const { error } = await db()
-    .from(T.settings)
+  const { error } = await database()
+    .from(TABLES.settings)
     .upsert({ key: SETTING, value: cap, updated_by: staffId, updated_at: new Date().toISOString() });
   if (error) throw error;
 }
 
 // The page's own limit, or null when it follows the default.
 async function pageOverride(pageId) {
-  const { data, error } = await db().from(T.pages).select('links_cap').eq('id', pageId).maybeSingle();
+  const { data, error } = await database().from(TABLES.pages).select('links_cap').eq('id', pageId).maybeSingle();
   if (error) {
     if (missingSchema(error)) return null;
     throw error;
@@ -80,8 +80,8 @@ export const REQUEST_COLUMNS = 'id, page_id, requested_cap, current_cap, reason,
 // The page's open request if it has one, else its most recent, whatever an
 // admin decided; null if it never asked.
 export async function latestCapRequest(pageId) {
-  const { data, error } = await db()
-    .from(T.linkCapRequests)
+  const { data, error } = await database()
+    .from(TABLES.linkCapRequests)
     .select(REQUEST_COLUMNS)
     .eq('page_id', pageId)
     .order('created_at', { ascending: false })

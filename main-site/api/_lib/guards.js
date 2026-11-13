@@ -2,7 +2,7 @@
 // patterns) and the domains staff allow past the threat lists. Small, and
 // used by almost every route.
 
-import { db, T } from './supabase.js';
+import { database, TABLES } from './supabase.js';
 import { fail, clientIp, clientVisitor } from './http.js';
 import { hashIp, hashVisitor } from './crypto.js';
 import { sanitizeUrl, addressBlocked, patternBlocks, isShortener, addressesInText, linkHost, lookupUrl, hostIsBlocked } from './validate.js';
@@ -38,19 +38,19 @@ export const LIMITS = Object.freeze({
 // Count one hit for each subject and answer 429 if any is over. Returns true
 // when the request has been answered. A failure of the limiter itself lets
 // the request through, so a database hiccup does not lock everybody out.
-export async function limited(req, res, name, subjects = []) {
+export async function limited(request, response, name, subjects = []) {
   const [max, windowSeconds] = LIMITS[name];
-  const keys = [`${name}:ip:${hashIp(clientIp(req))}`, ...subjects.map((s) => `${name}:${s}`)];
+  const keys = [`${name}:ip:${hashIp(clientIp(request))}`, ...subjects.map((s) => `${name}:${s}`)];
   try {
     for (const bucket of keys) {
-      const { data, error } = await db().rpc('gftvonelink_rate_hit', {
+      const { data, error } = await database().rpc('gftvonelink_rate_hit', {
         p_bucket: bucket,
         p_window_seconds: windowSeconds,
       });
       if (error) throw error;
       if (Number(data) > max) {
-        res.setHeader('Retry-After', String(windowSeconds));
-        fail(res, 429, 'rate_limited');
+        response.setHeader('Retry-After', String(windowSeconds));
+        fail(response, 429, 'rate_limited');
         return true;
       }
     }
@@ -62,8 +62,8 @@ export async function limited(req, res, name, subjects = []) {
 
 // The hash of the device fingerprint a request carries, or null. Only the
 // sign-up, sign-in and editor pages send one (js/visitor.js).
-export function visitorHash(req) {
-  const visitor = req ? clientVisitor(req) : '';
+export function visitorHash(request) {
+  const visitor = request ? clientVisitor(request) : '';
   return visitor ? hashVisitor(visitor) : null;
 }
 
@@ -71,22 +71,22 @@ export function visitorHash(req) {
 // a password or a full address. The device hash goes next to the address
 // hash when the request has one (migration 012), so a ban on the connection
 // can take the devices used on it too.
-export async function audit(req, { action, actorType = 'system', actorId = null, pageId = null, details = {} }) {
+export async function audit(request, { action, actorType = 'system', actorId = null, pageId = null, details = {} }) {
   const row = {
     action,
     actor_type: actorType,
     actor_id: actorId,
     page_id: pageId,
     details,
-    ip_hash: req ? hashIp(clientIp(req)) : null,
+    ip_hash: request ? hashIp(clientIp(request)) : null,
   };
-  const visitor = visitorHash(req);
+  const visitor = visitorHash(request);
   if (visitor) row.visitor_hash = visitor;
-  let { error } = await db().from(T.audit).insert(row);
+  let { error } = await database().from(TABLES.audit).insert(row);
   // Before migration 012 there is no visitor_hash column: keep the entry.
   if (error && visitor) {
     delete row.visitor_hash;
-    ({ error } = await db().from(T.audit).insert(row));
+    ({ error } = await database().from(TABLES.audit).insert(row));
   }
   if (error) console.error('[onelink] audit insert:', action, error.message);
 }
@@ -97,7 +97,7 @@ let domainCache = { at: 0, list: [] };
 // takes at most that long to stop being served.
 export async function blockedDomains() {
   if (Date.now() - domainCache.at < 60_000) return domainCache.list;
-  const { data, error } = await db().from(T.blockedDomains).select('domain');
+  const { data, error } = await database().from(TABLES.blockedDomains).select('domain');
   if (error) {
     console.error('[onelink] blocked domains:', error.message);
     return domainCache.list;
@@ -117,7 +117,7 @@ let patternCache = { at: 0, list: [] };
 // blocking everything.
 export async function blockedPatterns() {
   if (Date.now() - patternCache.at < 60_000) return patternCache.list;
-  const { data, error } = await db().from(T.blockedPatterns).select('id, pattern, applies_to');
+  const { data, error } = await database().from(TABLES.blockedPatterns).select('id, pattern, applies_to');
   if (error) {
     console.error('[onelink] blocked patterns:', error.message);
     return patternCache.list;
@@ -150,7 +150,7 @@ let allowedCache = { at: 0, list: [] };
 // like the blocked ones. Before 014 is run there are none.
 export async function allowedDomains() {
   if (Date.now() - allowedCache.at < 60_000) return allowedCache.list;
-  const { data, error } = await db().from(T.allowedDomains).select('domain');
+  const { data, error } = await database().from(TABLES.allowedDomains).select('domain');
   if (error) {
     if (missingSchema(error)) {
       allowedCache = { at: Date.now(), list: [] };
@@ -200,7 +200,7 @@ let reviewCache = { at: 0, list: [] };
 // (migration 004), compiled and cached like the block patterns.
 export async function reviewPatterns() {
   if (Date.now() - reviewCache.at < 60_000) return reviewCache.list;
-  const { data, error } = await db().from(T.reviewPatterns).select('id, pattern');
+  const { data, error } = await database().from(TABLES.reviewPatterns).select('id, pattern');
   if (error) {
     console.error('[onelink] review patterns:', error.message);
     return reviewCache.list;
@@ -269,25 +269,25 @@ export const QUARANTINE_AFTER = 3;
 export const IP_FLAG_AFTER = 5;
 const SUSPICION_WINDOW = 86400;
 
-const ipBucket = (req) => `badlink:ip:${hashIp(clientIp(req))}`;
+const ipBucket = (request) => `badlink:ip:${hashIp(clientIp(request))}`;
 
 async function bump(bucket) {
-  const { data, error } = await db().rpc('gftvonelink_rate_hit', { p_bucket: bucket, p_window_seconds: SUSPICION_WINDOW });
+  const { data, error } = await database().rpc('gftvonelink_rate_hit', { p_bucket: bucket, p_window_seconds: SUSPICION_WINDOW });
   if (error) throw error;
   return Number(data) || 0;
 }
 
 // Whether this connection has been flagged today. Answers 429 when it has.
-export async function refusedForAttempts(req, res) {
-  const { data, error } = await db().from('gftvonelink_rate_limits').select('hits, window_start').eq('bucket', ipBucket(req)).maybeSingle();
+export async function refusedForAttempts(request, response) {
+  const { data, error } = await database().from('gftvonelink_rate_limits').select('hits, window_start').eq('bucket', ipBucket(request)).maybeSingle();
   if (error) {
     console.error('[onelink] flagged check:', error.message);
     return false;
   }
   const live = data && Date.now() - new Date(data.window_start).getTime() < SUSPICION_WINDOW * 1000;
   if (live && data.hits >= IP_FLAG_AFTER) {
-    res.setHeader('Retry-After', String(SUSPICION_WINDOW));
-    fail(res, 429, 'too_many_refused_links');
+    response.setHeader('Retry-After', String(SUSPICION_WINDOW));
+    fail(response, 429, 'too_many_refused_links');
     return true;
   }
   return false;
@@ -313,18 +313,18 @@ export const BAN_AFTER_PAGES = 2;
 // Answers 403 and returns true when this request comes from a banned
 // connection, or, with newPage, from a banned device. For every route that
 // creates or changes a page; pageId is the page being changed, for staff.
-export async function refusedForBan(req, res, { newPage = false, pageId = null } = {}) {
-  const { data, error } = await db().from(T.ipBans).select('ip_hash').eq('ip_hash', hashIp(clientIp(req))).maybeSingle();
+export async function refusedForBan(request, response, { newPage = false, pageId = null } = {}) {
+  const { data, error } = await database().from(TABLES.ipBans).select('ip_hash').eq('ip_hash', hashIp(clientIp(request))).maybeSingle();
   if (error) {
     console.error('[onelink] ban check:', error.message);
     return false;
   }
   if (data) {
-    fail(res, 403, 'ip_banned');
+    fail(response, 403, 'ip_banned');
     return true;
   }
-  if ((await noteBannedVisitor(req, pageId)) && newPage) {
-    fail(res, 403, 'visitor_banned');
+  if ((await noteBannedVisitor(request, pageId)) && newPage) {
+    fail(response, 403, 'visitor_banned');
     return true;
   }
   return false;
@@ -336,18 +336,18 @@ const visitorBucket = (visitor, ip) => `badvisitor:${visitor}:${ip}`;
 // connection are flagged for staff for the day, and the first sighting goes
 // in the audit log. Never refuses anything itself, and a database error
 // counts as not banned.
-export async function noteBannedVisitor(req, pageId = null) {
-  const visitor = visitorHash(req);
+export async function noteBannedVisitor(request, pageId = null) {
+  const visitor = visitorHash(request);
   if (!visitor) return false;
-  const { data, error } = await db().from(T.visitorBans).select('visitor_hash').eq('visitor_hash', visitor).limit(1);
+  const { data, error } = await database().from(TABLES.visitorBans).select('visitor_hash').eq('visitor_hash', visitor).limit(1);
   if (error) {
     console.error('[onelink] device ban check:', error.message);
     return false;
   }
   if ((data ?? []).length === 0) return false;
   try {
-    if ((await bump(visitorBucket(visitor, hashIp(clientIp(req))))) === 1) {
-      await audit(req, { action: 'security.visitor_flagged', actorType: 'system', pageId });
+    if ((await bump(visitorBucket(visitor, hashIp(clientIp(request))))) === 1) {
+      await audit(request, { action: 'security.visitor_flagged', actorType: 'system', pageId });
     }
   } catch (cause) {
     console.error('[onelink] device flag:', cause?.message ?? cause);
@@ -356,7 +356,7 @@ export async function noteBannedVisitor(req, pageId = null) {
 }
 
 async function banHash(hash, { reason, pageIds = [], staffId = null }) {
-  const { error } = await db().from(T.ipBans).upsert({ ip_hash: hash, reason, page_ids: pageIds, created_by: staffId });
+  const { error } = await database().from(TABLES.ipBans).upsert({ ip_hash: hash, reason, page_ids: pageIds, created_by: staffId });
   if (error) throw error;
   await banVisitorsOf(hash, { reason, staffId });
 }
@@ -365,12 +365,12 @@ async function banHash(hash, { reason, pageIds = [], staffId = null }) {
 // here leaves the connection's ban in place.
 async function banVisitorsOf(hash, { reason, staffId }) {
   try {
-    const { data, error } = await db().from(T.audit).select('visitor_hash').eq('ip_hash', hash).not('visitor_hash', 'is', null);
+    const { data, error } = await database().from(TABLES.audit).select('visitor_hash').eq('ip_hash', hash).not('visitor_hash', 'is', null);
     if (error) throw error;
     const visitors = [...new Set((data ?? []).map((r) => r.visitor_hash))];
     if (visitors.length === 0) return;
     const rows = visitors.map((visitor) => ({ visitor_hash: visitor, ip_hash: hash, reason, created_by: staffId }));
-    const { error: banError } = await db().from(T.visitorBans).upsert(rows, { onConflict: 'visitor_hash,ip_hash' });
+    const { error: banError } = await database().from(TABLES.visitorBans).upsert(rows, { onConflict: 'visitor_hash,ip_hash' });
     if (banError) throw banError;
   } catch (cause) {
     console.error('[onelink] device bans:', cause?.message ?? cause);
@@ -378,23 +378,23 @@ async function banVisitorsOf(hash, { reason, staffId }) {
 }
 
 // After a page is quarantined: ban the connection if it is now the second.
-async function banIfRepeat(req, hash) {
-  const { data, error } = await db().from(T.audit).select('page_id').eq('action', 'mod.page_quarantined').eq('ip_hash', hash);
+async function banIfRepeat(request, hash) {
+  const { data, error } = await database().from(TABLES.audit).select('page_id').eq('action', 'mod.page_quarantined').eq('ip_hash', hash);
   if (error) throw error;
   const pages = [...new Set((data ?? []).map((r) => r.page_id).filter(Boolean))];
   if (pages.length < BAN_AFTER_PAGES) return;
   await banHash(hash, { reason: `${pages.length} pages quarantined from this connection`, pageIds: pages });
-  await audit(req, { action: 'security.ip_banned', actorType: 'system', details: { pages: pages.length } });
+  await audit(request, { action: 'security.ip_banned', actorType: 'system', details: { pages: pages.length } });
 }
 
 // Banned connections, newest first: [{ id, reason, since, slugs, byStaff,
 // devices }], devices being how many devices were banned with it.
 export async function bannedConnections() {
-  const { data, error } = await db().from(T.ipBans).select('ip_hash, reason, page_ids, created_by, created_at').order('created_at', { ascending: false });
+  const { data, error } = await database().from(TABLES.ipBans).select('ip_hash, reason, page_ids, created_by, created_at').order('created_at', { ascending: false });
   if (error) throw error;
   const devices = new Map();
   if ((data ?? []).length > 0) {
-    const { data: bans, error: deviceError } = await db().from(T.visitorBans).select('ip_hash').in('ip_hash', data.map((b) => b.ip_hash));
+    const { data: bans, error: deviceError } = await database().from(TABLES.visitorBans).select('ip_hash').in('ip_hash', data.map((b) => b.ip_hash));
     if (deviceError) console.error('[onelink] device bans:', deviceError.message);
     for (const ban of bans ?? []) devices.set(ban.ip_hash, (devices.get(ban.ip_hash) ?? 0) + 1);
   }
@@ -402,7 +402,7 @@ export async function bannedConnections() {
   for (const ban of data ?? []) {
     let slugs = [];
     if ((ban.page_ids ?? []).length > 0) {
-      const { data: pages, error: pageError } = await db().from(T.pages).select('slug').in('id', ban.page_ids);
+      const { data: pages, error: pageError } = await database().from(TABLES.pages).select('slug').in('id', ban.page_ids);
       if (pageError) throw pageError;
       slugs = (pages ?? []).map((p) => p.slug);
     }
@@ -414,7 +414,7 @@ export async function bannedConnections() {
 // Ban a connection staff can see flagged, by the start of its hash.
 export async function banFlaggedConnection(id, staffId, reason) {
   if (!/^[0-9a-f]{16}$/.test(String(id))) return false;
-  const { data, error } = await db().from('gftvonelink_rate_limits').select('bucket').like('bucket', `badlink:ip:${id}%`).limit(1);
+  const { data, error } = await database().from('gftvonelink_rate_limits').select('bucket').like('bucket', `badlink:ip:${id}%`).limit(1);
   if (error) throw error;
   if (!data?.[0]) return false;
   await banHash(data[0].bucket.slice('badlink:ip:'.length), { reason: reason || 'Banned by staff', staffId });
@@ -424,12 +424,12 @@ export async function banFlaggedConnection(id, staffId, reason) {
 // Lift a connection's ban, and the bans on the devices seen on it.
 export async function unbanConnection(id) {
   if (!/^[0-9a-f]{16}$/.test(String(id))) return false;
-  const { data, error } = await db().from(T.ipBans).delete().like('ip_hash', `${id}%`).select('ip_hash');
+  const { data, error } = await database().from(TABLES.ipBans).delete().like('ip_hash', `${id}%`).select('ip_hash');
   if (error) throw error;
   const hashes = (data ?? []).map((r) => r.ip_hash);
   if (hashes.length === 0) return false;
   // The table's foreign key does this too; this covers a database without it.
-  const { error: deviceError } = await db().from(T.visitorBans).delete().in('ip_hash', hashes);
+  const { error: deviceError } = await database().from(TABLES.visitorBans).delete().in('ip_hash', hashes);
   if (deviceError) console.error('[onelink] device unban:', deviceError.message);
   return true;
 }
@@ -440,13 +440,13 @@ export async function unbanConnection(id) {
 // actions below take it; slug is the page it was last seen on, if any.
 export async function flaggedVisitors() {
   const since = new Date(Date.now() - SUSPICION_WINDOW * 1000).toISOString();
-  const { data, error } = await db().from('gftvonelink_rate_limits').select('bucket, hits, window_start').like('bucket', 'badvisitor:%').gte('window_start', since);
+  const { data, error } = await database().from('gftvonelink_rate_limits').select('bucket, hits, window_start').like('bucket', 'badvisitor:%').gte('window_start', since);
   if (error) throw error;
   const rows = [];
   for (const row of data ?? []) {
     const [, visitor, ip] = row.bucket.split(':');
-    const { data: last, error: auditError } = await db()
-      .from(T.audit)
+    const { data: last, error: auditError } = await database()
+      .from(TABLES.audit)
       .select('page_id, created_at')
       .eq('action', 'security.visitor_flagged')
       .eq('visitor_hash', visitor)
@@ -456,7 +456,7 @@ export async function flaggedVisitors() {
     if (auditError) throw auditError;
     let slug = null;
     if (last?.[0]?.page_id) {
-      const { data: page } = await db().from(T.pages).select('slug').eq('id', last[0].page_id).maybeSingle();
+      const { data: page } = await database().from(TABLES.pages).select('slug').eq('id', last[0].page_id).maybeSingle();
       slug = page?.slug ?? null;
     }
     const device = visitor.slice(0, 16);
@@ -477,10 +477,10 @@ function flaggedVisitorBuckets(id) {
 export async function unflagVisitor(id) {
   const pattern = flaggedVisitorBuckets(id);
   if (!pattern) return false;
-  const { data, error } = await db().from('gftvonelink_rate_limits').delete().like('bucket', pattern).select('bucket');
+  const { data, error } = await database().from('gftvonelink_rate_limits').delete().like('bucket', pattern).select('bucket');
   if (error) throw error;
   if ((data ?? []).length === 0) return false;
-  const { error: unbanError } = await db().from(T.visitorBans).delete().like('visitor_hash', `${id.slice(0, 16)}%`);
+  const { error: unbanError } = await database().from(TABLES.visitorBans).delete().like('visitor_hash', `${id.slice(0, 16)}%`);
   if (unbanError) throw unbanError;
   return true;
 }
@@ -490,12 +490,12 @@ export async function unflagVisitor(id) {
 export async function banFlaggedVisitor(id, staffId, reason) {
   const pattern = flaggedVisitorBuckets(id);
   if (!pattern) return false;
-  const { data, error } = await db().from('gftvonelink_rate_limits').select('bucket').like('bucket', pattern).limit(1);
+  const { data, error } = await database().from('gftvonelink_rate_limits').select('bucket').like('bucket', pattern).limit(1);
   if (error) throw error;
   if (!data?.[0]) return false;
   const [, , ip] = data[0].bucket.split(':');
   await banHash(ip, { reason: reason || 'Banned by staff: a device from a banned connection', staffId });
-  const { error: clearError } = await db().from('gftvonelink_rate_limits').delete().eq('bucket', data[0].bucket);
+  const { error: clearError } = await database().from('gftvonelink_rate_limits').delete().eq('bucket', data[0].bucket);
   if (clearError) throw clearError;
   return true;
 }
@@ -505,7 +505,7 @@ export async function banFlaggedVisitor(id, staffId, reason) {
 // address (the address itself is never kept), enough to tell them apart.
 export async function flaggedConnections() {
   const since = new Date(Date.now() - SUSPICION_WINDOW * 1000).toISOString();
-  const { data, error } = await db()
+  const { data, error } = await database()
     .from('gftvonelink_rate_limits')
     .select('bucket, hits, window_start')
     .like('bucket', 'badlink:ip:%')
@@ -515,8 +515,8 @@ export async function flaggedConnections() {
   const rows = [];
   for (const row of data ?? []) {
     const hash = row.bucket.slice('badlink:ip:'.length);
-    const { data: last, error: auditError } = await db()
-      .from(T.audit)
+    const { data: last, error: auditError } = await database()
+      .from(TABLES.audit)
       .select('page_id, created_at')
       .eq('action', 'security.link_refused')
       .eq('ip_hash', hash)
@@ -525,7 +525,7 @@ export async function flaggedConnections() {
     if (auditError) throw auditError;
     let slug = null;
     if (last?.[0]?.page_id) {
-      const { data: page } = await db().from(T.pages).select('slug').eq('id', last[0].page_id).maybeSingle();
+      const { data: page } = await database().from(TABLES.pages).select('slug').eq('id', last[0].page_id).maybeSingle();
       slug = page?.slug ?? null;
     }
     rows.push({ id: hash.slice(0, 16), attempts: row.hits, since: row.window_start, slug });
@@ -537,7 +537,7 @@ export async function flaggedConnections() {
 // True when one was lifted.
 export async function unflagConnection(id) {
   if (!/^[0-9a-f]{16}$/.test(String(id))) return false;
-  const { data, error } = await db().from('gftvonelink_rate_limits').delete().like('bucket', `badlink:ip:${id}%`).select('bucket');
+  const { data, error } = await database().from('gftvonelink_rate_limits').delete().like('bucket', `badlink:ip:${id}%`).select('bucket');
   if (error) throw error;
   return (data ?? []).length > 0;
 }
@@ -545,25 +545,25 @@ export async function unflagConnection(id) {
 // Forget a page's refused addresses for the day, so a page staff have
 // released is not quarantined again by the next mistake.
 export async function resetRefusedLinks(pageId) {
-  const { error } = await db().from('gftvonelink_rate_limits').delete().eq('bucket', `badlink:page:${pageId}`);
+  const { error } = await database().from('gftvonelink_rate_limits').delete().eq('bucket', `badlink:page:${pageId}`);
   if (error) throw error;
 }
 
 // Count a refused address. Returns { quarantined } so the route can say so.
-export async function noteRefusedLink(req, page, error, url) {
+export async function noteRefusedLink(request, page, error, url) {
   if (!SUSPICIOUS_LINK_ERRORS.has(error)) return { quarantined: false };
   const host = linkHost(url) || String(url ?? '').slice(0, 80);
   let quarantined = false;
   try {
-    const [pageHits, ipHits] = await Promise.all([bump(`badlink:page:${page.id}`), bump(ipBucket(req))]);
-    await audit(req, { action: 'security.link_refused', actorType: 'owner', actorId: page.id, pageId: page.id, details: { error, host } });
+    const [pageHits, ipHits] = await Promise.all([bump(`badlink:page:${page.id}`), bump(ipBucket(request))]);
+    await audit(request, { action: 'security.link_refused', actorType: 'owner', actorId: page.id, pageId: page.id, details: { error, host } });
     if (ipHits === IP_FLAG_AFTER) {
-      await audit(req, { action: 'security.ip_flagged', actorType: 'system', pageId: page.id, details: { attempts: ipHits } });
+      await audit(request, { action: 'security.ip_flagged', actorType: 'system', pageId: page.id, details: { attempts: ipHits } });
     }
     if (pageHits >= QUARANTINE_AFTER) {
       const reason = `${pageHits} harmful addresses refused in a day, the last on ${host}`;
-      const { data, error: updateError } = await db()
-        .from(T.pages)
+      const { data, error: updateError } = await database()
+        .from(TABLES.pages)
         .update({ quarantined_at: new Date().toISOString(), quarantine_reason: reason })
         .eq('id', page.id)
         .is('quarantined_at', null)
@@ -571,9 +571,9 @@ export async function noteRefusedLink(req, page, error, url) {
       if (updateError) throw updateError;
       quarantined = (data ?? []).length === 1;
       if (quarantined) {
-        await db().from(T.reports).insert({ page_id: page.id, reason: 'scam', details: `Automatic: ${reason}.` });
-        await audit(req, { action: 'mod.page_quarantined', actorType: 'system', pageId: page.id, details: { reason } });
-        await banIfRepeat(req, hashIp(clientIp(req)));
+        await database().from(TABLES.reports).insert({ page_id: page.id, reason: 'scam', details: `Automatic: ${reason}.` });
+        await audit(request, { action: 'mod.page_quarantined', actorType: 'system', pageId: page.id, details: { reason } });
+        await banIfRepeat(request, hashIp(clientIp(request)));
       }
     }
   } catch (cause) {
@@ -587,7 +587,7 @@ export async function noteRefusedLink(req, page, error, url) {
 // anything, so a failure of the limiter counts the visit.
 export async function firstHit(bucket, windowSeconds) {
   try {
-    const { data, error } = await db().rpc('gftvonelink_rate_hit', { p_bucket: bucket, p_window_seconds: windowSeconds });
+    const { data, error } = await database().rpc('gftvonelink_rate_hit', { p_bucket: bucket, p_window_seconds: windowSeconds });
     if (error) throw error;
     return Number(data) <= 1;
   } catch (cause) {
@@ -597,7 +597,7 @@ export async function firstHit(bucket, windowSeconds) {
 }
 
 export async function slugIsBlocked(slug) {
-  const { data, error } = await db().from(T.blockedSlugs).select('slug').eq('slug', slug).maybeSingle();
+  const { data, error } = await database().from(TABLES.blockedSlugs).select('slug').eq('slug', slug).maybeSingle();
   if (error) throw error;
   return Boolean(data);
 }

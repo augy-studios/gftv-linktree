@@ -6,16 +6,16 @@
 // none. Everything that moves stands still for prefers-reduced-motion.
 
 import '../app.js';
-import { t, onChange, getLocale } from '../../assets/i18n/i18n.js';
+import { t as translate, onChange, getLocale } from '../../assets/i18n/i18n.js';
 import { api } from '../api.js';
-import { el } from '../ui.js';
+import { createElement } from '../ui.js';
 import { icon } from '../icons.js';
 import { wireSlugCheck, normaliseSlugInput } from '../slug-check.js';
 
-const $ = (id) => document.getElementById(id);
-const form = $('claimForm');
-const input = $('claimSlug');
-wireSlugCheck(input, $('claimStatus'));
+const byId = (id) => document.getElementById(id);
+const form = byId('claimForm');
+const input = byId('claimSlug');
+wireSlugCheck(input, byId('claimStatus'));
 
 form.addEventListener('submit', (e) => {
   e.preventDefault();
@@ -44,7 +44,7 @@ const stackSeen = new IntersectionObserver(([entry]) => {
     placeCards();
   }, 2400);
 });
-if (cards.length) stackSeen.observe($('cardStack'));
+if (cards.length) stackSeen.observe(byId('cardStack'));
 
 // --- the insight tiles --------------------------------------------------------
 //
@@ -92,21 +92,21 @@ function fillTiles(animate) {
   const devices = Object.values(d.devices).reduce((a, b) => a + b, 0);
   const top = ['mobile', 'desktop', 'tablet'].reduce((best, k) => (d.devices[k] > d.devices[best] ? k : best), 'mobile');
   const share = devices > 0 && d.devices[top] > 0 ? Math.round((d.devices[top] / devices) * 100) : null;
-  $('tileSpark').setAttribute('d', sparkPath(d.daily));
-  countTo($('tileClicks'), d.clicks, '', animate);
-  countTo($('tileVisits'), d.visits, '', animate);
-  if (share === null) $('tileDevice').textContent = '–';
-  else countTo($('tileDevice'), share, '%', animate);
-  $('tileDeviceLabel').textContent = t(`home.tile-device-${top}`);
-  $('tileDeviceBar').style.setProperty('--mobile', `${share ?? 0}%`);
+  byId('tileSpark').setAttribute('d', sparkPath(d.daily));
+  countTo(byId('tileClicks'), d.clicks, '', animate);
+  countTo(byId('tileVisits'), d.visits, '', animate);
+  if (share === null) byId('tileDevice').textContent = '–';
+  else countTo(byId('tileDevice'), share, '%', animate);
+  byId('tileDeviceLabel').textContent = translate(`home.tile-device-${top}`);
+  byId('tileDeviceBar').style.setProperty('--mobile', `${share ?? 0}%`);
   // The top referring site once there is one; the number of live pages until then.
   if (d.referrer) {
-    $('tileSourceIcon').innerHTML = icon(SITE_ICONS[d.referrer.key] || 'globe');
-    countTo($('tileSource'), d.referrer.share, '%', animate);
-    $('tileSourceLabel').textContent = t('home.tile-source', { site: d.referrer.key });
+    byId('tileSourceIcon').innerHTML = icon(SITE_ICONS[d.referrer.key] || 'globe');
+    countTo(byId('tileSource'), d.referrer.share, '%', animate);
+    byId('tileSourceLabel').textContent = translate('home.tile-source', { site: d.referrer.key });
   } else {
-    countTo($('tileSource'), d.pages, '', animate);
-    $('tileSourceLabel').textContent = t('home.tile-pages', { count: d.pages });
+    countTo(byId('tileSource'), d.pages, '', animate);
+    byId('tileSourceLabel').textContent = translate('home.tile-pages', { count: d.pages });
   }
   let place = '';
   if (d.country) {
@@ -116,13 +116,13 @@ function fillTiles(animate) {
       place = '';
     }
   }
-  $('tilePlace').textContent = place;
+  byId('tilePlace').textContent = place;
 }
 
 function maybeCount() {
   if (!insights || !tilesSeen || counted) return;
   counted = true;
-  $('insightTiles').classList.add('in-view');
+  byId('insightTiles').classList.add('in-view');
   fillTiles(!still.matches);
 }
 
@@ -131,7 +131,7 @@ new IntersectionObserver(([entry], observer) => {
   tilesSeen = true;
   observer.disconnect();
   maybeCount();
-}, { threshold: 0.35 }).observe($('insightTiles'));
+}, { threshold: 0.35 }).observe(byId('insightTiles'));
 
 api('/api/public/insights')
   .then((data) => {
@@ -181,14 +181,14 @@ for (const details of faqs) {
 
 let quotes = [];
 function renderQuotes() {
-  const row = $('quoteRow');
-  row.replaceChildren(...quotes.map((q) => el('li', { class: 'quote-card' }, [
-    el('blockquote', { text: q.quote }),
+  const row = byId('quoteRow');
+  row.replaceChildren(...quotes.map((q) => createElement('li', { class: 'quote-card' }, [
+    createElement('blockquote', { text: q.quote }),
     q.pageSlug
-      ? el('a', { class: 'quote-by', href: `/${q.pageSlug}`, text: q.author })
-      : el('span', { class: 'quote-by', text: q.author }),
+      ? createElement('a', { class: 'quote-by', href: `/${q.pageSlug}`, text: q.author })
+      : createElement('span', { class: 'quote-by', text: q.author }),
   ])));
-  $('lovedSection').hidden = quotes.length === 0;
+  byId('lovedSection').hidden = quotes.length === 0;
 }
 
 api('/api/public/testimonials')

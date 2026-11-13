@@ -9,7 +9,7 @@
 // themes like the rest of the page.
 
 import { getLocale } from '../assets/i18n/i18n.js';
-import { el } from './ui.js';
+import { createElement } from './ui.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const svg = (tag, attrs = {}) => {
@@ -73,7 +73,7 @@ export function drawColumns(container, points, { label, describe, caption }) {
   });
 
   // Hit areas the full height of each slot, wider than the column itself.
-  const tip = el('div', { class: 'chart-tip', role: 'status', hidden: true });
+  const tip = createElement('div', { class: 'chart-tip', role: 'status', hidden: true });
   let active = -1;
   const show = (i) => {
     if (active >= 0) columns[active].bar?.classList.remove('on');
@@ -108,9 +108,9 @@ export function drawColumns(container, points, { label, describe, caption }) {
     }
   });
 
-  const table = el('table', { class: 'visually-hidden' }, [
-    el('caption', { text: caption }),
-    el('tbody', {}, points.map((p) => el('tr', {}, [el('th', { scope: 'row', text: dayLabel(p.day, { dateStyle: 'medium' }) }), el('td', { text: nf.format(p.value) })]))),
+  const table = createElement('table', { class: 'visually-hidden' }, [
+    createElement('caption', { text: caption }),
+    createElement('tbody', {}, points.map((p) => createElement('tr', {}, [createElement('th', { scope: 'row', text: dayLabel(p.day, { dateStyle: 'medium' }) }), createElement('td', { text: nf.format(p.value) })]))),
   ]);
   container.append(chart, tip, table);
 }
@@ -120,14 +120,14 @@ export function drawColumns(container, points, { label, describe, caption }) {
 export function fillBarList(list, rows, emptyText) {
   list.replaceChildren();
   if (rows.length === 0) {
-    list.append(el('li', { class: 'empty-state', text: emptyText }));
+    list.append(createElement('li', { class: 'empty-state', text: emptyText }));
     return;
   }
   const max = Math.max(...rows.map((r) => r.value), 1);
   const nf = new Intl.NumberFormat(getLocale());
   for (const row of rows) {
-    const bar = el('span', { class: 'bar', 'aria-hidden': 'true' });
+    const bar = createElement('span', { class: 'bar', 'aria-hidden': 'true' });
     bar.style.setProperty('--share', `${Math.max(2, (row.value / max) * 100)}%`);
-    list.append(el('li', {}, [el('span', { class: 'label', text: row.label }), el('span', { class: 'value', text: nf.format(row.value) }), bar]));
+    list.append(createElement('li', {}, [createElement('span', { class: 'label', text: row.label }), createElement('span', { class: 'value', text: nf.format(row.value) }), bar]));
   }
 }

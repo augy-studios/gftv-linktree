@@ -5,7 +5,7 @@
 // Codes: the bot sends a six digit code to that chat, for signing in without
 // the usual second factor or for resetting a forgotten password.
 
-import { db, T } from './supabase.js';
+import { database, TABLES } from './supabase.js';
 import { optionalEnv } from './env.js';
 import { randomToken, sha256 } from './crypto.js';
 
@@ -125,7 +125,7 @@ export function staffChatTargets(raw = optionalEnv('TELEGRAM_STAFF_CHAT_ID')) {
 // { "@name": chatId } for listed people who have messaged the bot. Empty
 // before migration 013 (the settings table) is run.
 async function rememberedStaffChats() {
-  const { data, error } = await db().from(T.settings).select('value').eq('key', STAFF_CHATS_SETTING).maybeSingle();
+  const { data, error } = await database().from(TABLES.settings).select('value').eq('key', STAFF_CHATS_SETTING).maybeSingle();
   if (error) {
     if (!MISSING_TABLE.has(error.code)) console.warn('[onelink] staff chats:', error.message);
     return {};
@@ -142,8 +142,8 @@ export async function rememberStaffChat(username, chatId) {
   if (!staffChatTargets().includes(name)) return false;
   const known = await rememberedStaffChats();
   if (known[name] === chatId) return true;
-  const { error } = await db()
-    .from(T.settings)
+  const { error } = await database()
+    .from(TABLES.settings)
     .upsert({ key: STAFF_CHATS_SETTING, value: { ...known, [name]: chatId }, updated_at: new Date().toISOString() });
   if (error) {
     console.warn('[onelink] staff chats:', error.message);
@@ -173,9 +173,9 @@ export async function notifyStaff(rich) {
 }
 
 export async function createLinkToken(pageId) {
-  await db().from(T.telegramLinks).delete().eq('page_id', pageId).is('used_at', null);
+  await database().from(TABLES.telegramLinks).delete().eq('page_id', pageId).is('used_at', null);
   const token = randomToken(24);
-  const { error } = await db().from(T.telegramLinks).insert({
+  const { error } = await database().from(TABLES.telegramLinks).insert({
     page_id: pageId,
     token_hash: sha256(token),
     expires_at: new Date(Date.now() + LINK_TOKEN_MINUTES * 60_000).toISOString(),
@@ -190,13 +190,13 @@ export async function createLinkToken(pageId) {
 // The page a deep link token belongs to, spending the token, or null.
 export async function spendLinkToken(token) {
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
-  const { data, error } = await db()
-    .from(T.telegramLinks)
+  const { data, error } = await database()
+    .from(TABLES.telegramLinks)
     .select('id, page_id, expires_at, used_at')
     .eq('token_hash', sha256(token))
     .maybeSingle();
   if (error) throw error;
   if (!data || data.used_at || new Date(data.expires_at).getTime() <= Date.now()) return null;
-  await db().from(T.telegramLinks).update({ used_at: new Date().toISOString() }).eq('id', data.id);
+  await database().from(TABLES.telegramLinks).update({ used_at: new Date().toISOString() }).eq('id', data.id);
   return data.page_id;
 }

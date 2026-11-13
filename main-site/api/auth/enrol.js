@@ -12,7 +12,7 @@
 // signs the owner in.
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
-import { db, T } from '../_lib/supabase.js';
+import { database, TABLES } from '../_lib/supabase.js';
 import { encryptSecret, decryptSecret } from '../_lib/crypto.js';
 import { generateTotpSecret, verifyTotp, otpauthUri } from '../_lib/totp.js';
 import { registrationOptions, finishRegistration } from '../_lib/webauthn.js';
@@ -30,46 +30,46 @@ import {
   createOwnerSession,
 } from '../_lib/session.js';
 
-export default route('auth/enrol', async (req, res) => {
-  if (guard(req, res, ['POST'])) return;
-  const body = await readJson(req, res);
+export default route('auth/enrol', async (request, response) => {
+  if (guard(request, response, ['POST'])) return;
+  const body = await readJson(request, response);
   if (!body) return;
-  if (await limited(req, res, 'secondFactor')) return;
+  if (await limited(request, response, 'secondFactor')) return;
 
   const challenge = await findChallenge(body.challenge, 'owner', 'enrol');
-  if (!challenge) return fail(res, 401, 'challenge_expired');
+  if (!challenge) return fail(response, 401, 'challenge_expired');
 
-  const { data: page, error } = await db()
-    .from(T.pages)
+  const { data: page, error } = await database()
+    .from(TABLES.pages)
     .select('id, slug, status, needs_review')
     .eq('id', challenge.subject_id)
     .maybeSingle();
   if (error) throw error;
   if (!page || page.status !== 'pending') {
     await deleteChallenge(challenge);
-    return fail(res, 401, 'challenge_expired');
+    return fail(response, 401, 'challenge_expired');
   }
 
   switch (body.action) {
     case 'totp-start': {
       const secret = generateTotpSecret();
       await updateChallenge(challenge, { pending_totp_secret: encryptSecret(secret) });
-      return ok(res, { secret, uri: otpauthUri({ account: `links.gftv.asia/${page.slug}`, secret }) });
+      return ok(response, { secret, uri: otpauthUri({ account: `links.gftv.asia/${page.slug}`, secret }) });
     }
 
     case 'totp-finish': {
       const secret = decryptSecret(challenge.pending_totp_secret);
-      if (!secret) return fail(res, 400, 'totp_not_started');
+      if (!secret) return fail(response, 400, 'totp_not_started');
       if (!verifyTotp(body.code, secret)) {
         await failChallengeAttempt(challenge);
-        return fail(res, 401, 'code_wrong');
+        return fail(response, 401, 'code_wrong');
       }
-      return activate(req, res, page, challenge, { totp_secret: challenge.pending_totp_secret }, 'totp');
+      return activate(request, response, page, challenge, { totp_secret: challenge.pending_totp_secret }, 'totp');
     }
 
     case 'passkey-options': {
       const options = await registrationOptions('owner', { subjectId: page.id, userName: page.slug });
-      return ok(res, { options });
+      return ok(response, { options });
     }
 
     case 'passkey-finish': {
@@ -80,36 +80,36 @@ export default route('auth/enrol', async (req, res) => {
       });
       if (!result.ok) {
         await failChallengeAttempt(challenge);
-        return fail(res, 400, result.error);
+        return fail(response, 400, result.error);
       }
-      return activate(req, res, page, challenge, {}, 'passkey');
+      return activate(request, response, page, challenge, {}, 'passkey');
     }
 
     default:
-      return fail(res, 400, 'bad_request');
+      return fail(response, 400, 'bad_request');
   }
 });
 
-async function activate(req, res, page, challenge, fields, method) {
+async function activate(request, response, page, challenge, fields, method) {
   const now = new Date().toISOString();
-  const { data, error } = await db()
-    .from(T.pages)
+  const { data, error } = await database()
+    .from(TABLES.pages)
     .update({ ...fields, status: 'active', activated_at: now })
     .eq('id', page.id)
     .eq('status', 'pending')
     .select('id');
   if (error) throw error;
-  if ((data ?? []).length !== 1) return fail(res, 409, 'challenge_expired');
+  if ((data ?? []).length !== 1) return fail(response, 409, 'challenge_expired');
 
   const backupCodes = await issueBackupCodes(page.id);
   await deleteChallenge(challenge);
-  await createOwnerSession(res, page.id);
-  await audit(req, { action: 'page.activate', actorType: 'owner', actorId: page.id, pageId: page.id, details: { method } });
+  await createOwnerSession(response, page.id);
+  await audit(request, { action: 'page.activate', actorType: 'owner', actorId: page.id, pageId: page.id, details: { method } });
   // A name on the review list: the page is set up but hidden, so staff hear
   // about it now rather than at registration, which may never be finished.
   if (page.needs_review) {
     const sent = await notifyStaff(newPageReviewMessage({ slug: page.slug, adminUrl: `${siteUrl()}/admin` }));
-    if (sent) await audit(req, { action: 'mod.staff_alerted', pageId: page.id, details: { about: 'new_page_review', slug: page.slug, chats: sent } });
+    if (sent) await audit(request, { action: 'mod.staff_alerted', pageId: page.id, details: { about: 'new_page_review', slug: page.slug, chats: sent } });
   }
-  ok(res, { slug: page.slug, backupCodes });
+  ok(response, { slug: page.slug, backupCodes });
 }

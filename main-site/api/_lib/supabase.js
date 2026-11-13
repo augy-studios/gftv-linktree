@@ -11,7 +11,7 @@ export function useTestClient(fake) {
   client = fake;
 }
 
-export function db() {
+export function database() {
   if (!client) {
     client = createClient(requiredEnv('SUPABASE_URL'), requiredEnv('SUPABASE_SERVICE_KEY'), {
       auth: { persistSession: false, autoRefreshToken: false },
@@ -21,7 +21,7 @@ export function db() {
 }
 
 // Table names, written once.
-export const T = Object.freeze({
+export const TABLES = Object.freeze({
   pages: 'gftvonelink_pages',
   links: 'gftvonelink_links',
   passkeys: 'gftvonelink_passkeys',

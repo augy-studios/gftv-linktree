@@ -1,7 +1,7 @@
 // Second factors for page owners, shared by sign in, recovery and the
 // security settings.
 
-import { db, T } from './supabase.js';
+import { database, TABLES } from './supabase.js';
 import { decryptSecret, findMatchingCode, generateBackupCodes, hashCode, randomDigits, verifyPassword } from './crypto.js';
 import { verifyTotp } from './totp.js';
 import { countPasskeys } from './webauthn.js';
@@ -17,8 +17,8 @@ export function ownerTotpOk(page, code) {
 
 // Spend a backup code. True if one matched.
 export async function spendBackupCode(pageId, typed) {
-  const { data, error } = await db()
-    .from(T.recoveryCodes)
+  const { data, error } = await database()
+    .from(TABLES.recoveryCodes)
     .select('id, code_hash')
     .eq('page_id', pageId)
     .eq('used', false);
@@ -27,8 +27,8 @@ export async function spendBackupCode(pageId, typed) {
   if (!match) return false;
   // Conditional on used = false, so two requests racing the same code cannot
   // both succeed.
-  const { data: spent, error: spendError } = await db()
-    .from(T.recoveryCodes)
+  const { data: spent, error: spendError } = await database()
+    .from(TABLES.recoveryCodes)
     .update({ used: true, used_at: new Date().toISOString() })
     .eq('id', match.id)
     .eq('used', false)
@@ -42,16 +42,16 @@ export async function spendBackupCode(pageId, typed) {
 export async function issueBackupCodes(pageId) {
   const codes = generateBackupCodes(10);
   const rows = await Promise.all(codes.map(async (code) => ({ page_id: pageId, code_hash: await hashCode(code) })));
-  const { error: deleteError } = await db().from(T.recoveryCodes).delete().eq('page_id', pageId);
+  const { error: deleteError } = await database().from(TABLES.recoveryCodes).delete().eq('page_id', pageId);
   if (deleteError) throw deleteError;
-  const { error } = await db().from(T.recoveryCodes).insert(rows);
+  const { error } = await database().from(TABLES.recoveryCodes).insert(rows);
   if (error) throw error;
   return codes;
 }
 
 export async function backupCodesLeft(pageId) {
-  const { count, error } = await db()
-    .from(T.recoveryCodes)
+  const { count, error } = await database()
+    .from(TABLES.recoveryCodes)
     .select('id', { count: 'exact', head: true })
     .eq('page_id', pageId)
     .eq('used', false);
@@ -86,7 +86,7 @@ export async function telegramCodeOk(challenge, typed) {
 }
 
 export async function pagePasswordOk(pageId, password) {
-  const { data, error } = await db().from(T.pages).select('password_hash').eq('id', pageId).single();
+  const { data, error } = await database().from(TABLES.pages).select('password_hash').eq('id', pageId).single();
   if (error) throw error;
   return verifyPassword(password, data.password_hash);
 }

@@ -12,7 +12,7 @@
 // at its link limit (link-cap.js). Removed links do not count towards it.
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
-import { db, T } from '../_lib/supabase.js';
+import { database, TABLES } from '../_lib/supabase.js';
 import { cleanText, checkIcon, isUuid, LIMITS, MAX_LINKS } from '../_lib/validate.js';
 import { limited, checkLinkUrl, noteRefusedLink, refusedForAttempts, addressRefusedInText, refusedForBan } from '../_lib/guards.js';
 import { requireOwner } from '../_lib/session.js';
@@ -22,74 +22,74 @@ import { linkCapFor, linksUsed, isCapRefusal } from '../_lib/link-cap.js';
 const LINK_COLUMNS = 'id, title, url, icon, order_index, is_active, click_count, removed_at, removed_reason';
 
 async function allLinks(pageId) {
-  const { data, error } = await db().from(T.links).select(LINK_COLUMNS).eq('page_id', pageId).order('order_index');
+  const { data, error } = await database().from(TABLES.links).select(LINK_COLUMNS).eq('page_id', pageId).order('order_index');
   if (error) throw error;
   return data ?? [];
 }
 
-export default route('me/links', async (req, res) => {
-  if (guard(req, res, ['POST', 'PATCH', 'DELETE'])) return;
-  const owner = await requireOwner(req, res);
+export default route('me/links', async (request, response) => {
+  if (guard(request, response, ['POST', 'PATCH', 'DELETE'])) return;
+  const owner = await requireOwner(request, response);
   if (!owner) return;
-  const body = await readJson(req, res);
+  const body = await readJson(request, response);
   if (!body) return;
-  if (await limited(req, res, 'ownerWrite', [`page:${owner.page.id}`])) return;
-  if (await refusedForBan(req, res, { pageId: owner.page.id })) return;
+  if (await limited(request, response, 'ownerWrite', [`page:${owner.page.id}`])) return;
+  if (await refusedForBan(request, response, { pageId: owner.page.id })) return;
   const pageId = owner.page.id;
   // A refused address also counts towards quarantine (guards.js).
   const refuse = async (url, input) => {
-    await noteRefusedLink(req, owner.page, url.error, input);
-    return fail(res, 400, url.error);
+    await noteRefusedLink(request, owner.page, url.error, input);
+    return fail(response, 400, url.error);
   };
-  if (body.url !== undefined && (await refusedForAttempts(req, res))) return;
+  if (body.url !== undefined && (await refusedForAttempts(request, response))) return;
   // A title is shown as the link's text, so an address in it is checked too.
   const titleRefused = async (title) => {
     const refused = await addressRefusedInText(title);
     if (!refused) return false;
-    await noteRefusedLink(req, owner.page, refused.error, `https://${refused.host}/`);
-    fail(res, 400, 'text_address', { host: refused.host });
+    await noteRefusedLink(request, owner.page, refused.error, `https://${refused.host}/`);
+    fail(response, 400, 'text_address', { host: refused.host });
     return true;
   };
 
-  if (req.method === 'POST' && body.action === 'reorder') {
+  if (request.method === 'POST' && body.action === 'reorder') {
     const ids = Array.isArray(body.ids) ? body.ids.filter(isUuid).slice(0, MAX_LINKS) : [];
-    const { error } = await db().rpc('gftvonelink_reorder_links', { p_page_id: pageId, p_ids: ids });
+    const { error } = await database().rpc('gftvonelink_reorder_links', { p_page_id: pageId, p_ids: ids });
     if (error) throw error;
-  } else if (req.method === 'POST') {
+  } else if (request.method === 'POST') {
     const [existing, cap] = await Promise.all([allLinks(pageId), linkCapFor(pageId)]);
-    if (linksUsed(existing) >= cap.limit) return fail(res, 400, 'too_many_links', { limit: cap.limit });
+    if (linksUsed(existing) >= cap.limit) return fail(response, 400, 'too_many_links', { limit: cap.limit });
     const title = cleanText(body.title, LIMITS.title);
-    if (!title) return fail(res, 400, 'title_required');
+    if (!title) return fail(response, 400, 'title_required');
     if (await titleRefused(title)) return;
     const url = await checkLinkUrl(body.url, { mail: true });
     if (!url.ok) return refuse(url, body.url);
     const nextIndex = existing.reduce((max, l) => Math.max(max, l.order_index), -1) + 1;
-    const { error } = await db()
-      .from(T.links)
+    const { error } = await database()
+      .from(TABLES.links)
       .insert({ page_id: pageId, title, url: url.url, icon: checkIcon(body.icon), order_index: nextIndex });
     // Another add got in first and filled the last place (the trigger in 013).
-    if (isCapRefusal(error)) return fail(res, 400, 'too_many_links', { limit: cap.limit });
+    if (isCapRefusal(error)) return fail(response, 400, 'too_many_links', { limit: cap.limit });
     if (error) throw error;
   } else {
-    if (!isUuid(body.id)) return fail(res, 400, 'bad_request');
-    const { data: link, error } = await db()
-      .from(T.links)
+    if (!isUuid(body.id)) return fail(response, 400, 'bad_request');
+    const { data: link, error } = await database()
+      .from(TABLES.links)
       .select('id, removed_at')
       .eq('id', body.id)
       .eq('page_id', pageId)
       .maybeSingle();
     if (error) throw error;
-    if (!link) return fail(res, 404, 'link_not_found');
-    if (link.removed_at) return fail(res, 403, 'link_removed');
+    if (!link) return fail(response, 404, 'link_not_found');
+    if (link.removed_at) return fail(response, 403, 'link_removed');
 
-    if (req.method === 'DELETE') {
-      const { error: deleteError } = await db().from(T.links).delete().eq('id', link.id).eq('page_id', pageId);
+    if (request.method === 'DELETE') {
+      const { error: deleteError } = await database().from(TABLES.links).delete().eq('id', link.id).eq('page_id', pageId);
       if (deleteError) throw deleteError;
     } else {
       const fields = {};
       if (body.title !== undefined) {
         fields.title = cleanText(body.title, LIMITS.title);
-        if (!fields.title) return fail(res, 400, 'title_required');
+        if (!fields.title) return fail(response, 400, 'title_required');
         if (await titleRefused(fields.title)) return;
       }
       if (body.url !== undefined) {
@@ -100,12 +100,12 @@ export default route('me/links', async (req, res) => {
       if (body.icon !== undefined) fields.icon = checkIcon(body.icon);
       if (body.isActive !== undefined) fields.is_active = body.isActive === true;
       if (Object.keys(fields).length > 0) {
-        const { error: updateError } = await db().from(T.links).update(fields).eq('id', link.id).eq('page_id', pageId);
+        const { error: updateError } = await database().from(TABLES.links).update(fields).eq('id', link.id).eq('page_id', pageId);
         if (updateError) throw updateError;
       }
     }
   }
 
   const [links, cap] = await Promise.all([allLinks(pageId), linkCapFor(pageId)]);
-  ok(res, { links: links.map(ownerLink), linkCap: ownerLinkCap(cap, linksUsed(links)) });
+  ok(response, { links: links.map(ownerLink), linkCap: ownerLinkCap(cap, linksUsed(links)) });
 });

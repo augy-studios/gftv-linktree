@@ -3,7 +3,7 @@
 // this first.
 
 import '../assets/i18n/boot.js';
-import { t, onChange } from '../assets/i18n/i18n.js';
+import { t as translate, onChange } from '../assets/i18n/i18n.js';
 import {
   COLOR_THEMES,
   initTheme,
@@ -30,7 +30,7 @@ function syncThemeButton() {
   if (!btn) return;
   const mode = getStoredMode();
   btn.innerHTML = icon(mode === 'dark' ? 'moon' : 'sun');
-  btn.setAttribute('aria-label', t('theme.button', { mode: t(`theme.mode.${mode}`) }));
+  btn.setAttribute('aria-label', translate('theme.button', { mode: translate(`theme.mode.${mode}`) }));
 }
 
 function syncThemeModal() {
@@ -47,10 +47,10 @@ function syncThemeModal() {
   const note = document.getElementById('modeNote');
   if (note) {
     if (preference === 'time') {
-      note.textContent = t('theme.time-note', {
+      note.textContent = translate('theme.time-note', {
         from: hour(LIGHT_FROM_HOUR),
         until: hour(LIGHT_UNTIL_HOUR),
-        mode: t(`theme.mode.${resolved}`),
+        mode: translate(`theme.mode.${resolved}`),
       });
       note.hidden = false;
     } else {
@@ -86,7 +86,7 @@ function buildSwatches() {
     dot.setAttribute('aria-hidden', 'true');
     const label = document.createElement('span');
     label.setAttribute('data-i18n', `theme.swatch.${theme.id}`);
-    label.textContent = t(`theme.swatch.${theme.id}`);
+    label.textContent = translate(`theme.swatch.${theme.id}`);
     button.append(dot, label);
     grid.appendChild(button);
   }

@@ -7,7 +7,7 @@
 // never stored as sent.
 
 import sharp from 'sharp';
-import { db } from './supabase.js';
+import { database } from './supabase.js';
 import { optionalEnv } from './env.js';
 import { randomToken } from './crypto.js';
 
@@ -57,7 +57,7 @@ export async function prepareAvatar(input) {
 // Upload under a fresh random name. Returns the path to keep on the page.
 export async function storeAvatar(pageId, buffer) {
   const path = `${pageId}/${randomToken(18)}.webp`;
-  const { error } = await db().storage.from(AVATAR_BUCKET).upload(path, buffer, {
+  const { error } = await database().storage.from(AVATAR_BUCKET).upload(path, buffer, {
     contentType: 'image/webp',
     cacheControl: '31536000',
     upsert: false,
@@ -70,6 +70,6 @@ export async function storeAvatar(pageId, buffer) {
 // would fail an action that has otherwise succeeded.
 export async function deleteAvatarFile(path) {
   if (!path) return;
-  const { error } = await db().storage.from(AVATAR_BUCKET).remove([path]);
+  const { error } = await database().storage.from(AVATAR_BUCKET).remove([path]);
   if (error) console.warn('[onelink] avatar delete:', path, error.message);
 }

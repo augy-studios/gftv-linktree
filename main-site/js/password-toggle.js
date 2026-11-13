@@ -5,7 +5,7 @@
 // when its form is submitted, so a shown password is never left on screen
 // behind the next step.
 
-import { t, onChange } from '../assets/i18n/i18n.js';
+import { t as translate, onChange } from '../assets/i18n/i18n.js';
 import { icon } from './icons.js';
 
 const toggles = [];
@@ -14,8 +14,8 @@ function render(button, input) {
   const shown = input.type === 'text';
   button.innerHTML = icon(shown ? 'eye-off' : 'eye');
   button.setAttribute('aria-pressed', String(shown));
-  button.setAttribute('aria-label', t(shown ? 'password.hide' : 'password.show'));
-  button.title = t(shown ? 'password.hide' : 'password.show');
+  button.setAttribute('aria-label', translate(shown ? 'password.hide' : 'password.show'));
+  button.title = translate(shown ? 'password.hide' : 'password.show');
 }
 
 function wire(input) {

@@ -12,7 +12,7 @@
 // Clicks per link, all time, are on the links themselves (/api/me/page).
 
 import { route, guard, ok, query } from '../_lib/http.js';
-import { db, T } from '../_lib/supabase.js';
+import { database, TABLES } from '../_lib/supabase.js';
 import { limited } from '../_lib/guards.js';
 import { requireOwner } from '../_lib/session.js';
 
@@ -27,19 +27,19 @@ function top(map, n) {
   return [...map].map(([key, hits]) => ({ key, hits })).sort((a, b) => b.hits - a.hits || a.key.localeCompare(b.key)).slice(0, n);
 }
 
-export default route('me/stats', async (req, res) => {
-  if (guard(req, res, ['GET'])) return;
-  const owner = await requireOwner(req, res);
+export default route('me/stats', async (request, response) => {
+  if (guard(request, response, ['GET'])) return;
+  const owner = await requireOwner(request, response);
   if (!owner) return;
-  if (await limited(req, res, 'ownerRead', [`page:${owner.page.id}`])) return;
+  if (await limited(request, response, 'ownerRead', [`page:${owner.page.id}`])) return;
 
-  const asked = Number(query(req, 'days'));
+  const asked = Number(query(request, 'days'));
   const days = PERIODS.has(asked) ? asked : 30;
   const today = new Date();
   const dayList = Array.from({ length: days }, (_, i) => singaporeDay(new Date(today.getTime() - (days - 1 - i) * 86400_000)));
 
-  const { data, error } = await db()
-    .from(T.pageStats)
+  const { data, error } = await database()
+    .from(TABLES.pageStats)
     .select('day, kind, key, hits')
     .eq('page_id', owner.page.id)
     .gte('day', dayList[0]);
@@ -61,7 +61,7 @@ export default route('me/stats', async (req, res) => {
     }
   }
 
-  ok(res, {
+  ok(response, {
     days,
     totals,
     daily: [...daily.values()],

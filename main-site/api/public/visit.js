@@ -11,7 +11,7 @@
 // crawlers and link previews are not counted at all.
 
 import { route, guard, readJson, ok, clientIp } from '../_lib/http.js';
-import { db, T } from '../_lib/supabase.js';
+import { database, TABLES } from '../_lib/supabase.js';
 import { normaliseSlug, isDormant } from '../_lib/validate.js';
 import { hashIp } from '../_lib/crypto.js';
 import { limited, firstHit } from '../_lib/guards.js';
@@ -47,30 +47,30 @@ export function referrerOf(input) {
   return host;
 }
 
-export default route('public/visit', async (req, res) => {
-  if (guard(req, res, ['POST'])) return;
-  const body = await readJson(req, res);
+export default route('public/visit', async (request, response) => {
+  if (guard(request, response, ['POST'])) return;
+  const body = await readJson(request, response);
   if (!body) return;
-  if (BOT.test(String(req.headers['user-agent'] || ''))) return ok(res, { counted: false });
-  if (await limited(req, res, 'visit')) return;
+  if (BOT.test(String(request.headers['user-agent'] || ''))) return ok(response, { counted: false });
+  if (await limited(request, response, 'visit')) return;
 
-  const { data: page, error } = await db()
-    .from(T.pages)
+  const { data: page, error } = await database()
+    .from(TABLES.pages)
     .select('id, status, last_sign_in_at, needs_review, reviewed_at, quarantined_at')
     .eq('slug', normaliseSlug(body.slug))
     .maybeSingle();
   if (error) throw error;
   const shown = page && page.status === 'active' && !isDormant(page.last_sign_in_at) && !(page.needs_review && !page.reviewed_at) && !page.quarantined_at;
-  if (!shown) return ok(res, { counted: false });
+  if (!shown) return ok(response, { counted: false });
 
-  if (!(await firstHit(`visit:${hashIp(clientIp(req))}:${page.id}`, 1800))) return ok(res, { counted: false });
+  if (!(await firstHit(`visit:${hashIp(clientIp(request))}:${page.id}`, 1800))) return ok(response, { counted: false });
 
-  const { data: counted, error: rpcError } = await db().rpc('gftvonelink_page_visit', {
+  const { data: counted, error: rpcError } = await database().rpc('gftvonelink_page_visit', {
     p_page_id: page.id,
-    p_country: countryOf(req.headers['x-vercel-ip-country']),
-    p_device: deviceOf(req.headers['user-agent']),
+    p_country: countryOf(request.headers['x-vercel-ip-country']),
+    p_device: deviceOf(request.headers['user-agent']),
     p_referrer: referrerOf(body.referrer),
   });
   if (rpcError) throw rpcError;
-  ok(res, { counted: Boolean(counted) });
+  ok(response, { counted: Boolean(counted) });
 });
