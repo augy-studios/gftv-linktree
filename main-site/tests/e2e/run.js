@@ -36,12 +36,38 @@ async function context(b, who, opts = {}) {
   if (who) await c.addCookies(server.cookies[who].map(([name, value]) => ({ name, value, domain: 'localhost', path: '/', secure: true, httpOnly: true, sameSite: 'Lax' })));
   return c;
 }
+// Console errors fail the run, apart from a resource that failed to load (a
+// 5xx is counted by the response listener instead) and Google's tag's own
+// messages. A Content-Security-Policy violation fails unless what it blocked is
+// a Google address: Google's tag on public pages asks for an ads image the
+// policy refuses, which is the policy working. Checking the blocked address,
+// not the whole message, matters: the message quotes the full policy, which
+// names googletagmanager.com, so a plain text match would hide every violation.
+const GOOGLE_HOST = /(^|\.)(google\.[a-z.]+|googletagmanager\.com|google-analytics\.com|doubleclick\.net)$/;
+function blockedHost(text) {
+  const quoted = /'(https?:\/\/[^']+)'/.exec(text);
+  if (quoted === null) {
+    return null;
+  }
+  return new URL(quoted[1]).hostname;
+}
+function isIgnoredConsoleError(text) {
+  if (text.includes('Content Security Policy')) {
+    const host = blockedHost(text);
+    return host !== null && GOOGLE_HOST.test(host);
+  }
+  if (text.startsWith('Failed to load resource')) {
+    return true;
+  }
+  return /googletagmanager|gtag/.test(text);
+}
 function watch(page, label) {
   page.on('pageerror', (e) => problems.push(`${label} page error: ${e.message}`));
   page.on('console', (m) => {
-    if (m.type() === 'error' && !/googletagmanager|gtag|Failed to load resource/.test(m.text())) problems.push(`${label} console: ${m.text()}`);
+    if (m.type() === 'error' && !isIgnoredConsoleError(m.text())) problems.push(`${label} console: ${m.text()}`);
   });
-  page.on('response', (r) => { if (r.url().includes('/api/') && r.status() >= 500) problems.push(`${label} ${r.status()} ${r.url()}`); });
+  // Any 5xx from the test server counts: the API, the page and its scripts and styles.
+  page.on('response', (r) => { if (new URL(r.url()).hostname === 'localhost' && r.status() >= 500) problems.push(`${label} ${r.status()} ${r.url()}`); });
 }
 async function open(b, path, who = null, opts = {}) {
   const c = await context(b, who, opts);
@@ -89,18 +115,13 @@ function passed(message) {
 // A watched page in a fresh context that has not opened anything yet.
 // Anything addressed outside the test server (Google's tag on public pages,
 // a link a visitor clicks) is answered here with an empty reply, so these
-// checks never reach an outside service. A 5xx on the page itself, not only
-// from /api/, counts as a problem as well.
+// checks never reach an outside service. watch() counts any 5xx from the test
+// server, the page itself included.
 async function localPage(browser, label, who = null, options = {}) {
   const browserContext = await context(browser, who, options);
   await browserContext.route((url) => url.hostname !== 'localhost', (route) => route.fulfill({ status: 204, body: '' }));
   const page = await browserContext.newPage();
   watch(page, label);
-  page.on('response', (response) => {
-    if (!response.url().includes('/api/') && response.status() >= 500) {
-      problems.push(`${label} ${response.status()} ${response.url()}`);
-    }
-  });
   return page;
 }
 
