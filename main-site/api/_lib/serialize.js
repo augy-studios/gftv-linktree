@@ -168,7 +168,6 @@ export function adminPageRow(page, extra = {}) {
 export function adminLinkRow(link) {
   return {
     id: link.id,
-    pageId: link.page_id,
     slug: link.page?.slug ?? null,
     title: link.title,
     url: link.url,
@@ -187,7 +186,7 @@ export function adminReportRow(report) {
     pageId: report.page_id,
     slug: report.page?.slug ?? null,
     pageStatus: report.page?.status ?? null,
-    link: report.link ? { id: report.link.id, title: report.link.title, url: report.link.url, removed: Boolean(report.link.removed_at) } : null,
+    link: report.link ? { title: report.link.title, url: report.link.url, removed: Boolean(report.link.removed_at) } : null,
     reason: report.reason,
     details: report.details,
     status: report.status,
@@ -199,11 +198,9 @@ export function adminReportRow(report) {
 
 export function adminAuditRow(row) {
   return {
-    id: row.id,
     action: row.action,
     actorType: row.actor_type,
     actorId: row.actor_id,
-    pageId: row.page_id,
     details: row.details ?? {},
     createdAt: row.created_at,
   };
@@ -229,7 +226,6 @@ export function adminTestimonialRow(row) {
 export function adminCapRequestRow(row, { used, limit } = {}) {
   return {
     id: row.id,
-    pageId: row.page_id,
     slug: row.page?.slug ?? null,
     displayName: row.page?.display_name || null,
     status: row.status,
@@ -261,5 +257,5 @@ export function ownerTestimonial(row) {
 // ---------------------------------------------------------------------------
 
 export function publicTestimonial(row) {
-  return { id: row.id, quote: row.quote, author: row.author, pageSlug: row.page_slug || null };
+  return { quote: row.quote, author: row.author, pageSlug: row.page_slug || null };
 }
