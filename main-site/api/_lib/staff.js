@@ -72,7 +72,6 @@ export async function endStaffSession(req, res) {
 
 export function publicStaff(user) {
   return {
-    id: user.id,
     username: user.username,
     displayName: user.display_name,
     role: user.is_admin ? 'admin' : 'editor',

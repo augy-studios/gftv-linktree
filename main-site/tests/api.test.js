@@ -341,7 +341,7 @@ test('staff: who gets in, and the session lives in this app only', async () => {
   const b = browser();
   const ok = await staffSignIn(b, 'MOD@gftv.asia', secret);
   assert.equal(ok.status, 200);
-  assert.deepEqual(Object.keys(ok.json.staff).sort(), ['displayName', 'id', 'role', 'username']);
+  assert.deepEqual(Object.keys(ok.json.staff).sort(), ['displayName', 'role', 'username']);
   assert.equal(fake.table('gftvonelink_staff_sessions').length, 1);
   assert.equal(fake.table('gftvhello_sessions').length, 0, 'nothing written to the shared session table');
 
@@ -1310,7 +1310,7 @@ test('testimonials: admins manage them, the home page shows the visible ones', a
   await send({ action: 'update', id: list[0].id, isVisible: false });
 
   const shown = await browser().call(publicTestimonials);
-  assert.deepEqual(shown.json.testimonials, [{ id: list[1].id, quote: 'First quote', author: 'Ann', pageSlug: 'ann' }]);
+  assert.deepEqual(shown.json.testimonials, [{ quote: 'First quote', author: 'Ann', pageSlug: 'ann' }]);
   assert.match(shown.headers['cache-control'], /s-maxage=60/);
   await send({ action: 'remove', id: list[1].id });
   assert.deepEqual((await browser().call(publicTestimonials)).json.testimonials, []);
