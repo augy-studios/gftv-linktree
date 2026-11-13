@@ -223,6 +223,12 @@ Browser tests for all of this, and the Barq, VK and Weibo links, run with
 the real API handlers on the in-memory test database, with the production
 Content-Security-Policy, and fail on any console error. They need Playwright
 with Chromium installed where Node can find it; it is not a site dependency.
+With a global install (`npm i -g playwright && npx playwright install chromium`),
+point Node at it: `NODE_PATH="$(npm root -g)" npm run e2e`. Otherwise the run
+stops at once with `Cannot find module 'playwright'`.
+
+`npm test` also pins every reply's exact keys (`tests/reply-keys.test.js`), so a
+field can't be added to or dropped from an answer by accident.
 
 ### Offline
 
