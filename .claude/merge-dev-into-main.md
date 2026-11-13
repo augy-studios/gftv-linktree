@@ -2,9 +2,9 @@
 
 Context for whoever merges this repo's `dev` branch into `main`. Augy, give this file to Claude: "Read `.claude/merge-dev-into-main.md` and help me merge `dev` into `main`."
 
-- **What's on `dev`:** the readable-refactor chain for help desk #17, one squash commit per job. 1 of 10 jobs have landed so far.
+- **What's on `dev`:** the readable-refactor chain for help desk #17, one squash commit per job. 2 of 10 jobs have landed so far.
 - **What merging does:** Merging into `main` deploys `main-site/` (pages and API) on Vercel.
-- **Kept up to date:** the coordinator (Thomas's workspace) updates this file each time a job lands, and once more just before opening the pull request. Last updated 13 Nov, 23:17 SGT.
+- **Kept up to date:** the coordinator (Thomas's workspace) updates this file each time a job lands, and once more just before opening the pull request. Last updated 14 Nov, 01:10 SGT.
 
 ## Claude: how to run the merge
 
@@ -24,7 +24,7 @@ Work through these in order, and stop to ask Augy wherever a step says so.
 | Job | What it does | On `dev` |
 |---|---|---|
 | 01 | Ids and reply tests | `0c0841f` |
-| 02 | Playwright for every page | to come |
+| 02 | Playwright for every page | `f558bf3` |
 | 03 | Rename the shared short helpers | to come |
 | 04 | Readability: api/_lib | to come |
 | 05 | Readability: API routes | to come |
