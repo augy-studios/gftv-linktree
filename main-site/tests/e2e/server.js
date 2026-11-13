@@ -2,7 +2,9 @@
 // the in-memory database from tests/fake-db.js, the static files, and
 // /<slug> through api/render.js, with the production Content-Security-Policy
 // from vercel.json. Seeds an admin, an editor and two live pages, and hands
-// back their session cookies.
+// back their session cookies, the staff authenticator secrets (for signing in
+// through the staff form), and two helpers for later checks: seedOwnerSession
+// and seedPage.
 
 import http from 'node:http';
 import fs from 'node:fs';
@@ -13,6 +15,8 @@ import { browser } from '../harness.js';
 import { useTestClient } from '../../api/_lib/supabase.js';
 import { createFakeDb } from '../fake-db.js';
 import { totpAt, generateTotpSecret } from '../../api/_lib/totp.js';
+import { randomToken, sha256 } from '../../api/_lib/crypto.js';
+import { OWNER_COOKIE } from '../../api/_lib/session.js';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.woff2': 'font/woff2', '.html': 'text/html', '.ico': 'image/x-icon', '.wasm': 'application/wasm', '.onnx': 'application/octet-stream' };
@@ -48,6 +52,41 @@ export async function startServer({ port = 0 } = {}) {
     cookies[username] = [...b.jar];
   }
 
+  // A fresh owner session for a page, kept under its own name in cookies.
+  // Fixture data only: a session row holding the SHA-256 of a new token, the
+  // way the site stores one, and the cookie that carries the token.
+  function seedOwnerSession(slug, name) {
+    const page = fake.table('gftvonelink_pages').find((row) => row.slug === slug);
+    const token = randomToken(32);
+    const now = Date.now();
+    fake.table('gftvonelink_sessions').push({
+      id: crypto.randomUUID(),
+      page_id: page.id,
+      token_hash: sha256(token),
+      expires_at: new Date(now + 86400_000).toISOString(),
+      last_seen_at: new Date(now).toISOString(),
+      created_at: new Date(now).toISOString(),
+    });
+    cookies[name] = [[OWNER_COOKIE, token]];
+  }
+
+  // A live page made the way a person makes one, through the real sign-up
+  // and authenticator handlers, then given the fields a check needs (a name
+  // waiting for approval, or a quarantine). It signs up from its own address,
+  // so it never runs into the sign-up limits the pages above have used. For
+  // checks that run after the first ones, which count exactly two pages.
+  async function seedPage(slug, fields = {}) {
+    const visitor = browser();
+    const address = '203.0.113.8';
+    const registered = await visitor.call(await handler('auth/register'), { method: 'POST', body: { slug, password: 'correct horse battery' }, ip: address });
+    const challenge = registered.json.challenge;
+    const started = await visitor.call(await handler('auth/enrol'), { method: 'POST', body: { challenge, action: 'totp-start' }, ip: address });
+    await visitor.call(await handler('auth/enrol'), { method: 'POST', body: { challenge, action: 'totp-finish', code: totpAt(started.json.secret) }, ip: address });
+    const page = fake.table('gftvonelink_pages').find((row) => row.slug === slug);
+    Object.assign(page, fields);
+    return page;
+  }
+
   const vercel = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
   const csp = vercel.headers[0].headers.find((h) => h.key === 'Content-Security-Policy').value.replace('; upgrade-insecure-requests', '');
 
@@ -77,5 +116,13 @@ export async function startServer({ port = 0 } = {}) {
     }
   });
   await new Promise((resolve) => server.listen(port, resolve));
-  return { url: `http://localhost:${server.address().port}`, cookies, fake, close: () => new Promise((r) => server.close(r)) };
+  return {
+    url: `http://localhost:${server.address().port}`,
+    cookies,
+    fake,
+    staffSecrets: secrets,
+    seedOwnerSession,
+    seedPage,
+    close: () => new Promise((resolve) => server.close(resolve)),
+  };
 }
