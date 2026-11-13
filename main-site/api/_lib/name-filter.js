@@ -63,21 +63,42 @@ const POSING_EXACT = new Set([
 ]);
 
 const LEET = { 0: 'o', 1: 'i', 3: 'e', 4: 'a', 5: 's', 7: 't', 8: 'b', 9: 'g' };
-const unleet = (s) => s.replace(/[0-9]/g, (d) => LEET[d] ?? d);
+// Digits read as the letters they stand for: "0ff1c1al" as "official".
+const unleet = (text) => text.replace(/[0-9]/g, (digit) => {
+  const letter = LEET[digit];
+  if (letter !== null && letter !== undefined) {
+    return letter;
+  }
+  return digit;
+});
 
 // True when a page name may not be registered for what it says. The name is
 // already in the slug shape: lowercase letters, digits and single hyphens.
 export function nameIsUnwelcome(slug) {
-  const lower = String(slug || '').toLowerCase();
+  let name = '';
+  if (slug) {
+    name = slug;
+  }
+  const lower = String(name).toLowerCase();
   const words = lower.split('-');
   const squashed = lower.replace(/-/g, '');
+  // The whole name without hyphens, as written and with digits as letters.
   for (const form of [squashed, unleet(squashed)]) {
-    if (SLURS_ANYWHERE.some((w) => form.includes(w))) return true;
-    if (POSING_ANYWHERE.some((w) => form.includes(w))) return true;
-    if (POSING_EXACT.has(form)) return true;
+    if (SLURS_ANYWHERE.some((entry) => form.includes(entry))) {
+      return true;
+    }
+    if (POSING_ANYWHERE.some((entry) => form.includes(entry))) {
+      return true;
+    }
+    if (POSING_EXACT.has(form)) {
+      return true;
+    }
   }
+  // Each word between hyphens, the same two ways.
   for (const word of [...words, ...words.map(unleet)]) {
-    if (SLURS_WHOLE_WORD.has(word) || POSING_WORD.has(word)) return true;
+    if (SLURS_WHOLE_WORD.has(word) || POSING_WORD.has(word)) {
+      return true;
+    }
   }
   return false;
 }

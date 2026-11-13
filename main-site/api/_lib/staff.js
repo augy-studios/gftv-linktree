@@ -17,7 +17,10 @@ const STAFF_SESSION_HOURS = 12;
 const STAFF_COLUMNS = 'id, username, display_name, is_admin, is_editor, is_approved';
 
 export function hasDashboardAccess(user) {
-  return Boolean(user && user.is_approved === true && (user.is_admin === true || user.is_editor === true));
+  if (user && user.is_approved === true && (user.is_admin === true || user.is_editor === true)) {
+    return true;
+  }
+  return false;
 }
 
 export async function createStaffSession(response, staffUserId) {
@@ -27,27 +30,39 @@ export async function createStaffSession(response, staffUserId) {
     token_hash: sha256(token),
     expires_at: new Date(Date.now() + STAFF_SESSION_HOURS * 3600_000).toISOString(),
   });
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
   setCookie(response, STAFF_COOKIE, token, STAFF_SESSION_HOURS * 3600);
 }
 
+// { sessionId, user } for a live staff session whose account still has
+// dashboard access, or null.
 export async function currentStaff(request) {
   const token = readCookie(request, STAFF_COOKIE);
-  if (!token) return null;
+  if (!token) {
+    return null;
+  }
   const { data, error } = await database()
     .from(TABLES.staffSessions)
     .select(`id, expires_at, user:${TABLES.staffUsers} ( ${STAFF_COLUMNS} )`)
     .eq('token_hash', sha256(token))
     .maybeSingle();
-  if (error) throw error;
-  if (!data || !data.user) return null;
+  if (error) {
+    throw error;
+  }
+  if (!data || !data.user) {
+    return null;
+  }
   if (new Date(data.expires_at).getTime() <= Date.now()) {
     await database().from(TABLES.staffSessions).delete().eq('id', data.id);
     return null;
   }
   // Access is re-checked on every request, so revoking a role on gftv.asia
   // takes effect here on the next click rather than at the next sign in.
-  if (!hasDashboardAccess(data.user)) return null;
+  if (!hasDashboardAccess(data.user)) {
+    return null;
+  }
   return { sessionId: data.id, user: data.user };
 }
 
@@ -66,14 +81,22 @@ export async function requireStaff(request, response, { admin = false } = {}) {
 
 export async function endStaffSession(request, response) {
   const token = readCookie(request, STAFF_COOKIE);
-  if (token) await database().from(TABLES.staffSessions).delete().eq('token_hash', sha256(token));
+  if (token) {
+    await database().from(TABLES.staffSessions).delete().eq('token_hash', sha256(token));
+  }
   clearCookie(response, STAFF_COOKIE);
 }
 
 export function publicStaff(user) {
+  let role;
+  if (user.is_admin) {
+    role = 'admin';
+  } else {
+    role = 'editor';
+  }
   return {
     username: user.username,
     displayName: user.display_name,
-    role: user.is_admin ? 'admin' : 'editor',
+    role,
   };
 }

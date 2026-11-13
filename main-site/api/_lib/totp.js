@@ -9,15 +9,26 @@ const STEP_SECONDS = 30;
 const WINDOW = 1;
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
+// A base32 secret as bytes, or null when it is empty or has a character
+// outside the alphabet. Spaces, hyphens, case and padding are ignored. Each
+// character carries five bits; a byte is taken off whenever eight are in.
 export function decodeBase32(secret) {
-  const cleaned = String(secret ?? '').toUpperCase().replace(/[\s-]/g, '').replace(/=+$/, '');
-  if (cleaned === '') return null;
+  let given = '';
+  if (secret !== null && secret !== undefined) {
+    given = secret;
+  }
+  const cleaned = String(given).toUpperCase().replace(/[\s-]/g, '').replace(/=+$/, '');
+  if (cleaned === '') {
+    return null;
+  }
   let bits = 0;
   let value = 0;
   const out = [];
-  for (const char of cleaned) {
-    const index = BASE32.indexOf(char);
-    if (index < 0) return null;
+  for (const character of cleaned) {
+    const index = BASE32.indexOf(character);
+    if (index < 0) {
+      return null;
+    }
     value = (value << 5) | index;
     bits += 5;
     if (bits >= 8) {
@@ -25,9 +36,13 @@ export function decodeBase32(secret) {
       bits -= 8;
     }
   }
-  return out.length > 0 ? Buffer.from(out) : null;
+  if (out.length > 0) {
+    return Buffer.from(out);
+  }
+  return null;
 }
 
+// Twenty random bytes written as base32: eight bits in, five bits out.
 export function generateTotpSecret() {
   const bytes = randomBytes(20);
   let bits = 0;
@@ -41,10 +56,14 @@ export function generateTotpSecret() {
       bits -= 5;
     }
   }
-  if (bits > 0) out += BASE32[(value << (5 - bits)) & 31];
+  if (bits > 0) {
+    out += BASE32[(value << (5 - bits)) & 31];
+  }
   return out;
 }
 
+// RFC 4226 HOTP: the counter as eight bytes, HMAC-SHA-1 with the key, then
+// the dynamic truncation to DIGITS digits.
 function hotp(key, counter) {
   const buffer = Buffer.alloc(8);
   buffer.writeUInt32BE(Math.floor(counter / 0x100000000), 0);
@@ -59,16 +78,28 @@ function hotp(key, counter) {
   return String(binary % 10 ** DIGITS).padStart(DIGITS, '0');
 }
 
+// Every step in the window is checked, without stopping at a match, so the
+// time taken does not say which step matched.
 export function verifyTotp(code, secret, at = Date.now()) {
-  const digits = String(code ?? '').replace(/\D/g, '');
-  if (digits.length !== DIGITS) return false;
+  let typed = '';
+  if (code !== null && code !== undefined) {
+    typed = code;
+  }
+  const digits = String(typed).replace(/\D/g, '');
+  if (digits.length !== DIGITS) {
+    return false;
+  }
   const key = decodeBase32(secret);
-  if (!key) return false;
+  if (!key) {
+    return false;
+  }
   const counter = Math.floor(at / 1000 / STEP_SECONDS);
   let matched = false;
   for (let offset = -WINDOW; offset <= WINDOW; offset += 1) {
     const candidate = Buffer.from(hotp(key, counter + offset));
-    if (timingSafeEqual(candidate, Buffer.from(digits))) matched = true;
+    if (timingSafeEqual(candidate, Buffer.from(digits))) {
+      matched = true;
+    }
   }
   return matched;
 }
@@ -81,12 +112,12 @@ export function totpAt(secret, at = Date.now()) {
 export function otpauthUri({ account, secret }) {
   const issuer = 'OneLink GFTV';
   const label = `${encodeURIComponent(issuer)}:${encodeURIComponent(account)}`;
-  const params = new URLSearchParams({
+  const parameters = new URLSearchParams({
     secret,
     issuer,
     algorithm: 'SHA1',
     digits: String(DIGITS),
     period: String(STEP_SECONDS),
   });
-  return `otpauth://totp/${label}?${params.toString()}`;
+  return `otpauth://totp/${label}?${parameters.toString()}`;
 }

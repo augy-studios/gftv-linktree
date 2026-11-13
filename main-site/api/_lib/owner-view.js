@@ -10,8 +10,10 @@ import { ownerPage, ownerLinkCap, ownerCapRequest } from './serialize.js';
 
 const LINK_COLUMNS = 'id, title, url, icon, order_index, is_active, click_count, removed_at, removed_reason';
 
+// Reads the page, its links, passkeys, backup codes, link limit and rename
+// state all at once, and builds the owner's view from them (serialize.js).
 export async function loadOwnerView(pageId) {
-  const [{ data: page, error: pageError }, { data: links, error }, passkeys, left, cap, request, rename] = await Promise.all([
+  const [{ data: page, error: pageError }, { data: links, error }, passkeys, codesLeft, cap, capRequest, rename] = await Promise.all([
     database()
       .from(TABLES.pages)
       .select('id, slug, display_name, bio, avatar_path, totp_secret, telegram_chat_id, telegram_username, created_at, redirect_url, last_sign_in_at, needs_review, reviewed_at, quarantined_at, team_verified_at, team_role')
@@ -24,12 +26,16 @@ export async function loadOwnerView(pageId) {
     latestCapRequest(pageId),
     ownerRenameState(pageId),
   ]);
-  if (pageError) throw pageError;
-  if (error) throw error;
+  if (pageError) {
+    throw pageError;
+  }
+  if (error) {
+    throw error;
+  }
   return ownerPage(
     page,
     links,
-    { passkeys, backupCodesLeft: left, telegramReady: telegramConfigured() },
-    { linkCap: ownerLinkCap(cap, linksUsed(links)), capRequest: ownerCapRequest(request), rename },
+    { passkeys, backupCodesLeft: codesLeft, telegramReady: telegramConfigured() },
+    { linkCap: ownerLinkCap(cap, linksUsed(links)), capRequest: ownerCapRequest(capRequest), rename },
   );
 }

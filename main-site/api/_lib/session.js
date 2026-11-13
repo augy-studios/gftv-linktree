@@ -27,19 +27,26 @@ export async function createOwnerSession(response, pageId) {
     token_hash: sha256(token),
     expires_at: expires.toISOString(),
   });
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
   const { error: touchError } = await database()
     .from(TABLES.pages)
     .update({ last_sign_in_at: new Date().toISOString(), dormancy_warned_at: null })
     .eq('id', pageId);
-  if (touchError) throw touchError;
+  if (touchError) {
+    throw touchError;
+  }
   setCookie(response, OWNER_COOKIE, token, OWNER_SESSION_DAYS * 86400);
 }
 
-// { session, page } for a live session on an active page, or null.
+// { sessionId, page } for a live session, or null. The page's status is
+// checked by requireOwner, not here.
 export async function currentOwner(request) {
   const token = readCookie(request, OWNER_COOKIE);
-  if (!token) return null;
+  if (!token) {
+    return null;
+  }
 
   const { data, error } = await database()
     .from(TABLES.sessions)
@@ -47,8 +54,12 @@ export async function currentOwner(request) {
     .eq('token_hash', sha256(token))
     .maybeSingle();
 
-  if (error) throw error;
-  if (!data || !data.page) return null;
+  if (error) {
+    throw error;
+  }
+  if (!data || !data.page) {
+    return null;
+  }
   if (new Date(data.expires_at).getTime() <= Date.now()) {
     await database().from(TABLES.sessions).delete().eq('id', data.id);
     return null;
@@ -81,15 +92,21 @@ export async function requireOwner(request, response) {
 
 export async function endOwnerSession(request, response) {
   const token = readCookie(request, OWNER_COOKIE);
-  if (token) await database().from(TABLES.sessions).delete().eq('token_hash', sha256(token));
+  if (token) {
+    await database().from(TABLES.sessions).delete().eq('token_hash', sha256(token));
+  }
   clearCookie(response, OWNER_COOKIE);
 }
 
 export async function endAllOwnerSessions(pageId, exceptSessionId = null) {
-  let q = database().from(TABLES.sessions).delete().eq('page_id', pageId);
-  if (exceptSessionId) q = q.neq('id', exceptSessionId);
-  const { error } = await q;
-  if (error) throw error;
+  let deletion = database().from(TABLES.sessions).delete().eq('page_id', pageId);
+  if (exceptSessionId) {
+    deletion = deletion.neq('id', exceptSessionId);
+  }
+  const { error } = await deletion;
+  if (error) {
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -112,14 +129,18 @@ export async function createChallenge({ realm, purpose, subjectId, fields = {} }
     token_hash: sha256(token),
     expires_at: new Date(Date.now() + CHALLENGE_MINUTES[purpose] * 60_000).toISOString(),
   });
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
   return token;
 }
 
 // The live challenge row for a token, or null. Expired rows and rows out of
 // attempts are deleted on sight.
 export async function findChallenge(token, realm, purpose) {
-  if (typeof token !== 'string' || token.length < 20 || token.length > 100) return null;
+  if (typeof token !== 'string' || token.length < 20 || token.length > 100) {
+    return null;
+  }
   const { data, error } = await database()
     .from(TABLES.challenges)
     .select('id, subject_id, attempts, pending_totp_secret, telegram_code_hash, telegram_code_expires_at, expires_at')
@@ -127,8 +148,12 @@ export async function findChallenge(token, realm, purpose) {
     .eq('realm', realm)
     .eq('purpose', purpose)
     .maybeSingle();
-  if (error) throw error;
-  if (!data) return null;
+  if (error) {
+    throw error;
+  }
+  if (!data) {
+    return null;
+  }
   if (new Date(data.expires_at).getTime() <= Date.now() || data.attempts >= CHALLENGE_ATTEMPTS) {
     await database().from(TABLES.challenges).delete().eq('id', data.id);
     return null;
@@ -142,7 +167,9 @@ export async function failChallengeAttempt(challenge) {
 
 export async function updateChallenge(challenge, fields) {
   const { error } = await database().from(TABLES.challenges).update(fields).eq('id', challenge.id);
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
 }
 
 export async function deleteChallenge(challenge) {
