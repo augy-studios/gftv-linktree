@@ -9,8 +9,12 @@ import { database, TABLES } from '../_lib/supabase.js';
 import { isDormant } from '../_lib/validate.js';
 import { publicTeamMember } from '../_lib/serialize.js';
 
+// Reads the verified live pages, leaves out those waiting for approval or
+// dormant, and answers the list with short edge caching.
 export default route('public/team', async (request, response) => {
-  if (guard(request, response, ['GET'])) return;
+  if (guard(request, response, ['GET'])) {
+    return;
+  }
   const { data, error } = await database()
     .from(TABLES.pages)
     .select('slug, display_name, avatar_path, status, last_sign_in_at, needs_review, reviewed_at, quarantined_at, team_verified_at, team_role')
@@ -18,9 +22,21 @@ export default route('public/team', async (request, response) => {
     .not('team_verified_at', 'is', null)
     .is('quarantined_at', null)
     .order('slug');
-  if (error) throw error;
-  const members = (data ?? [])
-    .filter((p) => !(p.needs_review && !p.reviewed_at) && !isDormant(p.last_sign_in_at))
+  if (error) {
+    throw error;
+  }
+  let rows = [];
+  if (data) {
+    rows = data;
+  }
+  const members = rows
+    .filter((page) => {
+      // Still waiting for approval: a visitor could not open it yet.
+      if (page.needs_review && !page.reviewed_at) {
+        return false;
+      }
+      return !isDormant(page.last_sign_in_at);
+    })
     .map(publicTeamMember);
   // A few seconds at the edge, like a page: removing someone shows quickly.
   response.setHeader('Cache-Control', 'public, max-age=0, s-maxage=10, stale-while-revalidate=30');

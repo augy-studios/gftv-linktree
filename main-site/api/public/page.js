@@ -5,14 +5,28 @@
 import { route, guard, ok, fail, query } from '../_lib/http.js';
 import { loadPublicPage } from '../_lib/public-page.js';
 
+// Loads the page by name, answers each state a visitor cannot see with its
+// own error, and otherwise sends the page.
 export default route('public/page', async (request, response) => {
-  if (guard(request, response, ['GET'])) return;
+  if (guard(request, response, ['GET'])) {
+    return;
+  }
   const result = await loadPublicPage(query(request, 'slug'));
-  if (result.state === 'missing') return fail(response, 404, 'page_not_found');
+  if (result.state === 'missing') {
+    return fail(response, 404, 'page_not_found');
+  }
   // Renamed: slug is the page's name now.
-  if (result.state === 'moved') return fail(response, 404, 'page_moved', { slug: result.slug });
-  if (result.state === 'banned') return fail(response, 410, 'page_unavailable');
-  if (result.state === 'dormant') return fail(response, 410, 'page_dormant');
-  if (result.state === 'review') return fail(response, 404, 'page_in_review');
+  if (result.state === 'moved') {
+    return fail(response, 404, 'page_moved', { slug: result.slug });
+  }
+  if (result.state === 'banned') {
+    return fail(response, 410, 'page_unavailable');
+  }
+  if (result.state === 'dormant') {
+    return fail(response, 410, 'page_dormant');
+  }
+  if (result.state === 'review') {
+    return fail(response, 404, 'page_in_review');
+  }
   ok(response, { page: result.page });
 });

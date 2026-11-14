@@ -15,6 +15,7 @@ const NOT_FOUND = readFileSync(new URL('../404.html', import.meta.url), 'utf8');
 const META_BLOCK = /<!--OLG:META-->[\s\S]*?<!--\/OLG:META-->/;
 const DATA_BLOCK = /<script type="application\/json" id="pageData">[\s\S]*?<\/script>/;
 
+// Text made safe for HTML, inside an element or a quoted attribute.
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -27,23 +28,38 @@ function escapeHtml(value) {
 // JSON that is safe inside a <script> element: nothing in it can close the
 // element or open a comment, whatever an owner typed into their bio.
 // U+2028 and U+2029 end a line inside a script in older engines.
-const LS = String.fromCharCode(0x2028);
-const LINE_SEPARATORS = new RegExp(`[${LS}${String.fromCharCode(0x2029)}]`, 'g');
+const LINE_SEPARATOR = String.fromCharCode(0x2028);
+const LINE_SEPARATORS = new RegExp(`[${LINE_SEPARATOR}${String.fromCharCode(0x2029)}]`, 'g');
 
 export function inlineJson(value) {
   return JSON.stringify(value)
     .replace(/</g, '\\u003c')
     .replace(/>/g, '\\u003e')
     .replace(/&/g, '\\u0026')
-    .replace(LINE_SEPARATORS, (c) => (c === LS ? '\\u2028' : '\\u2029'));
+    .replace(LINE_SEPARATORS, (character) => {
+      if (character === LINE_SEPARATOR) {
+        return '\\u2028';
+      }
+      return '\\u2029';
+    });
 }
 
+// The title, description and preview tags for a live page, which replace
+// everything between the OLG:META markers in the shell.
 function metaFor(page) {
   const url = `${siteUrl()}/${page.slug}`;
   const title = `${page.displayName} | OneLink GFTV`;
-  const description = page.bio ? page.bio.replace(/\s+/g, ' ').slice(0, 200) : `Links from ${page.displayName}, on OneLink GFTV.`;
+  let description;
+  if (page.bio) {
+    description = page.bio.replace(/\s+/g, ' ').slice(0, 200);
+  } else {
+    description = `Links from ${page.displayName}, on OneLink GFTV.`;
+  }
   // The owner's picture when there is one, so a shared link previews as them.
-  const image = page.avatarUrl || `${siteUrl()}/OLG-main.png`;
+  let image = page.avatarUrl;
+  if (!image) {
+    image = `${siteUrl()}/OLG-main.png`;
+  }
   return [
     `<title>${escapeHtml(title)}</title>`,
     `<meta name="description" content="${escapeHtml(description)}">`,
@@ -59,6 +75,9 @@ function metaFor(page) {
   ].join('\n    ');
 }
 
+// Lowercases a mixed-case name (308), follows a rename (307), answers 404 for
+// no page, and otherwise serves the shell with the page data inlined: live
+// pages with their preview tags, the rest with only their state.
 export default route('render', async (request, response) => {
   // Slugs are lowercase; /Augy goes to /augy rather than to a 404.
   const asked = query(request, 'slug');
@@ -88,7 +107,12 @@ export default route('render', async (request, response) => {
 
   // Banned, dormant and in-review pages get the shell with their state and
   // nothing else.
-  const data = result.state === 'active' ? { state: 'active', page: result.page } : { state: result.state, slug: result.slug };
+  let data;
+  if (result.state === 'active') {
+    data = { state: 'active', page: result.page };
+  } else {
+    data = { state: result.state, slug: result.slug };
+  }
   let html = SHELL.replace(DATA_BLOCK, `<script type="application/json" id="pageData">${inlineJson(data)}</script>`);
   if (result.state === 'active') {
     html = html.replace(META_BLOCK, metaFor(result.page));
@@ -96,7 +120,14 @@ export default route('render', async (request, response) => {
     html = html.replace('<meta name="robots" content="index">', '<meta name="robots" content="noindex">');
   }
 
-  response.statusCode = result.state === 'active' ? 200 : result.state === 'review' ? 404 : 410;
+  // Live 200; in review 404, as if it were not there yet; banned or dormant 410.
+  if (result.state === 'active') {
+    response.statusCode = 200;
+  } else if (result.state === 'review') {
+    response.statusCode = 404;
+  } else {
+    response.statusCode = 410;
+  }
   // A few seconds at the edge, so a busy page is not a query per visit, while
   // an edit or a ban still shows within seconds.
   response.setHeader('Cache-Control', 'public, max-age=0, s-maxage=10, stale-while-revalidate=30');

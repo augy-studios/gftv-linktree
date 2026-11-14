@@ -21,22 +21,39 @@ import { telegramConfigured } from '../_lib/telegram.js';
 import { ownerTotpOk, spendBackupCode, sendTelegramCode, telegramCodeOk, backupCodesLeft } from '../_lib/factors.js';
 import { findChallenge, failChallengeAttempt, deleteChallenge, createOwnerSession } from '../_lib/session.js';
 
+// Rate limit by challenge, find the login challenge and its live page, then
+// check the chosen second factor. A pass spends the challenge and signs in; a
+// miss counts against it.
 export default route('auth/verify', async (request, response) => {
-  if (guard(request, response, ['POST'])) return;
+  if (guard(request, response, ['POST'])) {
+    return;
+  }
   const body = await readJson(request, response);
-  if (!body) return;
-  const subject = `challenge:${sha256(String(body.challenge ?? ''))}`;
-  if (await limited(request, response, 'secondFactor', [subject])) return;
+  if (!body) {
+    return;
+  }
+  let challengeToken = body.challenge;
+  if (challengeToken === null || challengeToken === undefined) {
+    challengeToken = '';
+  }
+  const subject = `challenge:${sha256(String(challengeToken))}`;
+  if (await limited(request, response, 'secondFactor', [subject])) {
+    return;
+  }
 
   const challenge = await findChallenge(body.challenge, 'owner', 'login');
-  if (!challenge) return fail(response, 401, 'challenge_expired');
+  if (!challenge) {
+    return fail(response, 401, 'challenge_expired');
+  }
 
   const { data: page, error } = await database()
     .from(TABLES.pages)
     .select('id, slug, status, totp_secret, telegram_chat_id')
     .eq('id', challenge.subject_id)
     .maybeSingle();
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
   if (!page || page.status !== 'active') {
     await deleteChallenge(challenge);
     return fail(response, 401, 'challenge_expired');
@@ -54,7 +71,9 @@ export default route('auth/verify', async (request, response) => {
 
     case 'passkey-options': {
       const options = await authenticationOptions('owner', page.id);
-      if (!options) return fail(response, 400, 'no_passkeys');
+      if (!options) {
+        return fail(response, 400, 'no_passkeys');
+      }
       return ok(response, { options });
     }
 
@@ -63,8 +82,12 @@ export default route('auth/verify', async (request, response) => {
       break;
 
     case 'telegram-send':
-      if (!page.telegram_chat_id || !telegramConfigured()) return fail(response, 400, 'telegram_not_linked');
-      if (await limited(request, response, 'telegramSend', [`page:${page.id}`])) return;
+      if (!page.telegram_chat_id || !telegramConfigured()) {
+        return fail(response, 400, 'telegram_not_linked');
+      }
+      if (await limited(request, response, 'telegramSend', [`page:${page.id}`])) {
+        return;
+      }
       await sendTelegramCode(challenge, page, 'sign-in');
       return ok(response, { sent: true });
 

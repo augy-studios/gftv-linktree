@@ -17,22 +17,42 @@ import { createChallenge } from '../_lib/session.js';
 import { slugHeldBy } from '../_lib/slug-changes.js';
 import { refusedForTurnstile } from '../_lib/turnstile.js';
 
+// Sign-up: rate limit, Turnstile and ban checks, then the name and password
+// rules, then a new pending page and its enrolment challenge.
 export default route('auth/register', async (request, response) => {
-  if (guard(request, response, ['POST'])) return;
+  if (guard(request, response, ['POST'])) {
+    return;
+  }
   const body = await readJson(request, response);
-  if (!body) return;
-  if (await limited(request, response, 'register')) return;
-  if (await refusedForTurnstile(request, response, body, 'register')) return;
-  if (await refusedForBan(request, response, { newPage: true })) return;
+  if (!body) {
+    return;
+  }
+  if (await limited(request, response, 'register')) {
+    return;
+  }
+  if (await refusedForTurnstile(request, response, body, 'register')) {
+    return;
+  }
+  if (await refusedForBan(request, response, { newPage: true })) {
+    return;
+  }
 
   const slugCheck = checkSlug(body.slug);
-  if (!slugCheck.ok) return fail(response, 400, slugCheck.error);
+  if (!slugCheck.ok) {
+    return fail(response, 400, slugCheck.error);
+  }
   const passwordCheck = checkPassword(body.password);
-  if (!passwordCheck.ok) return fail(response, 400, passwordCheck.error);
+  if (!passwordCheck.ok) {
+    return fail(response, 400, passwordCheck.error);
+  }
   const refusal = await slugRefusal(slugCheck.slug);
-  if (refusal) return fail(response, 400, refusal);
+  if (refusal) {
+    return fail(response, 400, refusal);
+  }
   // A name a page was renamed away from is held for that page for a while.
-  if (await slugHeldBy(slugCheck.slug)) return fail(response, 409, 'slug_taken');
+  if (await slugHeldBy(slugCheck.slug)) {
+    return fail(response, 409, 'slug_taken');
+  }
 
   // Release this slug if somebody started on it and never finished.
   await database()
@@ -53,7 +73,9 @@ export default route('auth/register', async (request, response) => {
     .select('id, slug, needs_review')
     .single();
   if (error) {
-    if (error.code === '23505') return fail(response, 409, 'slug_taken');
+    if (error.code === '23505') {
+      return fail(response, 409, 'slug_taken');
+    }
     throw error;
   }
 

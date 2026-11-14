@@ -8,13 +8,25 @@ import { database } from '../_lib/supabase.js';
 import { isUuid } from '../_lib/validate.js';
 import { limited } from '../_lib/guards.js';
 
+// Checks the link id, applies the click rate limit, then adds one to the
+// link's count.
 export default route('public/click', async (request, response) => {
-  if (guard(request, response, ['POST'])) return;
+  if (guard(request, response, ['POST'])) {
+    return;
+  }
   const body = await readJson(request, response);
-  if (!body) return;
-  if (!isUuid(body.id)) return fail(response, 400, 'bad_request');
-  if (await limited(request, response, 'click', [`link:${body.id}`])) return;
+  if (!body) {
+    return;
+  }
+  if (!isUuid(body.id)) {
+    return fail(response, 400, 'bad_request');
+  }
+  if (await limited(request, response, 'click', [`link:${body.id}`])) {
+    return;
+  }
   const { error } = await database().rpc('gftvonelink_link_click', { p_link_id: body.id });
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
   ok(response);
 });
