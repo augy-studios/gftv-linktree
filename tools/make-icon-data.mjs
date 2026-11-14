@@ -2,7 +2,7 @@
 // and the general icons (Feather, MIT) that links can use, and the flags
 // (flag-icons, MIT) shown beside each language in the language picker.
 //
-// Usage, from tools/:  npm install && npm run icons
+// Usage, from tools/:  npm ci && npm run icons
 //
 // Add a brand or a general icon by adding its name below and running this
 // again; then add it to LINK_ICONS in main-site/api/_lib/validate.js (the

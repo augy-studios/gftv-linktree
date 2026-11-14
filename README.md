@@ -11,7 +11,7 @@ GFTV staff moderate pages from a dashboard at `/admin`.
 | `main-site/` | The Vercel project: static pages, browser scripts, and the serverless API. See [main-site/README.md](main-site/README.md). |
 | `migrations/` | SQL to run by hand in the Supabase SQL editor, in number order. A file is never edited after it has been run; changes go in the next number. |
 | `tools/make-icons.py` | Rebuilds the `OLG-*.png` app icons and `favicon.ico`. |
-| `tools/make-icon-data.mjs` | Rebuilds `main-site/js/icon-data.js`, the link icons, from pinned Simple Icons (CC0) and Feather (MIT). Run `npm install && npm run icons` in `tools/`. |
+| `tools/make-icon-data.mjs` | Rebuilds `main-site/js/icon-data.js`, the link icons, from pinned Simple Icons (CC0) and Feather (MIT). Run `npm ci && npm run icons` in `tools/`. |
 | `SETUP.md` | Step-by-step setup, including the Telegram bot. |
 | `TURNSTILE-SETUP.md` | Setting up Cloudflare Turnstile on sign-up, sign-in, password reset and reports. |
 | `gftv-theme.md`, `gftv-official.md`, `update-bar-spec.md`, `i18n-retrofit-spec.md`, `telethon-richmessage-retrofit.md`, `gftv-retrofit-*.md` | The GFTV specifications this site follows. |
