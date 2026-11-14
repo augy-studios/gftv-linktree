@@ -1527,12 +1527,12 @@ byId('testimonialForm').addEventListener('submit', (event) => {
 // ---------------------------------------------------------------------------
 
 let caps = null;
+let capAction = null;
 
 // The number dialog, for answering a request and setting a page's limit.
 // useDefault, when given, is the default limit, offered as a way back to it.
 // min and max bound the number; optional lets it be left empty (a decline
 // without a smaller raise); askNumber: false hides it altogether.
-let capAction = null;
 function askCap({ title, body, value = '', label = 'admin.caps-limit', min = 1, max = null, optional = false, askNumber = true, note = false, useDefault = null, run }) {
   // The highest number allowed: max when given, else the server's ceiling,
   // else 200.
