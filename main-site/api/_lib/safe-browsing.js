@@ -18,14 +18,17 @@ export function safeBrowsingConfigured() {
 }
 
 // The addresses among urls that Safe Browsing lists, as a Set. Empty when
-// the check is switched off or could not be made.
+// the check is switched off or could not be made. Asks in batches of BATCH;
+// a batch that fails is logged and the rest are still asked.
 export async function unsafeUrls(urls) {
   const key = optionalEnv('GOOGLE_SAFE_BROWSING_KEY');
   const unique = [...new Set(urls.filter(Boolean))];
   const flagged = new Set();
-  if (!key || unique.length === 0) return flagged;
-  for (let i = 0; i < unique.length; i += BATCH) {
-    const batch = unique.slice(i, i + BATCH);
+  if (!key || unique.length === 0) {
+    return flagged;
+  }
+  for (let start = 0; start < unique.length; start += BATCH) {
+    const batch = unique.slice(start, start + BATCH);
     try {
       const response = await fetch(`${ENDPOINT}?key=${encodeURIComponent(key)}`, {
         method: 'POST',
@@ -41,13 +44,25 @@ export async function unsafeUrls(urls) {
           },
         }),
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       const data = await response.json();
-      for (const match of data.matches ?? []) {
-        if (match?.threat?.url) flagged.add(match.threat.url);
+      let matches = [];
+      if (data.matches !== null && data.matches !== undefined) {
+        matches = data.matches;
+      }
+      for (const match of matches) {
+        if (match && match.threat && match.threat.url) {
+          flagged.add(match.threat.url);
+        }
       }
     } catch (cause) {
-      console.warn('[onelink] safe browsing lookup:', cause?.message ?? cause);
+      let detail = cause;
+      if (cause !== null && cause !== undefined && cause.message !== null && cause.message !== undefined) {
+        detail = cause.message;
+      }
+      console.warn('[onelink] safe browsing lookup:', detail);
     }
   }
   return flagged;

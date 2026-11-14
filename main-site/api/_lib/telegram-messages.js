@@ -7,10 +7,18 @@ import { escapeMd, richTable } from './telegram.js';
 // purpose: "sign-in" | "reset"
 export function codeMessage({ purpose, slug, code, minutes }) {
   const page = `links.gftv.asia/${slug}`;
-  const why = purpose === 'reset'
-    ? 'Someone asked to reset the password of your OneLink GFTV page.'
-    : 'Someone is signing in to your OneLink GFTV page.';
-  const heading = purpose === 'reset' ? 'Password reset code' : 'Sign-in code';
+  let why;
+  if (purpose === 'reset') {
+    why = 'Someone asked to reset the password of your OneLink GFTV page.';
+  } else {
+    why = 'Someone is signing in to your OneLink GFTV page.';
+  }
+  let heading;
+  if (purpose === 'reset') {
+    heading = 'Password reset code';
+  } else {
+    heading = 'Sign-in code';
+  }
 
   const markdown = [
     `## ${heading}`,
@@ -32,6 +40,7 @@ export function codeMessage({ purpose, slug, code, minutes }) {
   return { markdown, fallback };
 }
 
+// The bot's reply to any private message it has no other answer for.
 export function helpMessage() {
   const markdown = [
     '# OneLink GFTV',
@@ -95,7 +104,16 @@ export function linkCapMessage({ slug, outcome, requested, granted, note }) {
     declined: `Your request for a limit of ${requested} links on ${page} was not approved this time. You can ask again from your editor.`,
   }[outcome];
   const rows = [['Page', page], ['Asked for', String(requested)]];
-  if (granted !== null && granted !== undefined) rows.push(['New limit', String(granted)]);
+  if (granted !== null && granted !== undefined) {
+    rows.push(['New limit', String(granted)]);
+  }
+  // The reviewer's note, when they wrote one.
+  let noteLines = [];
+  let noteLine = null;
+  if (note) {
+    noteLines = ['', `**Note from the GFTV team:** ${escapeMd(note)}`];
+    noteLine = `Note from the GFTV team: ${note}`;
+  }
 
   const markdown = [
     `## ${heading}`,
@@ -103,12 +121,12 @@ export function linkCapMessage({ slug, outcome, requested, granted, note }) {
     escapeMd(summary),
     '',
     richTable(['Detail'], rows),
-    ...(note ? ['', `**Note from the GFTV team:** ${escapeMd(note)}`] : []),
+    ...noteLines,
     '',
     'See it in your editor at links.gftv.asia/edit.',
   ].join('\n');
 
-  const fallback = [summary, note ? `Note from the GFTV team: ${note}` : null, 'See it in your editor at links.gftv.asia/edit.']
+  const fallback = [summary, noteLine, 'See it in your editor at links.gftv.asia/edit.']
     .filter(Boolean)
     .join('\n\n');
   return { markdown, fallback };
@@ -124,7 +142,11 @@ export function renameReviewMessage({ oldSlug, newSlug, displayName, adminUrl })
     ['New name', newSlug],
     ['Old name', oldSlug],
   ];
-  if (displayName) rows.push(['Display name', displayName]);
+  let displayNameLine = null;
+  if (displayName) {
+    rows.push(['Display name', displayName]);
+    displayNameLine = `Display name: ${displayName}`;
+  }
 
   const markdown = [
     '## Page name to review',
@@ -139,7 +161,7 @@ export function renameReviewMessage({ oldSlug, newSlug, displayName, adminUrl })
   const fallback = [
     'Page name to review',
     summary,
-    displayName ? `Display name: ${displayName}` : null,
+    displayNameLine,
     `Approve it, or take it down, under Pages > Awaiting review at ${adminUrl}.`,
   ]
     .filter(Boolean)

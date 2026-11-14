@@ -5,8 +5,11 @@ import { query } from './http.js';
 export const PAGE_SIZE = 25;
 
 export function offsetOf(request) {
-  const n = Number.parseInt(query(request, 'offset'), 10);
-  return Number.isFinite(n) && n >= 0 ? Math.min(n, 100_000) : 0;
+  const offset = Number.parseInt(query(request, 'offset'), 10);
+  if (Number.isFinite(offset) && offset >= 0) {
+    return Math.min(offset, 100_000);
+  }
+  return 0;
 }
 
 // A search term safe to put inside a PostgREST ilike pattern, including the
