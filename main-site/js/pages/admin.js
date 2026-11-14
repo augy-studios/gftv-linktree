@@ -26,43 +26,74 @@ function show(name) {
 let challenge = null;
 let method = null;
 
-byId('staffPasswordForm').addEventListener('submit', (e) => {
-  e.preventDefault();
+// The password step. On success it shows only the second factors this
+// account can use here, and picks the first of them.
+byId('staffPasswordForm').addEventListener('submit', (event) => {
+  event.preventDefault();
   withBusy(byId('staffPasswordSubmit'), byId('staffPasswordError'), async () => {
     const data = await post('/api/admin/auth', { action: 'login', identifier: byId('staffIdentifier').value, password: byId('staffPassword').value });
     challenge = data.challenge;
     byId('staffPassword').value = '';
-    const usable = { totp: data.methods.totp, passkey: data.methods.passkey && passkeysSupported(), backup: data.methods.backup };
-    document.querySelectorAll('#staffMethods [data-method]').forEach((b) => { b.hidden = !usable[b.dataset.method]; });
+    // A passkey also needs a browser that supports them.
+    let passkeyUsable = data.methods.passkey;
+    if (passkeyUsable) {
+      passkeyUsable = passkeysSupported();
+    }
+    const usable = { totp: data.methods.totp, passkey: passkeyUsable, backup: data.methods.backup };
+    document.querySelectorAll('#staffMethods [data-method]').forEach((button) => { button.hidden = !usable[button.dataset.method]; });
     byId('staffPasswordForm').hidden = true;
     byId('staffCodeForm').hidden = false;
-    pickMethod(usable.totp ? 'totp' : usable.passkey ? 'passkey' : 'backup');
+    let firstMethod;
+    if (usable.totp) {
+      firstMethod = 'totp';
+    } else if (usable.passkey) {
+      firstMethod = 'passkey';
+    } else {
+      firstMethod = 'backup';
+    }
+    pickMethod(firstMethod);
   });
 });
 
+// Switches the code form to one second factor: a code field for an
+// authenticator or backup code, or the passkey button.
 function pickMethod(name) {
   method = name;
-  document.querySelectorAll('#staffMethods [data-method]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.method === name)));
+  document.querySelectorAll('#staffMethods [data-method]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.method === name)));
   byId('staffCodeField').hidden = name === 'passkey';
   byId('staffCodeSubmitRow').hidden = name === 'passkey';
   byId('staffPasskeyRow').hidden = name !== 'passkey';
-  byId('staffCodeLabel').textContent = translate(name === 'backup' ? 'field.backup-code' : 'field.code');
+  let labelKey;
+  if (name === 'backup') {
+    labelKey = 'field.backup-code';
+  } else {
+    labelKey = 'field.code';
+  }
+  byId('staffCodeLabel').textContent = translate(labelKey);
   const input = byId('staffCode');
   input.value = '';
-  input.inputMode = name === 'totp' ? 'numeric' : 'text';
-  if (name !== 'passkey') input.focus();
+  if (name === 'totp') {
+    input.inputMode = 'numeric';
+  } else {
+    input.inputMode = 'text';
+  }
+  if (name !== 'passkey') {
+    input.focus();
+  }
 }
-document.querySelectorAll('#staffMethods [data-method]').forEach((b) => b.addEventListener('click', () => pickMethod(b.dataset.method)));
+document.querySelectorAll('#staffMethods [data-method]').forEach((button) => button.addEventListener('click', () => pickMethod(button.dataset.method)));
 
 function backToPassword(error) {
-  if (error.code !== 'challenge_expired') return;
+  if (error.code !== 'challenge_expired') {
+    return;
+  }
   byId('staffCodeForm').hidden = true;
   byId('staffPasswordForm').hidden = false;
   byId('staffPasswordError').textContent = translate('error.challenge_expired');
 }
 
-byId('staffCodeForm').addEventListener('submit', (e) => {
-  e.preventDefault();
+byId('staffCodeForm').addEventListener('submit', (event) => {
+  event.preventDefault();
   withBusy(byId('staffCodeSubmit'), byId('staffCodeError'), async () => {
     try {
       const data = await post('/api/admin/auth', { action: 'verify', challenge, method, code: byId('staffCode').value });
@@ -117,48 +148,71 @@ const loaders = {};
 
 function selectTab(tab, focus = false) {
   for (const other of tabs) {
-    const on = other === tab;
-    other.setAttribute('aria-selected', String(on));
-    other.tabIndex = on ? 0 : -1;
-    byId(other.getAttribute('aria-controls')).hidden = !on;
+    const isSelected = other === tab;
+    other.setAttribute('aria-selected', String(isSelected));
+    if (isSelected) {
+      other.tabIndex = 0;
+    } else {
+      other.tabIndex = -1;
+    }
+    byId(other.getAttribute('aria-controls')).hidden = !isSelected;
   }
-  if (focus) tab.focus();
+  if (focus) {
+    tab.focus();
+  }
+  // Each loader is a function, so this runs the tab's loader when it has one.
   const name = tab.id.replace('atab-', '');
-  loaders[name]?.();
+  if (loaders[name]) {
+    loaders[name]();
+  }
 }
 
 tabs.forEach((tab) => {
   tab.addEventListener('click', () => selectTab(tab));
-  tab.addEventListener('keydown', (e) => {
-    const visible = tabs.filter((x) => !x.hidden);
-    const i = visible.indexOf(tab);
-    const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+  // The arrow keys move between the visible tabs, wrapping at either end.
+  tab.addEventListener('keydown', (event) => {
+    const visible = tabs.filter((candidate) => !candidate.hidden);
+    const position = visible.indexOf(tab);
+    const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
     if (step) {
-      e.preventDefault();
-      selectTab(visible[(i + step + visible.length) % visible.length], true);
+      event.preventDefault();
+      selectTab(visible[(position + step + visible.length) % visible.length], true);
     }
   });
 });
 
 function enter(user) {
   staff = user;
-  byId('staffWho').textContent = translate('admin.signed-in-as', { name: user.displayName || user.username, role: translate(`admin.role-${user.role}`) });
-  document.querySelectorAll('[data-admin-only]').forEach((n) => { n.hidden = user.role !== 'admin'; });
+  let staffName = user.username;
+  if (user.displayName) {
+    staffName = user.displayName;
+  }
+  byId('staffWho').textContent = translate('admin.signed-in-as', { name: staffName, role: translate(`admin.role-${user.role}`) });
+  document.querySelectorAll('[data-admin-only]').forEach((element) => { element.hidden = user.role !== 'admin'; });
   show('dashboard');
   selectTab(tabs[0]);
 }
 
-const isAdmin = () => staff && staff.role === 'admin';
+// Before sign-in staff is null, and this returns that null (read as false).
+const isAdmin = () => {
+  if (!staff) {
+    return staff;
+  }
+  return staff.role === 'admin';
+};
 
-// A paged list: renders rows, an empty state, and previous/next.
+// The controls under a paged list: previous, the range shown, and next.
+// Nothing when everything fits on one page.
 function pager(container, data, go) {
   container.replaceChildren();
-  if (data.total <= data.pageSize) return;
+  if (data.total <= data.pageSize) {
+    return;
+  }
   const from = data.offset + 1;
   const to = Math.min(data.offset + data.pageSize, data.total);
-  const prev = createElement('button', { class: 'btn btn-small', type: 'button', disabled: data.offset === 0, onclick: () => go(Math.max(0, data.offset - data.pageSize)) }, [translate('admin.previous')]);
+  const previous = createElement('button', { class: 'btn btn-small', type: 'button', disabled: data.offset === 0, onclick: () => go(Math.max(0, data.offset - data.pageSize)) }, [translate('admin.previous')]);
   const next = createElement('button', { class: 'btn btn-small', type: 'button', disabled: to >= data.total, onclick: () => go(data.offset + data.pageSize) }, [translate('admin.next')]);
-  container.append(prev, createElement('span', { text: translate('admin.range', { from: formatNumber(from), to: formatNumber(to), total: formatNumber(data.total) }) }), next);
+  container.append(previous, createElement('span', { text: translate('admin.range', { from: formatNumber(from), to: formatNumber(to), total: formatNumber(data.total) }) }), next);
 }
 
 function loading(list) {
@@ -168,7 +222,13 @@ function loading(list) {
 
 function fill(list, rows, emptyKey) {
   list.removeAttribute('aria-busy');
-  list.replaceChildren(...(rows.length ? rows : [createElement('li', { class: 'empty-state', text: translate(emptyKey) })]));
+  let items;
+  if (rows.length) {
+    items = rows;
+  } else {
+    items = [createElement('li', { class: 'empty-state', text: translate(emptyKey) })];
+  }
+  list.replaceChildren(...items);
 }
 
 function badge(text, tone = '') {
@@ -176,55 +236,102 @@ function badge(text, tone = '') {
 }
 
 function actionButton(labelKey, iconName, onclick, tone = '') {
-  const b = createElement('button', { class: `btn btn-small ${tone}`.trim(), type: 'button', onclick });
-  b.append(iconNode(iconName), createElement('span', { text: translate(labelKey) }));
-  return b;
+  const button = createElement('button', { class: `btn btn-small ${tone}`.trim(), type: 'button', onclick });
+  button.append(iconNode(iconName), createElement('span', { text: translate(labelKey) }));
+  return button;
 }
 
 function statusBadge(status) {
-  return badge(translate(`status.${status}`), status === 'banned' ? 'danger' : status === 'active' ? 'ok' : 'warn');
+  let tone;
+  if (status === 'banned') {
+    tone = 'danger';
+  } else if (status === 'active') {
+    tone = 'ok';
+  } else {
+    tone = 'warn';
+  }
+  return badge(translate(`status.${status}`), tone);
 }
 
-// The status, plus what keeps a live page from showing.
-function pageBadges(p) {
+// The status, plus what keeps a live page from showing. Each badge that does
+// not apply is null, which createElement skips.
+function pageBadges(page) {
+  let reviewTag = null;
+  if (page.awaitingReview) {
+    reviewTag = badge(translate('status.review'), 'warn');
+  }
+  let quarantineTag = null;
+  if (page.quarantined) {
+    quarantineTag = badge(translate('status.quarantined'), 'danger');
+  }
+  let dormantTag = null;
+  if (page.dormant) {
+    dormantTag = badge(translate('status.dormant'), 'warn');
+  }
+  let redirectTag = null;
+  if (page.redirectUrl) {
+    redirectTag = badge(translate('admin.redirects'));
+  }
+  let teamTag = null;
+  if (page.team) {
+    let teamLabel;
+    if (page.team.role) {
+      teamLabel = translate('admin.team-badge-role', { role: page.team.role });
+    } else {
+      teamLabel = translate('team.label');
+    }
+    teamTag = badge(teamLabel, 'ok');
+  }
   return [
-    statusBadge(p.status),
-    p.awaitingReview ? badge(translate('status.review'), 'warn') : null,
-    p.quarantined ? badge(translate('status.quarantined'), 'danger') : null,
-    p.dormant ? badge(translate('status.dormant'), 'warn') : null,
-    p.redirectUrl ? badge(translate('admin.redirects')) : null,
-    p.team ? badge(p.team.role ? translate('admin.team-badge-role', { role: p.team.role }) : translate('team.label'), 'ok') : null,
+    statusBadge(page.status),
+    reviewTag,
+    quarantineTag,
+    dormantTag,
+    redirectTag,
+    teamTag,
   ];
 }
 
 // Admins mark a page as someone on the GFTV team, which puts a ring and a
 // tick on its picture. The role is optional and shows beside the mark.
-function teamActions(p, after) {
-  if (!isAdmin() || p.status !== 'active') return [];
-  const ask = (titleKey) => askReason({
-    title: translate(titleKey, { slug: p.slug }),
-    body: translate('admin.team-verify-body'),
-    required: false,
-    label: translate('admin.team-role'),
-    maxlength: 40,
-    initial: p.team?.role || '',
-    run: async (role) => {
-      await post('/api/admin/pages', { action: 'verify', id: p.id, role });
-      toast(translate('admin.team-verified', { slug: p.slug }));
-      after();
-    },
-  });
-  if (!p.team) return [actionButton('admin.team-verify', 'shield', () => ask('admin.team-verify-title'), 'btn-primary')];
+function teamActions(page, after) {
+  if (!isAdmin() || page.status !== 'active') {
+    return [];
+  }
+  // Adding the mark and changing the role share one dialog, which starts
+  // with the current role (empty when there is none).
+  const ask = (titleKey) => {
+    let initialRole = '';
+    if (page.team && page.team.role) {
+      initialRole = page.team.role;
+    }
+    askReason({
+      title: translate(titleKey, { slug: page.slug }),
+      body: translate('admin.team-verify-body'),
+      required: false,
+      label: translate('admin.team-role'),
+      maxlength: 40,
+      initial: initialRole,
+      run: async (role) => {
+        await post('/api/admin/pages', { action: 'verify', id: page.id, role });
+        toast(translate('admin.team-verified', { slug: page.slug }));
+        after();
+      },
+    });
+  };
+  if (!page.team) {
+    return [actionButton('admin.team-verify', 'shield', () => ask('admin.team-verify-title'), 'btn-primary')];
+  }
   return [
     actionButton('admin.team-change-role', 'edit', () => ask('admin.team-change-title')),
     actionButton('admin.team-unverify', 'close', () => askReason({
-      title: translate('admin.team-unverify-title', { slug: p.slug }),
+      title: translate('admin.team-unverify-title', { slug: page.slug }),
       body: translate('admin.team-unverify-body'),
       required: false,
       hideText: true,
       run: async () => {
-        await post('/api/admin/pages', { action: 'unverify', id: p.id });
-        toast(translate('admin.team-unverified', { slug: p.slug }));
+        await post('/api/admin/pages', { action: 'unverify', id: page.id });
+        toast(translate('admin.team-unverified', { slug: page.slug }));
         after();
       },
     }), 'btn-danger'),
@@ -232,29 +339,37 @@ function teamActions(p, after) {
 }
 
 // Any staff member can end a quarantine once they have looked.
-function releaseAction(p, after) {
-  if (!p.quarantined) return null;
+function releaseAction(page, after) {
+  if (!page.quarantined) {
+    return null;
+  }
   return actionButton('admin.release', 'check', async () => {
     try {
-      await post('/api/admin/pages', { action: 'release', id: p.id });
-      toast(translate('admin.released', { slug: p.slug }));
+      await post('/api/admin/pages', { action: 'release', id: page.id });
+      toast(translate('admin.released', { slug: page.slug }));
       after();
     } catch (error) {
-      if (!guardSession(error)) toast(errorText(error));
+      if (!guardSession(error)) {
+        toast(errorText(error));
+      }
     }
   }, 'btn-primary');
 }
 
 // Any staff member can let a name on the review list go live.
-function approveAction(p, after) {
-  if (!p.awaitingReview || p.status === 'banned') return null;
+function approveAction(page, after) {
+  if (!page.awaitingReview || page.status === 'banned') {
+    return null;
+  }
   return actionButton('admin.approve', 'check', async () => {
     try {
-      await post('/api/admin/pages', { action: 'approve', id: p.id });
-      toast(translate('admin.approved', { slug: p.slug }));
+      await post('/api/admin/pages', { action: 'approve', id: page.id });
+      toast(translate('admin.approved', { slug: page.slug }));
       after();
     } catch (error) {
-      if (!guardSession(error)) toast(errorText(error));
+      if (!guardSession(error)) {
+        toast(errorText(error));
+      }
     }
   }, 'btn-primary');
 }
@@ -270,7 +385,14 @@ function askReason({ title, body = '', required = true, showRemove = false, conf
   byId('reasonBody').textContent = body;
   byId('reasonText').value = initial;
   byId('reasonText').maxLength = maxlength;
-  byId('reasonText').rows = maxlength <= 60 ? 1 : 3;
+  // A short note (60 characters or fewer) gets a one-line field.
+  let rows;
+  if (maxlength <= 60) {
+    rows = 1;
+  } else {
+    rows = 3;
+  }
+  byId('reasonText').rows = rows;
   byId('reasonText').classList.toggle('single-line', maxlength <= 60);
   byId('reasonTextRow').hidden = hideText;
   byId('reasonError').textContent = '';
@@ -278,13 +400,31 @@ function askReason({ title, body = '', required = true, showRemove = false, conf
   byId('reasonRemoveLink').checked = false;
   byId('reasonConfirmRow').hidden = !confirm;
   byId('reasonConfirm').value = '';
-  if (confirm) byId('reasonConfirmLabel').textContent = translate('admin.delete-confirm', { slug: confirm });
-  byId('reasonLabel').textContent = label || translate(required ? 'field.reason' : 'field.note');
-  openModal('reasonModal', { initialFocus: hideText ? byId('reasonSubmit') : byId('reasonText') });
+  if (confirm) {
+    byId('reasonConfirmLabel').textContent = translate('admin.delete-confirm', { slug: confirm });
+  }
+  let labelText = label;
+  if (!labelText) {
+    if (required) {
+      labelText = translate('field.reason');
+    } else {
+      labelText = translate('field.note');
+    }
+  }
+  byId('reasonLabel').textContent = labelText;
+  let initialFocus;
+  if (hideText) {
+    initialFocus = byId('reasonSubmit');
+  } else {
+    initialFocus = byId('reasonText');
+  }
+  openModal('reasonModal', { initialFocus });
 }
-byId('reasonForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  if (!reasonAction) return;
+byId('reasonForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!reasonAction) {
+    return;
+  }
   const text = byId('reasonText').value.trim();
   if (reasonAction.required && !text) {
     byId('reasonError').textContent = translate('error.reason_required');
@@ -304,6 +444,8 @@ byId('reasonForm').addEventListener('submit', (e) => {
 // Overview
 // ---------------------------------------------------------------------------
 
+// The count cards. A card with a tab is a button that opens it, setting the
+// pages filter first when it names one; the rest are plain numbers.
 loaders.overview = async () => {
   const grid = byId('stats');
   grid.setAttribute('aria-busy', 'true');
@@ -325,13 +467,22 @@ loaders.overview = async () => {
       ['removed', 'admin.stat-removed'],
     ];
     grid.replaceChildren(...items.filter(([key]) => counts[key] !== undefined).map(([key, label, tab, status]) => {
-      const card = createElement(tab ? 'button' : 'div', { class: 'glass-card stat', type: tab ? 'button' : undefined }, [
+      // An undefined type is left off the element.
+      let tagName = 'div';
+      let buttonType;
+      if (tab) {
+        tagName = 'button';
+        buttonType = 'button';
+      }
+      const card = createElement(tagName, { class: 'glass-card stat', type: buttonType }, [
         createElement('div', { class: 'value', text: formatNumber(counts[key]) }),
         createElement('div', { class: 'label', text: translate(label) }),
       ]);
       if (tab) {
         card.addEventListener('click', () => {
-          if (status) byId('pageStatus').value = status;
+          if (status) {
+            byId('pageStatus').value = status;
+          }
           selectTab(byId(`atab-${tab}`), true);
         });
       }
@@ -339,7 +490,9 @@ loaders.overview = async () => {
     }));
     grid.removeAttribute('aria-busy');
   } catch (error) {
-    if (!guardSession(error)) grid.replaceChildren(createElement('p', { class: 'callout danger', text: errorText(error) }));
+    if (!guardSession(error)) {
+      grid.replaceChildren(createElement('p', { class: 'callout danger', text: errorText(error) }));
+    }
   }
 };
 
@@ -357,69 +510,119 @@ loaders.reports = async (offset = reportOffset) => {
     fill(list, data.reports.map(reportRow), 'admin.empty-reports');
     pager(byId('reportPager'), data, loaders.reports);
   } catch (error) {
-    if (!guardSession(error)) fill(list, [createElement('li', { class: 'callout danger', text: errorText(error) })], 'admin.empty-reports');
+    if (!guardSession(error)) {
+      fill(list, [createElement('li', { class: 'callout danger', text: errorText(error) })], 'admin.empty-reports');
+    }
   }
 };
 byId('reportStatus').addEventListener('change', () => loaders.reports(0));
 
-function reportRow(r) {
-  const target = r.link ? translate('admin.report-on-link', { title: r.link.title }) : translate('admin.report-on-page');
+// One report: what it is about, its tags, and the actions. Open reports can
+// be resolved (removing the link, if it is still up) or dismissed.
+function reportRow(report) {
+  let target;
+  if (report.link) {
+    target = translate('admin.report-on-link', { title: report.link.title });
+  } else {
+    target = translate('admin.report-on-page');
+  }
+  let reasonTone;
+  if (report.reason === 'scam' || report.reason === 'malware') {
+    reasonTone = 'danger';
+  } else {
+    reasonTone = 'warn';
+  }
+  let pageStatusTag = null;
+  if (report.pageStatus) {
+    pageStatusTag = statusBadge(report.pageStatus);
+  }
+  let linkRemovedTag = null;
+  if (report.link && report.link.removed) {
+    linkRemovedTag = badge(translate('admin.link-removed'), 'danger');
+  }
   const tags = createElement('div', { class: 'tags' }, [
-    badge(translate(`report.reason-${r.reason}`), r.reason === 'scam' || r.reason === 'malware' ? 'danger' : 'warn'),
-    r.pageStatus ? statusBadge(r.pageStatus) : null,
-    r.link && r.link.removed ? badge(translate('admin.link-removed'), 'danger') : null,
+    badge(translate(`report.reason-${report.reason}`), reasonTone),
+    pageStatusTag,
+    linkRemovedTag,
   ]);
+  let linkAddress = null;
+  if (report.link) {
+    linkAddress = createElement('div', { class: 'secondary', text: report.link.url });
+  }
+  let detailsBlock = null;
+  if (report.details) {
+    detailsBlock = createElement('pre', { text: report.details });
+  }
+  let resolutionNote = null;
+  if (report.resolutionNote) {
+    resolutionNote = createElement('div', { class: 'secondary', text: translate('admin.note', { note: report.resolutionNote }) });
+  }
   const info = createElement('div', {}, [
-    createElement('div', { class: 'primary' }, [createElement('a', { class: 'text-link', href: `/${r.slug}`, target: '_blank', rel: 'noopener noreferrer', text: `/${r.slug}` }), ` · ${target}`]),
-    r.link ? createElement('div', { class: 'secondary', text: r.link.url }) : null,
-    createElement('div', { class: 'secondary', text: formatDate(r.createdAt) }),
-    r.details ? createElement('pre', { text: r.details }) : null,
-    r.resolutionNote ? createElement('div', { class: 'secondary', text: translate('admin.note', { note: r.resolutionNote }) }) : null,
+    createElement('div', { class: 'primary' }, [createElement('a', { class: 'text-link', href: `/${report.slug}`, target: '_blank', rel: 'noopener noreferrer', text: `/${report.slug}` }), ` · ${target}`]),
+    linkAddress,
+    createElement('div', { class: 'secondary', text: formatDate(report.createdAt) }),
+    detailsBlock,
+    resolutionNote,
     tags,
   ]);
   const actions = createElement('div', { class: 'row-actions' });
-  if (r.status === 'open') {
+  if (report.status === 'open') {
     actions.append(
-      actionButton('admin.resolve', 'check', () => askReason({
-        title: translate('admin.resolve-title'),
-        body: translate('admin.resolve-body'),
-        required: false,
-        showRemove: Boolean(r.link && !r.link.removed),
-        run: async (note, removeLink) => {
-          await post('/api/admin/reports', { action: 'resolve', id: r.id, note, removeLink });
-          toast(translate('admin.done'));
-          loaders.reports();
-        },
-      }), 'btn-primary'),
+      actionButton('admin.resolve', 'check', () => {
+        // Offer to remove the link only while it is still up.
+        let canRemoveLink = false;
+        if (report.link && !report.link.removed) {
+          canRemoveLink = true;
+        }
+        askReason({
+          title: translate('admin.resolve-title'),
+          body: translate('admin.resolve-body'),
+          required: false,
+          showRemove: canRemoveLink,
+          run: async (note, removeLink) => {
+            await post('/api/admin/reports', { action: 'resolve', id: report.id, note, removeLink });
+            toast(translate('admin.done'));
+            loaders.reports();
+          },
+        });
+      }, 'btn-primary'),
       actionButton('admin.dismiss', 'close', () => askReason({
         title: translate('admin.dismiss-title'),
         required: false,
         run: async (note) => {
-          await post('/api/admin/reports', { action: 'dismiss', id: r.id, note });
+          await post('/api/admin/reports', { action: 'dismiss', id: report.id, note });
           toast(translate('admin.done'));
           loaders.reports();
         },
       })),
     );
   }
-  actions.append(actionButton('admin.view-page', 'eye', () => openPage(r.pageId)));
-  const remove = deleteReportAction(r, () => loaders.reports());
-  if (remove) actions.append(remove);
+  actions.append(actionButton('admin.view-page', 'eye', () => openPage(report.pageId)));
+  const remove = deleteReportAction(report, () => loaders.reports());
+  if (remove) {
+    actions.append(remove);
+  }
   return createElement('li', { class: 'data-row' }, [info, actions]);
 }
 
 // Admins can delete a report outright, after a confirmation; the audit log
 // keeps what it said.
-function deleteReportAction(r, after) {
-  if (!isAdmin()) return null;
+function deleteReportAction(report, after) {
+  if (!isAdmin()) {
+    return null;
+  }
   return actionButton('admin.delete-report', 'trash', async () => {
-    if (!window.confirm(translate('admin.delete-report-confirm'))) return;
+    if (!window.confirm(translate('admin.delete-report-confirm'))) {
+      return;
+    }
     try {
-      await post('/api/admin/reports', { action: 'delete', id: r.id });
+      await post('/api/admin/reports', { action: 'delete', id: report.id });
       toast(translate('admin.report-deleted'));
       after();
     } catch (error) {
-      if (!guardSession(error)) toast(errorText(error));
+      if (!guardSession(error)) {
+        toast(errorText(error));
+      }
     }
   });
 }
@@ -434,36 +637,41 @@ loaders.pages = async (offset = pageOffset) => {
   const list = byId('pageList');
   loading(list);
   try {
-    const q = encodeURIComponent(byId('pageQuery').value.trim());
+    const query = encodeURIComponent(byId('pageQuery').value.trim());
     const status = encodeURIComponent(byId('pageStatus').value);
-    const data = await api(`/api/admin/pages?q=${q}&status=${status}&offset=${offset}`);
+    const data = await api(`/api/admin/pages?q=${query}&status=${status}&offset=${offset}`);
     fill(list, data.pages.map(pageRow), 'admin.empty-pages');
     pager(byId('pagePager'), data, loaders.pages);
   } catch (error) {
-    if (!guardSession(error)) fill(list, [createElement('li', { class: 'callout danger', text: errorText(error) })], 'admin.empty-pages');
+    if (!guardSession(error)) {
+      fill(list, [createElement('li', { class: 'callout danger', text: errorText(error) })], 'admin.empty-pages');
+    }
   }
 };
-byId('pageSearch').addEventListener('submit', (e) => { e.preventDefault(); loaders.pages(0); });
+byId('pageSearch').addEventListener('submit', (event) => { event.preventDefault(); loaders.pages(0); });
 byId('pageStatus').addEventListener('change', () => loaders.pages(0));
 
-function banActions(p, after) {
-  if (!isAdmin()) return [];
-  if (p.status === 'banned') {
+// Admins can ban a page (a reason is required) or lift its ban.
+function banActions(page, after) {
+  if (!isAdmin()) {
+    return [];
+  }
+  if (page.status === 'banned') {
     return [actionButton('admin.unban', 'restore', () => askReason({
-      title: translate('admin.unban-title', { slug: p.slug }),
+      title: translate('admin.unban-title', { slug: page.slug }),
       required: false,
       run: async () => {
-        await post('/api/admin/pages', { action: 'unban', id: p.id });
+        await post('/api/admin/pages', { action: 'unban', id: page.id });
         toast(translate('admin.done'));
         after();
       },
     }))];
   }
   return [actionButton('admin.ban', 'ban', () => askReason({
-    title: translate('admin.ban-title', { slug: p.slug }),
+    title: translate('admin.ban-title', { slug: page.slug }),
     body: translate('admin.ban-body'),
     run: async (reason) => {
-      await post('/api/admin/pages', { action: 'ban', id: p.id, reason });
+      await post('/api/admin/pages', { action: 'ban', id: page.id, reason });
       toast(translate('admin.done'));
       after();
     },
@@ -472,47 +680,86 @@ function banActions(p, after) {
 
 // Deleting frees the name for anyone to register, so it asks for the name to
 // be typed as well as a reason.
-function deleteAction(p) {
-  if (!isAdmin()) return null;
+function deleteAction(page) {
+  if (!isAdmin()) {
+    return null;
+  }
   return actionButton('admin.delete-page', 'trash', () => askReason({
-    title: translate('admin.delete-title', { slug: p.slug }),
-    body: translate('admin.delete-body', { slug: p.slug }),
-    confirm: p.slug,
+    title: translate('admin.delete-title', { slug: page.slug }),
+    body: translate('admin.delete-body', { slug: page.slug }),
+    confirm: page.slug,
     run: async (reason) => {
-      await post('/api/admin/pages', { action: 'delete', id: p.id, reason, confirmSlug: p.slug });
+      await post('/api/admin/pages', { action: 'delete', id: page.id, reason, confirmSlug: page.slug });
       // The reason dialog first, so focus goes back past the page's dialog.
       closeModal('reasonModal');
       closeModal('pageModal');
-      toast(translate('admin.deleted', { slug: p.slug }));
-      loaders.pages?.();
+      toast(translate('admin.deleted', { slug: page.slug }));
+      if (loaders.pages) {
+        loaders.pages();
+      }
     },
   }), 'btn-danger');
 }
 
 // After a change made in a page's dialog: the lists that may show that page.
 function refreshLists() {
-  loaders.pages?.();
-  loaders.team?.();
+  if (loaders.pages) {
+    loaders.pages();
+  }
+  if (loaders.team) {
+    loaders.team();
+  }
 }
 
-function pageRow(p) {
+// One page in the pages list: its address and name, what is notable about
+// it, its badges and counts, and the actions.
+function pageRow(page) {
+  // An empty string still goes in, as an empty text node.
+  let nameSuffix = '';
+  if (page.displayName) {
+    nameSuffix = ` · ${page.displayName}`;
+  }
+  let renamedFrom = null;
+  if (page.renamedFrom) {
+    renamedFrom = createElement('div', { class: 'secondary', text: translate('admin.renamed-from', { slug: page.renamedFrom.slug, when: formatDate(page.renamedFrom.at) }) });
+  }
+  let banReason = null;
+  if (page.banReason) {
+    banReason = createElement('div', { class: 'secondary', text: translate('admin.ban-reason', { reason: page.banReason }) });
+  }
+  let redirect = null;
+  if (page.redirectUrl) {
+    redirect = createElement('div', { class: 'secondary', text: translate('admin.redirects-to', { url: page.redirectUrl }) });
+  }
+  let quarantineReason = null;
+  if (page.quarantineReason) {
+    quarantineReason = createElement('div', { class: 'secondary', text: translate('admin.quarantine-reason', { reason: page.quarantineReason }) });
+  }
+  let reportCountTag = null;
+  if (page.reportCount) {
+    reportCountTag = badge(translate('admin.report-count', { count: page.reportCount, n: formatNumber(page.reportCount) }), 'warn');
+  }
+  let telegramTag = null;
+  if (page.telegramLinked) {
+    telegramTag = badge(translate('factor.telegram'));
+  }
   const info = createElement('div', {}, [
-    createElement('div', { class: 'primary' }, [createElement('a', { class: 'text-link', href: `/${p.slug}`, target: '_blank', rel: 'noopener noreferrer', text: `/${p.slug}` }), p.displayName ? ` · ${p.displayName}` : '']),
-    createElement('div', { class: 'secondary', text: translate('admin.created', { when: formatDate(p.createdAt) }) }),
-    p.renamedFrom ? createElement('div', { class: 'secondary', text: translate('admin.renamed-from', { slug: p.renamedFrom.slug, when: formatDate(p.renamedFrom.at) }) }) : null,
-    p.banReason ? createElement('div', { class: 'secondary', text: translate('admin.ban-reason', { reason: p.banReason }) }) : null,
-    p.redirectUrl ? createElement('div', { class: 'secondary', text: translate('admin.redirects-to', { url: p.redirectUrl }) }) : null,
-    p.quarantineReason ? createElement('div', { class: 'secondary', text: translate('admin.quarantine-reason', { reason: p.quarantineReason }) }) : null,
+    createElement('div', { class: 'primary' }, [createElement('a', { class: 'text-link', href: `/${page.slug}`, target: '_blank', rel: 'noopener noreferrer', text: `/${page.slug}` }), nameSuffix]),
+    createElement('div', { class: 'secondary', text: translate('admin.created', { when: formatDate(page.createdAt) }) }),
+    renamedFrom,
+    banReason,
+    redirect,
+    quarantineReason,
     createElement('div', { class: 'tags' }, [
-      ...pageBadges(p),
-      badge(translate('admin.link-count', { count: p.linkCount, n: formatNumber(p.linkCount) })),
-      p.reportCount ? badge(translate('admin.report-count', { count: p.reportCount, n: formatNumber(p.reportCount) }), 'warn') : null,
-      p.telegramLinked ? badge(translate('factor.telegram')) : null,
+      ...pageBadges(page),
+      badge(translate('admin.link-count', { count: page.linkCount, n: formatNumber(page.linkCount) })),
+      reportCountTag,
+      telegramTag,
     ]),
   ]);
   return createElement('li', { class: 'data-row' }, [
     info,
-    createElement('div', { class: 'row-actions' }, [approveAction(p, () => loaders.pages()), releaseAction(p, () => loaders.pages()), actionButton('admin.view-page', 'eye', () => openPage(p.id)), ...banActions(p, () => loaders.pages())].filter(Boolean)),
+    createElement('div', { class: 'row-actions' }, [approveAction(page, () => loaders.pages()), releaseAction(page, () => loaders.pages()), actionButton('admin.view-page', 'eye', () => openPage(page.id)), ...banActions(page, () => loaders.pages())].filter(Boolean)),
   ]);
 }
 
@@ -522,46 +769,78 @@ function pageRow(p) {
 // ---------------------------------------------------------------------------
 
 let teamOffset = 0;
+// One page of the team list, with its count in the heading. A search with no
+// match has its own empty message.
 loaders.team = async (offset = teamOffset) => {
-  if (!isAdmin()) return;
+  if (!isAdmin()) {
+    return;
+  }
   teamOffset = offset;
   const list = byId('adminTeamList');
   loading(list);
   try {
-    const q = encodeURIComponent(byId('teamQuery').value.trim());
-    const data = await api(`/api/admin/pages?status=team&q=${q}&offset=${offset}`);
+    const query = encodeURIComponent(byId('teamQuery').value.trim());
+    const data = await api(`/api/admin/pages?status=team&q=${query}&offset=${offset}`);
     byId('adminTeamTitle').textContent = translate('admin.team-list-count', { count: data.total, n: formatNumber(data.total) });
-    fill(list, data.pages.map(teamRow), q ? 'admin.team-empty-search' : 'admin.team-empty');
+    let emptyKey;
+    if (query) {
+      emptyKey = 'admin.team-empty-search';
+    } else {
+      emptyKey = 'admin.team-empty';
+    }
+    fill(list, data.pages.map(teamRow), emptyKey);
     pager(byId('adminTeamPager'), data, loaders.team);
   } catch (error) {
-    if (!guardSession(error)) fill(list, [createElement('li', { class: 'callout danger', text: errorText(error) })], 'admin.team-empty');
+    if (!guardSession(error)) {
+      fill(list, [createElement('li', { class: 'callout danger', text: errorText(error) })], 'admin.team-empty');
+    }
   }
 };
 
-function teamRow(p) {
+// One person on the team: their picture with the tick, address, name, role
+// and since when, and the team actions.
+function teamRow(page) {
   const avatar = createElement('div', { class: 'avatar small', 'aria-hidden': 'true' });
-  fillAvatar(avatar, p.avatarUrl, p.displayName || p.slug);
+  let avatarName = page.slug;
+  if (page.displayName) {
+    avatarName = page.displayName;
+  }
+  fillAvatar(avatar, page.avatarUrl, avatarName);
   const tick = createElement('span', { class: 'team-tick', 'aria-hidden': 'true' }, [iconNode('check')]);
+  // The name only when it says more than the address. An empty string still
+  // goes in, as an empty text node.
+  let nameSuffix = '';
+  if (page.displayName && page.displayName !== page.slug) {
+    nameSuffix = ` · ${page.displayName}`;
+  }
+  let roleText = page.team.role;
+  if (!roleText) {
+    roleText = translate('admin.team-no-role');
+  }
   return createElement('li', { class: 'data-row team-row' }, [
     createElement('div', { class: 'team-row-who' }, [
       createElement('div', { class: 'avatar-wrap small team', 'aria-hidden': 'true' }, [avatar, tick]),
       createElement('div', {}, [
-        createElement('div', { class: 'primary' }, [createElement('a', { class: 'text-link', href: `/${p.slug}`, target: '_blank', rel: 'noopener noreferrer', text: `/${p.slug}` }), p.displayName && p.displayName !== p.slug ? ` · ${p.displayName}` : '']),
-        createElement('div', { class: 'secondary', text: [p.team.role || translate('admin.team-no-role'), translate('admin.team-since-short', { when: formatDate(p.team.verifiedAt) })].join(' · ') }),
+        createElement('div', { class: 'primary' }, [createElement('a', { class: 'text-link', href: `/${page.slug}`, target: '_blank', rel: 'noopener noreferrer', text: `/${page.slug}` }), nameSuffix]),
+        createElement('div', { class: 'secondary', text: [roleText, translate('admin.team-since-short', { when: formatDate(page.team.verifiedAt) })].join(' · ') }),
       ]),
     ]),
-    createElement('div', { class: 'row-actions' }, [...teamActions(p, () => loaders.team()), actionButton('admin.view-page', 'eye', () => openPage(p.id))]),
+    createElement('div', { class: 'row-actions' }, [...teamActions(page, () => loaders.team()), actionButton('admin.view-page', 'eye', () => openPage(page.id))]),
   ]);
 }
 
 // The page name as typed, or pasted as an address: "augy", "/augy",
 // "links.gftv.asia/augy" and "https://links.gftv.asia/augy/" are all augy.
 function teamSlugFrom(input) {
-  return String(input || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^(www\.)?links\.gftv\.asia/, '').replace(/^\/+|\/+$/g, '');
+  let typed = '';
+  if (input) {
+    typed = input;
+  }
+  return String(typed).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^(www\.)?links\.gftv\.asia/, '').replace(/^\/+|\/+$/g, '');
 }
 
-byId('teamAdd').addEventListener('submit', (e) => {
-  e.preventDefault();
+byId('teamAdd').addEventListener('submit', (event) => {
+  event.preventDefault();
   const slug = teamSlugFrom(byId('teamAddSlug').value);
   byId('teamAddError').textContent = '';
   if (!slug) {
@@ -576,11 +855,16 @@ byId('teamAdd').addEventListener('submit', (e) => {
     byId('teamAddRole').value = '';
     byId('teamQuery').value = '';
     loaders.team(0);
-    loaders.pages?.();
+    if (loaders.pages) {
+      loaders.pages();
+    }
   });
 });
-byId('teamSearch').addEventListener('submit', (e) => { e.preventDefault(); loaders.team(0); });
+byId('teamSearch').addEventListener('submit', (event) => { event.preventDefault(); loaders.team(0); });
 
+// The page's dialog: its picture, details, badges and actions, then its
+// links (with the link limit) and its reports. Every change made from here
+// draws the dialog again.
 async function openPage(id) {
   const body = byId('pageModalBody');
   byId('pageModalTitle').textContent = translate('common.loading');
@@ -588,50 +872,122 @@ async function openPage(id) {
   openModal('pageModal');
   try {
     const data = await api(`/api/admin/pages?id=${encodeURIComponent(id)}`);
-    const p = data.page;
-    byId('pageModalTitle').textContent = `/${p.slug}`;
+    const page = data.page;
+    byId('pageModalTitle').textContent = `/${page.slug}`;
     const refresh = () => openPage(id);
     const avatar = createElement('div', { class: 'avatar admin-avatar', 'aria-hidden': 'true' });
-    fillAvatar(avatar, p.avatarUrl, p.displayName || p.slug);
+    let avatarName = page.slug;
+    if (page.displayName) {
+      avatarName = page.displayName;
+    }
+    fillAvatar(avatar, page.avatarUrl, avatarName);
     // Any staff member can take a picture down, the way they can a link.
-    const removeAvatar = p.avatarUrl
-      ? actionButton('admin.remove-avatar', 'trash', () => askReason({
-        title: translate('admin.remove-avatar-title', { slug: p.slug }),
+    let removeAvatar = null;
+    if (page.avatarUrl) {
+      removeAvatar = actionButton('admin.remove-avatar', 'trash', () => askReason({
+        title: translate('admin.remove-avatar-title', { slug: page.slug }),
         body: translate('admin.remove-avatar-body'),
         run: async (reason) => {
-          await post('/api/admin/pages', { action: 'remove-avatar', id: p.id, reason });
+          await post('/api/admin/pages', { action: 'remove-avatar', id: page.id, reason });
           toast(translate('admin.done'));
           refresh();
         },
-      }), 'btn-danger')
-      : null;
+      }), 'btn-danger');
+    }
+    let bio = null;
+    if (page.bio) {
+      bio = createElement('pre', { text: page.bio });
+    }
+    let renamedFrom = null;
+    if (page.renamedFrom) {
+      renamedFrom = createElement('p', { class: 'small', text: translate('admin.renamed-from', { slug: page.renamedFrom.slug, when: formatDate(page.renamedFrom.at) }) });
+    }
+    let redirect = null;
+    if (page.redirectUrl) {
+      redirect = createElement('p', { class: 'small', text: translate('admin.redirects-to', { url: page.redirectUrl }) });
+    }
+    let quarantineReason = null;
+    if (page.quarantineReason) {
+      quarantineReason = createElement('p', { class: 'callout danger', text: translate('admin.quarantine-reason', { reason: page.quarantineReason }) });
+    }
+    let banReason = null;
+    if (page.banReason) {
+      banReason = createElement('p', { class: 'callout danger', text: translate('admin.ban-reason', { reason: page.banReason }) });
+    }
+    let teamSince = null;
+    if (page.team) {
+      teamSince = createElement('p', { class: 'callout ok', text: translate('admin.team-since', { when: formatDate(page.team.verifiedAt) }) });
+    }
+    // The link limit, when the server sends one: how many links the page
+    // uses of its own limit or the default. Admins can change it.
+    let linkCapRow = null;
+    if (data.linkCap) {
+      let capKey;
+      if (data.linkCap.custom) {
+        capKey = 'admin.caps-page-own';
+      } else {
+        capKey = 'admin.caps-page-default';
+      }
+      const capText = createElement('p', { class: 'small u-m-0', text: translate(capKey, { used: formatNumber(data.linkCap.used), limit: formatNumber(data.linkCap.limit) }) });
+      let changeCap = null;
+      if (isAdmin()) {
+        changeCap = actionButton('admin.caps-change', 'edit', () => changePageCap({ id: page.id, slug: page.slug, limit: data.linkCap.limit }, data.linkCap.defaultCap, refresh));
+      }
+      linkCapRow = createElement('div', { class: 'row between' }, [
+        capText,
+        changeCap,
+      ]);
+    }
+    let linkItems;
+    if (data.links.length) {
+      linkItems = data.links.map((link) => linkRow(link, refresh));
+    } else {
+      linkItems = [createElement('li', { class: 'empty-state', text: translate('admin.empty-links') })];
+    }
+    let reportItems;
+    if (data.reports.length) {
+      reportItems = data.reports.map((report) => {
+        let detailsBlock = null;
+        if (report.details) {
+          detailsBlock = createElement('pre', { text: report.details });
+        }
+        return createElement('li', { class: 'data-row' }, [createElement('div', {}, [
+          createElement('div', { class: 'primary', text: `${translate(`report.reason-${report.reason}`)} · ${translate(`admin.report-${report.status}`)}` }),
+          createElement('div', { class: 'secondary', text: formatDate(report.createdAt) }),
+          detailsBlock,
+        ]), createElement('div', { class: 'row-actions' }, [deleteReportAction(report, () => {
+          refresh();
+          if (loaders.reports) {
+            loaders.reports();
+          }
+        })].filter(Boolean))]);
+      });
+    } else {
+      reportItems = [createElement('li', { class: 'empty-state', text: translate('admin.empty-reports') })];
+    }
     body.replaceChildren(...[
       createElement('div', { class: 'row admin-avatar-row' }, [avatar, removeAvatar]),
-      createElement('p', { class: 'muted small', text: [p.displayName, translate('admin.created', { when: formatDate(p.createdAt) })].filter(Boolean).join(' · ') }),
-      p.bio ? createElement('pre', { text: p.bio }) : null,
-      createElement('div', { class: 'tags row u-mt-05' }, pageBadges(p).filter(Boolean)),
-      p.renamedFrom ? createElement('p', { class: 'small', text: translate('admin.renamed-from', { slug: p.renamedFrom.slug, when: formatDate(p.renamedFrom.at) }) }) : null,
-      p.redirectUrl ? createElement('p', { class: 'small', text: translate('admin.redirects-to', { url: p.redirectUrl }) }) : null,
-      p.quarantineReason ? createElement('p', { class: 'callout danger', text: translate('admin.quarantine-reason', { reason: p.quarantineReason }) }) : null,
-      p.banReason ? createElement('p', { class: 'callout danger', text: translate('admin.ban-reason', { reason: p.banReason }) }) : null,
-      p.team ? createElement('p', { class: 'callout ok', text: translate('admin.team-since', { when: formatDate(p.team.verifiedAt) }) }) : null,
-      createElement('div', { class: 'actions inline' }, [approveAction(p, () => { refresh(); refreshLists(); }), releaseAction(p, () => { refresh(); refreshLists(); }), ...teamActions(p, () => { refresh(); refreshLists(); }), ...banActions(p, () => { refresh(); refreshLists(); }), deleteAction(p)].filter(Boolean)),
+      createElement('p', { class: 'muted small', text: [page.displayName, translate('admin.created', { when: formatDate(page.createdAt) })].filter(Boolean).join(' · ') }),
+      bio,
+      createElement('div', { class: 'tags row u-mt-05' }, pageBadges(page).filter(Boolean)),
+      renamedFrom,
+      redirect,
+      quarantineReason,
+      banReason,
+      teamSince,
+      createElement('div', { class: 'actions inline' }, [approveAction(page, () => { refresh(); refreshLists(); }), releaseAction(page, () => { refresh(); refreshLists(); }), ...teamActions(page, () => { refresh(); refreshLists(); }), ...banActions(page, () => { refresh(); refreshLists(); }), deleteAction(page)].filter(Boolean)),
       createElement('p', { class: 'modal-section-label', text: translate('admin.tab-links') }),
-      data.linkCap ? createElement('div', { class: 'row between' }, [
-        createElement('p', { class: 'small u-m-0', text: translate(data.linkCap.custom ? 'admin.caps-page-own' : 'admin.caps-page-default', { used: formatNumber(data.linkCap.used), limit: formatNumber(data.linkCap.limit) }) }),
-        isAdmin() ? actionButton('admin.caps-change', 'edit', () => changePageCap({ id: p.id, slug: p.slug, limit: data.linkCap.limit }, data.linkCap.defaultCap, refresh)) : null,
-      ]) : null,
-      createElement('ul', { class: 'data-list' }, data.links.length ? data.links.map((l) => linkRow(l, refresh)) : [createElement('li', { class: 'empty-state', text: translate('admin.empty-links') })]),
+      linkCapRow,
+      createElement('ul', { class: 'data-list' }, linkItems),
       createElement('p', { class: 'modal-section-label', text: translate('admin.tab-reports') }),
-      createElement('ul', { class: 'data-list' }, data.reports.length ? data.reports.map((r) => createElement('li', { class: 'data-row' }, [createElement('div', {}, [
-        createElement('div', { class: 'primary', text: `${translate(`report.reason-${r.reason}`)} · ${translate(`admin.report-${r.status}`)}` }),
-        createElement('div', { class: 'secondary', text: formatDate(r.createdAt) }),
-        r.details ? createElement('pre', { text: r.details }) : null,
-      ]), createElement('div', { class: 'row-actions' }, [deleteReportAction(r, () => { refresh(); loaders.reports?.(); })].filter(Boolean))])) : [createElement('li', { class: 'empty-state', text: translate('admin.empty-reports') })]),
+      createElement('ul', { class: 'data-list' }, reportItems),
     ].filter(Boolean));
   } catch (error) {
-    if (guardSession(error)) closeModal('pageModal');
-    else body.replaceChildren(createElement('p', { class: 'callout danger', text: errorText(error) }));
+    if (guardSession(error)) {
+      closeModal('pageModal');
+    } else {
+      body.replaceChildren(createElement('p', { class: 'callout danger', text: errorText(error) }));
+    }
   }
 }
 
@@ -645,35 +1001,64 @@ loaders.links = async (offset = linkOffset) => {
   const list = byId('adminLinkList');
   loading(list);
   try {
-    const q = encodeURIComponent(byId('linkQuery').value.trim());
+    const query = encodeURIComponent(byId('linkQuery').value.trim());
     const state = encodeURIComponent(byId('linkState').value);
-    const data = await api(`/api/admin/links?q=${q}&state=${state}&offset=${offset}`);
-    fill(list, data.links.map((l) => linkRow(l, () => loaders.links())), 'admin.empty-links');
+    const data = await api(`/api/admin/links?q=${query}&state=${state}&offset=${offset}`);
+    fill(list, data.links.map((link) => linkRow(link, () => loaders.links())), 'admin.empty-links');
     pager(byId('linkPager'), data, loaders.links);
   } catch (error) {
-    if (!guardSession(error)) fill(list, [createElement('li', { class: 'callout danger', text: errorText(error) })], 'admin.empty-links');
+    if (!guardSession(error)) {
+      fill(list, [createElement('li', { class: 'callout danger', text: errorText(error) })], 'admin.empty-links');
+    }
   }
 };
-byId('linkSearch').addEventListener('submit', (e) => { e.preventDefault(); loaders.links(0); });
+byId('linkSearch').addEventListener('submit', (event) => { event.preventDefault(); loaders.links(0); });
 byId('linkState').addEventListener('change', () => loaders.links(0));
 
-function linkRow(l, after) {
+// One link, in the links tab or a page's dialog: its title, page, address and
+// state, with remove (or restore) and open.
+function linkRow(link, after) {
+  // An empty string still goes in, as an empty text node.
+  let pageSuffix = '';
+  if (link.slug) {
+    pageSuffix = ` · /${link.slug}`;
+  }
+  let removedReason = null;
+  if (link.removedReason) {
+    removedReason = createElement('div', { class: 'secondary', text: translate('admin.removed-reason', { reason: link.removedReason }) });
+  }
+  // Removed, or else shown or hidden by its owner.
+  let stateTag;
+  if (link.removedAt) {
+    stateTag = badge(translate('admin.link-removed'), 'danger');
+  } else {
+    let stateKey;
+    let stateTone;
+    if (link.isActive) {
+      stateKey = 'admin.link-shown';
+      stateTone = 'ok';
+    } else {
+      stateKey = 'admin.link-hidden';
+      stateTone = '';
+    }
+    stateTag = badge(translate(stateKey), stateTone);
+  }
   const info = createElement('div', {}, [
-    createElement('div', { class: 'primary' }, [iconNode(l.icon), ' ', l.title, l.slug ? ` · /${l.slug}` : '']),
-    createElement('div', { class: 'secondary', text: l.url }),
-    l.removedReason ? createElement('div', { class: 'secondary', text: translate('admin.removed-reason', { reason: l.removedReason }) }) : null,
+    createElement('div', { class: 'primary' }, [iconNode(link.icon), ' ', link.title, pageSuffix]),
+    createElement('div', { class: 'secondary', text: link.url }),
+    removedReason,
     createElement('div', { class: 'tags' }, [
-      l.removedAt ? badge(translate('admin.link-removed'), 'danger') : badge(translate(l.isActive ? 'admin.link-shown' : 'admin.link-hidden'), l.isActive ? 'ok' : ''),
-      badge(translate('link.clicks', { count: l.clicks, n: formatNumber(l.clicks) })),
+      stateTag,
+      badge(translate('link.clicks', { count: link.clicks, n: formatNumber(link.clicks) })),
     ]),
   ]);
   const actions = createElement('div', { class: 'row-actions' });
-  if (l.removedAt) {
+  if (link.removedAt) {
     actions.append(actionButton('admin.restore', 'restore', () => askReason({
       title: translate('admin.restore-title'),
       required: false,
       run: async () => {
-        await post('/api/admin/links', { action: 'restore', id: l.id });
+        await post('/api/admin/links', { action: 'restore', id: link.id });
         toast(translate('admin.done'));
         after();
       },
@@ -683,13 +1068,13 @@ function linkRow(l, after) {
       title: translate('admin.remove-title'),
       body: translate('admin.remove-body'),
       run: async (reason) => {
-        await post('/api/admin/links', { action: 'remove', id: l.id, reason });
+        await post('/api/admin/links', { action: 'remove', id: link.id, reason });
         toast(translate('admin.done'));
         after();
       },
     }), 'btn-danger'));
   }
-  const open = createElement('a', { class: 'btn btn-small btn-quiet', href: l.url, target: '_blank', rel: 'noopener noreferrer nofollow', 'aria-label': translate('admin.open-link') });
+  const open = createElement('a', { class: 'btn btn-small btn-quiet', href: link.url, target: '_blank', rel: 'noopener noreferrer nofollow', 'aria-label': translate('admin.open-link') });
   open.innerHTML = icon('external');
   actions.append(open);
   return createElement('li', { class: 'data-row' }, [info, actions]);
@@ -701,115 +1086,179 @@ function linkRow(l, after) {
 
 // Patterns are removed by id, names and domains by their value.
 function blockRows(items, kind) {
-  return items.map((item) => createElement('li', { class: 'data-row' }, [
-    createElement('div', {}, [
-      createElement('div', { class: `primary${item.id ? ' mono' : ''}`, text: item.value }),
-      createElement('div', { class: 'secondary', text: [item.reason, formatDate(item.createdAt)].filter(Boolean).join(' · ') }),
-      item.appliesTo ? createElement('div', { class: 'tags' }, [badge(translate(`admin.scope-${item.appliesTo}`))]) : null,
-    ]),
-    createElement('div', { class: 'row-actions' }, [actionButton('common.remove', 'trash', async () => {
-      try {
-        const body = item.id ? { action: `remove-${kind}`, id: item.id } : { action: `remove-${kind}`, value: item.value };
-        renderBlocks(await post('/api/admin/blocklist', body));
-      } catch (error) {
-        toast(errorText(error));
-      }
-    })]),
-  ]));
-}
-
-function renderThreatList(info) {
-  const line = byId('threatListInfo');
-  byId('threatListRefresh').hidden = !info || info.off;
-  if (!info || info.off) return void (line.textContent = translate('admin.threat-off'));
-  // The server counts each category (harmful, gambling, adult, shortener).
-  const total = Object.values(info.categories || {}).reduce((sum, n) => sum + n, 0);
-  line.textContent = info.builtAt
-    ? translate('admin.threat-info', { count: total, n: formatNumber(total), when: formatDate(info.builtAt), days: info.refreshDays })
-    : translate('admin.threat-none');
-}
-
-function flaggedRows(items) {
-  return items.map((item) => createElement('li', { class: 'data-row' }, [
-    createElement('div', {}, [
-      createElement('div', { class: 'primary mono', text: item.id }),
-      createElement('div', { class: 'secondary', text: [
-        translate('admin.flagged-attempts', { count: item.attempts, n: formatNumber(item.attempts) }),
-        translate('admin.flagged-since', { when: formatDate(item.since) }),
-        item.slug ? translate('admin.flagged-page', { slug: item.slug }) : null,
-      ].filter(Boolean).join(' · ') }),
-    ]),
-    createElement('div', { class: 'row-actions' }, [
-      actionButton('admin.unflag', 'check', async () => {
+  return items.map((item) => {
+    // Entries with an id (patterns) show in a fixed-width font.
+    let monoClass = '';
+    if (item.id) {
+      monoClass = ' mono';
+    }
+    let scopeTags = null;
+    if (item.appliesTo) {
+      scopeTags = createElement('div', { class: 'tags' }, [badge(translate(`admin.scope-${item.appliesTo}`))]);
+    }
+    return createElement('li', { class: 'data-row' }, [
+      createElement('div', {}, [
+        createElement('div', { class: `primary${monoClass}`, text: item.value }),
+        createElement('div', { class: 'secondary', text: [item.reason, formatDate(item.createdAt)].filter(Boolean).join(' · ') }),
+        scopeTags,
+      ]),
+      createElement('div', { class: 'row-actions' }, [actionButton('common.remove', 'trash', async () => {
         try {
-          renderBlocks(await post('/api/admin/blocklist', { action: 'unflag-connection', id: item.id }));
-          toast(translate('admin.unflagged'));
+          let body;
+          if (item.id) {
+            body = { action: `remove-${kind}`, id: item.id };
+          } else {
+            body = { action: `remove-${kind}`, value: item.value };
+          }
+          renderBlocks(await post('/api/admin/blocklist', body));
         } catch (error) {
           toast(errorText(error));
         }
-      }),
-      actionButton('admin.ban-connection', 'ban', () => askReason({
-        title: translate('admin.ban-connection-title', { id: item.id }),
-        body: translate('admin.ban-connection-body'),
-        run: async (reason) => {
-          renderBlocks(await post('/api/admin/blocklist', { action: 'ban-connection', id: item.id, reason }));
-          toast(translate('admin.connection-banned'));
-        },
-      }), 'btn-danger'),
-    ]),
-  ]));
+      })]),
+    ]);
+  });
+}
+
+// The threat list's status line: turned off, not built yet, or how many
+// domains it holds and when it was built.
+function renderThreatList(info) {
+  const line = byId('threatListInfo');
+  // Hidden when there is no list or it is turned off.
+  let refreshHidden = true;
+  if (info) {
+    refreshHidden = info.off;
+  }
+  byId('threatListRefresh').hidden = refreshHidden;
+  if (!info || info.off) {
+    line.textContent = translate('admin.threat-off');
+    return;
+  }
+  // The server counts each category (harmful, gambling, adult, shortener).
+  let categories = {};
+  if (info.categories) {
+    categories = info.categories;
+  }
+  const total = Object.values(categories).reduce((sum, count) => sum + count, 0);
+  if (info.builtAt) {
+    line.textContent = translate('admin.threat-info', { count: total, n: formatNumber(total), when: formatDate(info.builtAt), days: info.refreshDays });
+  } else {
+    line.textContent = translate('admin.threat-none');
+  }
+}
+
+// Connections flagged for addresses the lists refused: unflag, or ban the
+// connection.
+function flaggedRows(items) {
+  return items.map((item) => {
+    let pageNote = null;
+    if (item.slug) {
+      pageNote = translate('admin.flagged-page', { slug: item.slug });
+    }
+    return createElement('li', { class: 'data-row' }, [
+      createElement('div', {}, [
+        createElement('div', { class: 'primary mono', text: item.id }),
+        createElement('div', { class: 'secondary', text: [
+          translate('admin.flagged-attempts', { count: item.attempts, n: formatNumber(item.attempts) }),
+          translate('admin.flagged-since', { when: formatDate(item.since) }),
+          pageNote,
+        ].filter(Boolean).join(' · ') }),
+      ]),
+      createElement('div', { class: 'row-actions' }, [
+        actionButton('admin.unflag', 'check', async () => {
+          try {
+            renderBlocks(await post('/api/admin/blocklist', { action: 'unflag-connection', id: item.id }));
+            toast(translate('admin.unflagged'));
+          } catch (error) {
+            toast(errorText(error));
+          }
+        }),
+        actionButton('admin.ban-connection', 'ban', () => askReason({
+          title: translate('admin.ban-connection-title', { id: item.id }),
+          body: translate('admin.ban-connection-body'),
+          run: async (reason) => {
+            renderBlocks(await post('/api/admin/blocklist', { action: 'ban-connection', id: item.id, reason }));
+            toast(translate('admin.connection-banned'));
+          },
+        }), 'btn-danger'),
+      ]),
+    ]);
+  });
 }
 
 // Devices banned with a connection, seen on one that is not (guards.js).
 function flaggedDeviceRows(items) {
-  return items.map((item) => createElement('li', { class: 'data-row' }, [
-    createElement('div', {}, [
-      createElement('div', { class: 'primary mono', text: translate('admin.flagged-device', { device: item.device, connection: item.connection }) }),
-      createElement('div', { class: 'secondary', text: [
-        translate('admin.flagged-device-requests', { count: item.requests, n: formatNumber(item.requests) }),
-        translate('admin.flagged-since', { when: formatDate(item.since) }),
-        item.slug ? translate('admin.flagged-page', { slug: item.slug }) : null,
-      ].filter(Boolean).join(' · ') }),
-    ]),
-    createElement('div', { class: 'row-actions' }, [
-      actionButton('admin.unflag', 'check', async () => {
+  return items.map((item) => {
+    let pageNote = null;
+    if (item.slug) {
+      pageNote = translate('admin.flagged-page', { slug: item.slug });
+    }
+    return createElement('li', { class: 'data-row' }, [
+      createElement('div', {}, [
+        createElement('div', { class: 'primary mono', text: translate('admin.flagged-device', { device: item.device, connection: item.connection }) }),
+        createElement('div', { class: 'secondary', text: [
+          translate('admin.flagged-device-requests', { count: item.requests, n: formatNumber(item.requests) }),
+          translate('admin.flagged-since', { when: formatDate(item.since) }),
+          pageNote,
+        ].filter(Boolean).join(' · ') }),
+      ]),
+      createElement('div', { class: 'row-actions' }, [
+        actionButton('admin.unflag', 'check', async () => {
+          try {
+            renderBlocks(await post('/api/admin/blocklist', { action: 'unflag-visitor', id: item.id }));
+            toast(translate('admin.device-unflagged'));
+          } catch (error) {
+            toast(errorText(error));
+          }
+        }),
+        actionButton('admin.ban-connection', 'ban', () => askReason({
+          title: translate('admin.ban-connection-title', { id: item.connection }),
+          body: translate('admin.ban-connection-body'),
+          run: async (reason) => {
+            renderBlocks(await post('/api/admin/blocklist', { action: 'ban-visitor', id: item.id, reason }));
+            toast(translate('admin.connection-banned'));
+          },
+        }), 'btn-danger'),
+      ]),
+    ]);
+  });
+}
+
+// Banned connections: when and why, the pages and devices that went with
+// them, and who banned them (staff or the automatic rules).
+function bannedRows(items) {
+  return items.map((item) => {
+    let bannedPages = null;
+    if (item.slugs.length) {
+      bannedPages = createElement('div', { class: 'secondary', text: translate('admin.banned-pages', { pages: item.slugs.map((slug) => `/${slug}`).join(', ') }) });
+    }
+    let bannedDevices = null;
+    if (item.devices) {
+      bannedDevices = createElement('div', { class: 'secondary', text: translate('admin.banned-devices', { count: item.devices, n: formatNumber(item.devices) }) });
+    }
+    let bannedByKey;
+    if (item.byStaff) {
+      bannedByKey = 'admin.banned-by-staff';
+    } else {
+      bannedByKey = 'admin.banned-auto';
+    }
+    return createElement('li', { class: 'data-row' }, [
+      createElement('div', {}, [
+        createElement('div', { class: 'primary mono', text: item.id }),
+        createElement('div', { class: 'secondary', text: [item.reason, formatDate(item.since)].filter(Boolean).join(' · ') }),
+        bannedPages,
+        bannedDevices,
+        createElement('div', { class: 'tags' }, [badge(translate(bannedByKey))]),
+      ]),
+      createElement('div', { class: 'row-actions' }, [actionButton('admin.unban-connection', 'check', async () => {
         try {
-          renderBlocks(await post('/api/admin/blocklist', { action: 'unflag-visitor', id: item.id }));
-          toast(translate('admin.device-unflagged'));
+          renderBlocks(await post('/api/admin/blocklist', { action: 'unban-connection', id: item.id }));
+          toast(translate('admin.connection-unbanned'));
         } catch (error) {
           toast(errorText(error));
         }
-      }),
-      actionButton('admin.ban-connection', 'ban', () => askReason({
-        title: translate('admin.ban-connection-title', { id: item.connection }),
-        body: translate('admin.ban-connection-body'),
-        run: async (reason) => {
-          renderBlocks(await post('/api/admin/blocklist', { action: 'ban-visitor', id: item.id, reason }));
-          toast(translate('admin.connection-banned'));
-        },
-      }), 'btn-danger'),
-    ]),
-  ]));
-}
-
-function bannedRows(items) {
-  return items.map((item) => createElement('li', { class: 'data-row' }, [
-    createElement('div', {}, [
-      createElement('div', { class: 'primary mono', text: item.id }),
-      createElement('div', { class: 'secondary', text: [item.reason, formatDate(item.since)].filter(Boolean).join(' · ') }),
-      item.slugs.length ? createElement('div', { class: 'secondary', text: translate('admin.banned-pages', { pages: item.slugs.map((s) => `/${s}`).join(', ') }) }) : null,
-      item.devices ? createElement('div', { class: 'secondary', text: translate('admin.banned-devices', { count: item.devices, n: formatNumber(item.devices) }) }) : null,
-      createElement('div', { class: 'tags' }, [badge(translate(item.byStaff ? 'admin.banned-by-staff' : 'admin.banned-auto'))]),
-    ]),
-    createElement('div', { class: 'row-actions' }, [actionButton('admin.unban-connection', 'check', async () => {
-      try {
-        renderBlocks(await post('/api/admin/blocklist', { action: 'unban-connection', id: item.id }));
-        toast(translate('admin.connection-unbanned'));
-      } catch (error) {
-        toast(errorText(error));
-      }
-    })]),
-  ]));
+      })]),
+    ]);
+  });
 }
 
 // Each block list shows five at a time with its own pager, and keeps its
@@ -820,8 +1269,14 @@ const blockOffsets = {};
 
 function fillPaged(listId, pagerId, rows, emptyKey) {
   const total = rows.length;
-  let offset = blockOffsets[listId] || 0;
-  if (offset >= total) offset = Math.max(0, Math.floor((total - 1) / BLOCKS_PER_PAGE) * BLOCKS_PER_PAGE);
+  let offset = 0;
+  if (blockOffsets[listId]) {
+    offset = blockOffsets[listId];
+  }
+  // Past the end (its last entry went): step back to the last page.
+  if (offset >= total) {
+    offset = Math.max(0, Math.floor((total - 1) / BLOCKS_PER_PAGE) * BLOCKS_PER_PAGE);
+  }
   blockOffsets[listId] = offset;
   fill(byId(listId), rows.slice(offset, offset + BLOCKS_PER_PAGE), emptyKey);
   pager(byId(pagerId), { total, offset, pageSize: BLOCKS_PER_PAGE }, (next) => {
@@ -830,36 +1285,66 @@ function fillPaged(listId, pagerId, rows, emptyKey) {
   });
 }
 
+// Draws every block list from one blocklist answer. A list missing from the
+// answer (null or undefined) counts as empty.
 function renderBlocks(data) {
-  fillPaged('flaggedList', 'flaggedPager', flaggedRows(data.flagged ?? []), 'admin.empty-flagged');
-  fillPaged('flaggedDeviceList', 'flaggedDevicePager', flaggedDeviceRows(data.flaggedVisitors ?? []), 'admin.empty-flagged-devices');
-  fillPaged('bannedList', 'bannedPager', bannedRows(data.banned ?? []), 'admin.empty-banned');
+  let flagged = data.flagged;
+  if (flagged === null || flagged === undefined) {
+    flagged = [];
+  }
+  let flaggedVisitors = data.flaggedVisitors;
+  if (flaggedVisitors === null || flaggedVisitors === undefined) {
+    flaggedVisitors = [];
+  }
+  let banned = data.banned;
+  if (banned === null || banned === undefined) {
+    banned = [];
+  }
+  let allowed = data.allowed;
+  if (allowed === null || allowed === undefined) {
+    allowed = [];
+  }
+  fillPaged('flaggedList', 'flaggedPager', flaggedRows(flagged), 'admin.empty-flagged');
+  fillPaged('flaggedDeviceList', 'flaggedDevicePager', flaggedDeviceRows(flaggedVisitors), 'admin.empty-flagged-devices');
+  fillPaged('bannedList', 'bannedPager', bannedRows(banned), 'admin.empty-banned');
   fillPaged('slugBlockList', 'slugBlockPager', blockRows(data.slugs, 'slug'), 'admin.empty-blocks');
   fillPaged('domainBlockList', 'domainBlockPager', blockRows(data.domains, 'domain'), 'admin.empty-blocks');
-  fillPaged('allowedBlockList', 'allowedBlockPager', blockRows(data.allowed ?? [], 'allowed'), 'admin.empty-allowed');
+  fillPaged('allowedBlockList', 'allowedBlockPager', blockRows(allowed, 'allowed'), 'admin.empty-allowed');
   fillPaged('patternBlockList', 'patternBlockPager', blockRows(data.patterns, 'pattern'), 'admin.empty-blocks');
   fillPaged('reviewBlockList', 'reviewBlockPager', blockRows(data.reviews, 'review'), 'admin.empty-blocks');
   renderThreatList(data.threatList);
 }
 
 loaders.blocks = async () => {
-  if (!isAdmin()) return;
-  for (const id of ['slugBlockList', 'domainBlockList', 'allowedBlockList', 'patternBlockList', 'reviewBlockList', 'flaggedList', 'flaggedDeviceList', 'bannedList']) loading(byId(id));
+  if (!isAdmin()) {
+    return;
+  }
+  for (const id of ['slugBlockList', 'domainBlockList', 'allowedBlockList', 'patternBlockList', 'reviewBlockList', 'flaggedList', 'flaggedDeviceList', 'bannedList']) {
+    loading(byId(id));
+  }
   try {
     renderBlocks(await api('/api/admin/blocklist'));
   } catch (error) {
-    if (!guardSession(error)) toast(errorText(error));
+    if (!guardSession(error)) {
+      toast(errorText(error));
+    }
   }
 };
 
+// The five add forms work the same way. The fields are cleared only once the
+// server has taken the entry.
 for (const [formId, kind] of [['slugBlockForm', 'slug'], ['domainBlockForm', 'domain'], ['allowedBlockForm', 'allowed'], ['patternBlockForm', 'pattern'], ['reviewBlockForm', 'review']]) {
-  byId(formId).addEventListener('submit', (e) => {
-    e.preventDefault();
+  byId(formId).addEventListener('submit', (event) => {
+    event.preventDefault();
     const button = byId(formId).querySelector('button[type="submit"]');
     withBusy(button, null, async () => {
       const value = byId(`${kind}BlockValue`).value;
       const reason = byId(`${kind}BlockReason`).value;
-      const appliesTo = kind === 'pattern' ? byId('patternBlockScope').value : undefined;
+      // Only patterns say what they apply to; the others leave it undefined.
+      let appliesTo;
+      if (kind === 'pattern') {
+        appliesTo = byId('patternBlockScope').value;
+      }
       try {
         renderBlocks(await post('/api/admin/blocklist', { action: `add-${kind}`, value, reason, appliesTo }));
       } catch (error) {
@@ -875,7 +1360,12 @@ for (const [formId, kind] of [['slugBlockForm', 'slug'], ['domainBlockForm', 'do
 
 // The pattern helper fills the field it was opened from.
 byId('patternBlockHelp').addEventListener('click', () => {
-  const scope = byId('patternBlockScope').value === 'names' ? 'names' : 'links';
+  let scope;
+  if (byId('patternBlockScope').value === 'names') {
+    scope = 'names';
+  } else {
+    scope = 'links';
+  }
   openRegexMaker(scope, (pattern) => { byId('patternBlockValue').value = pattern; byId('patternBlockValue').focus(); });
 });
 byId('reviewBlockHelp').addEventListener('click', () => {
@@ -905,49 +1395,98 @@ function renderTestimonials(all) {
     try {
       renderTestimonials((await post('/api/admin/testimonials', { id: item.id, ...body })).testimonials);
     } catch (error) {
-      if (!guardSession(error)) toast(errorText(error));
+      if (!guardSession(error)) {
+        toast(errorText(error));
+      }
     }
   };
-  const pending = all.filter((x) => x.status === 'pending');
-  fill(byId('testimonialPending'), pending.map((item) => createElement('li', { class: 'data-row' }, [
-    createElement('div', {}, [
-      createElement('div', { class: 'primary', text: `“${item.quote}”` }),
-      createElement('div', { class: 'secondary' }, [
-        item.pageSlug ? createElement('a', { class: 'text-link', href: `/${item.pageSlug}`, target: '_blank', rel: 'noopener noreferrer', text: `${item.author} · /${item.pageSlug}` }) : item.author,
-        ` · ${formatDate(item.createdAt)}`,
-      ]),
-    ]),
-    createElement('div', { class: 'row-actions' }, [
-      actionButton('admin.approve', 'check', () => send(item, { action: 'approve' }), 'btn-primary'),
-      actionButton('admin.decline', 'close', () => send(item, { action: 'decline' })),
-    ]),
-  ])), 'admin.empty-pending-testimonials');
-  const list = all.filter((x) => x.status !== 'pending');
-  fill(byId('testimonialList'), list.map((item, i) => {
-    const act = (body) => send(item, body);
-    const up = createElement('button', { class: 'icon-btn small', type: 'button', 'aria-label': translate('admin.move-up'), disabled: i === 0, onclick: () => act({ action: 'move', delta: -1 }) });
-    up.innerHTML = icon('arrow-up');
-    const down = createElement('button', { class: 'icon-btn small', type: 'button', 'aria-label': translate('admin.move-down'), disabled: i === list.length - 1, onclick: () => act({ action: 'move', delta: 1 }) });
-    down.innerHTML = icon('arrow-down');
-    return createElement('li', { class: `data-row${item.isVisible ? '' : ' off'}` }, [
+  const pending = all.filter((testimonial) => testimonial.status === 'pending');
+  fill(byId('testimonialPending'), pending.map((item) => {
+    // The author links to their page when it is known.
+    let author;
+    if (item.pageSlug) {
+      author = createElement('a', { class: 'text-link', href: `/${item.pageSlug}`, target: '_blank', rel: 'noopener noreferrer', text: `${item.author} · /${item.pageSlug}` });
+    } else {
+      author = item.author;
+    }
+    return createElement('li', { class: 'data-row' }, [
       createElement('div', {}, [
         createElement('div', { class: 'primary', text: `“${item.quote}”` }),
-        createElement('div', { class: 'secondary', text: [item.author, item.pageSlug ? `/${item.pageSlug}` : null].filter(Boolean).join(' · ') }),
-        createElement('div', { class: 'tags' }, [
-          item.status === 'declined' ? badge(translate('admin.declined'), 'danger') : null,
-          item.isVisible ? null : badge(translate('admin.hidden')),
-          item.sentByOwner ? badge(translate('admin.sent-by-owner')) : null,
+        createElement('div', { class: 'secondary' }, [
+          author,
+          ` · ${formatDate(item.createdAt)}`,
         ]),
       ]),
-      // Arranging the published list is for admins; editors see it as it is.
-      !isAdmin() ? null : createElement('div', { class: 'row-actions' }, [
-        up,
-        down,
-        actionButton(item.isVisible ? 'admin.hide' : 'admin.show', item.isVisible ? 'eye-off' : 'eye', () => act({ action: 'update', isVisible: !item.isVisible })),
-        actionButton('common.remove', 'trash', () => {
-          if (window.confirm(translate('admin.testimonial-remove-confirm', { author: item.author }))) act({ action: 'remove' });
-        }),
+      createElement('div', { class: 'row-actions' }, [
+        actionButton('admin.approve', 'check', () => send(item, { action: 'approve' }), 'btn-primary'),
+        actionButton('admin.decline', 'close', () => send(item, { action: 'decline' })),
       ]),
+    ]);
+  }), 'admin.empty-pending-testimonials');
+  const list = all.filter((testimonial) => testimonial.status !== 'pending');
+  fill(byId('testimonialList'), list.map((item, index) => {
+    const act = (body) => send(item, body);
+    const moveUpButton = createElement('button', { class: 'icon-btn small', type: 'button', 'aria-label': translate('admin.move-up'), disabled: index === 0, onclick: () => act({ action: 'move', delta: -1 }) });
+    moveUpButton.innerHTML = icon('arrow-up');
+    const moveDownButton = createElement('button', { class: 'icon-btn small', type: 'button', 'aria-label': translate('admin.move-down'), disabled: index === list.length - 1, onclick: () => act({ action: 'move', delta: 1 }) });
+    moveDownButton.innerHTML = icon('arrow-down');
+    // A hidden testimonial's row is dimmed.
+    let offClass;
+    if (item.isVisible) {
+      offClass = '';
+    } else {
+      offClass = ' off';
+    }
+    let pagePath = null;
+    if (item.pageSlug) {
+      pagePath = `/${item.pageSlug}`;
+    }
+    let declinedTag = null;
+    if (item.status === 'declined') {
+      declinedTag = badge(translate('admin.declined'), 'danger');
+    }
+    let hiddenTag = null;
+    if (!item.isVisible) {
+      hiddenTag = badge(translate('admin.hidden'));
+    }
+    let ownerTag = null;
+    if (item.sentByOwner) {
+      ownerTag = badge(translate('admin.sent-by-owner'));
+    }
+    // Arranging the published list is for admins; editors see it as it is.
+    let rowActions = null;
+    if (isAdmin()) {
+      let toggleKey;
+      let toggleIcon;
+      if (item.isVisible) {
+        toggleKey = 'admin.hide';
+        toggleIcon = 'eye-off';
+      } else {
+        toggleKey = 'admin.show';
+        toggleIcon = 'eye';
+      }
+      rowActions = createElement('div', { class: 'row-actions' }, [
+        moveUpButton,
+        moveDownButton,
+        actionButton(toggleKey, toggleIcon, () => act({ action: 'update', isVisible: !item.isVisible })),
+        actionButton('common.remove', 'trash', () => {
+          if (window.confirm(translate('admin.testimonial-remove-confirm', { author: item.author }))) {
+            act({ action: 'remove' });
+          }
+        }),
+      ]);
+    }
+    return createElement('li', { class: `data-row${offClass}` }, [
+      createElement('div', {}, [
+        createElement('div', { class: 'primary', text: `“${item.quote}”` }),
+        createElement('div', { class: 'secondary', text: [item.author, pagePath].filter(Boolean).join(' · ') }),
+        createElement('div', { class: 'tags' }, [
+          declinedTag,
+          hiddenTag,
+          ownerTag,
+        ]),
+      ]),
+      rowActions,
     ]);
   }), 'admin.empty-testimonials');
 }
@@ -958,12 +1497,14 @@ loaders.testimonials = async () => {
   try {
     renderTestimonials((await api('/api/admin/testimonials')).testimonials);
   } catch (error) {
-    if (!guardSession(error)) toast(errorText(error));
+    if (!guardSession(error)) {
+      toast(errorText(error));
+    }
   }
 };
 
-byId('testimonialForm').addEventListener('submit', (e) => {
-  e.preventDefault();
+byId('testimonialForm').addEventListener('submit', (event) => {
+  event.preventDefault();
   withBusy(byId('testimonialAdd'), byId('testimonialError'), async () => {
     const data = await post('/api/admin/testimonials', {
       action: 'add',
@@ -986,14 +1527,22 @@ byId('testimonialForm').addEventListener('submit', (e) => {
 // ---------------------------------------------------------------------------
 
 let caps = null;
+let capAction = null;
 
 // The number dialog, for answering a request and setting a page's limit.
 // useDefault, when given, is the default limit, offered as a way back to it.
 // min and max bound the number; optional lets it be left empty (a decline
 // without a smaller raise); askNumber: false hides it altogether.
-let capAction = null;
 function askCap({ title, body, value = '', label = 'admin.caps-limit', min = 1, max = null, optional = false, askNumber = true, note = false, useDefault = null, run }) {
-  const top = max ?? caps?.maxCap ?? 200;
+  // The highest number allowed: max when given, else the server's ceiling,
+  // else 200.
+  let top = max;
+  if ((top === null || top === undefined) && caps) {
+    top = caps.maxCap;
+  }
+  if (top === null || top === undefined) {
+    top = 200;
+  }
   capAction = { run, useDefault, min, max: top, optional, askNumber };
   byId('capTitle').textContent = title;
   byId('capBody').textContent = body;
@@ -1001,39 +1550,83 @@ function askCap({ title, body, value = '', label = 'admin.caps-limit', min = 1, 
   byId('capValueLabel').textContent = translate(label);
   byId('capValue').min = String(min);
   byId('capValue').max = String(top);
-  byId('capValue').value = value ?? '';
+  // A 0 is shown as 0; only null or undefined leaves the field empty.
+  let shownValue = value;
+  if (shownValue === null || shownValue === undefined) {
+    shownValue = '';
+  }
+  byId('capValue').value = shownValue;
   byId('capValue').disabled = false;
   byId('capUseDefaultRow').hidden = useDefault === null;
   byId('capUseDefault').checked = false;
-  if (useDefault !== null) byId('capUseDefaultLabel').textContent = translate('admin.caps-use-default', { limit: formatNumber(useDefault) });
+  if (useDefault !== null) {
+    byId('capUseDefaultLabel').textContent = translate('admin.caps-use-default', { limit: formatNumber(useDefault) });
+  }
   byId('capNoteRow').hidden = !note;
   byId('capNote').value = '';
   byId('capError').textContent = '';
-  openModal('capModal', { initialFocus: askNumber ? byId('capValue') : (note ? byId('capNote') : null) });
+  // Focus the number, else the note, else nothing in particular.
+  let initialFocus;
+  if (askNumber) {
+    initialFocus = byId('capValue');
+  } else if (note) {
+    initialFocus = byId('capNote');
+  } else {
+    initialFocus = null;
+  }
+  openModal('capModal', { initialFocus });
 }
-byId('capUseDefault').addEventListener('change', (e) => { byId('capValue').disabled = e.target.checked; });
-byId('capForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  if (!capAction) return;
+byId('capUseDefault').addEventListener('change', (event) => { byId('capValue').disabled = event.target.checked; });
+// Checks the number (unless none is to be sent) and runs the dialog's action
+// with it, or with null for no number.
+byId('capForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!capAction) {
+    return;
+  }
   const { min, max, optional, askNumber } = capAction;
-  const backToDefault = capAction.useDefault !== null && byId('capUseDefault').checked;
-  const value = askNumber ? byId('capValue').value.trim() : '';
-  const none = backToDefault || !askNumber || (optional && value === '');
+  let backToDefault = false;
+  if (capAction.useDefault !== null) {
+    backToDefault = byId('capUseDefault').checked;
+  }
+  let value;
+  if (askNumber) {
+    value = byId('capValue').value.trim();
+  } else {
+    value = '';
+  }
+  // No number: back to the default, no number asked, or an optional one left
+  // empty.
+  let none = false;
+  if (backToDefault || !askNumber || (optional && value === '')) {
+    none = true;
+  }
   if (!none && (!/^\d{1,4}$/.test(value) || Number(value) < min || Number(value) > max)) {
     byId('capError').textContent = translate('error.cap_grant_range', { min: formatNumber(min), max: formatNumber(max) });
     return;
   }
   withBusy(byId('capSubmit'), byId('capError'), async () => {
-    await capAction.run(none ? null : Number(value), byId('capNote').value.trim());
+    let cap;
+    if (none) {
+      cap = null;
+    } else {
+      cap = Number(value);
+    }
+    await capAction.run(cap, byId('capNote').value.trim());
     closeModal('capModal');
     toast(translate('admin.done'));
   });
 });
 
 function pageLink(slug, displayName) {
+  // An empty string still goes in, as an empty text node.
+  let nameSuffix = '';
+  if (displayName) {
+    nameSuffix = ` · ${displayName}`;
+  }
   return createElement('div', { class: 'primary' }, [
     createElement('a', { class: 'text-link', href: `/${slug}`, target: '_blank', rel: 'noopener noreferrer', text: `/${slug}` }),
-    displayName ? ` · ${displayName}` : '',
+    nameSuffix,
   ]);
 }
 
@@ -1041,15 +1634,17 @@ async function sendCaps(body) {
   renderCaps(await post('/api/admin/link-caps', body));
 }
 
-function changePageCap(p, defaultCap, after = null) {
+function changePageCap(page, defaultCap, after = null) {
   askCap({
-    title: translate('admin.caps-page-title', { slug: p.slug }),
+    title: translate('admin.caps-page-title', { slug: page.slug }),
     body: translate('admin.caps-page-body'),
-    value: p.limit,
+    value: page.limit,
     useDefault: defaultCap,
     run: async (cap) => {
-      await sendCaps({ action: 'set-page', id: p.id, cap });
-      after?.();
+      await sendCaps({ action: 'set-page', id: page.id, cap });
+      if (after) {
+        after();
+      }
     },
   });
 }
@@ -1057,55 +1652,82 @@ function changePageCap(p, defaultCap, after = null) {
 // Any staff member answers requests. Approving gives more than the page has
 // now: up to what was asked (editors) or the ceiling (admins). Declining can
 // come with a smaller raise, between the two.
-function capRequestRow(r) {
-  const numbers = { requested: formatNumber(r.requested), used: formatNumber(r.used), limit: formatNumber(r.limit) };
-  const approveMax = isAdmin() ? (caps?.maxCap ?? 200) : r.requested;
-  const compromise = { min: r.limit + 1, max: r.requested - 1 };
+function capRequestRow(request) {
+  const numbers = { requested: formatNumber(request.requested), used: formatNumber(request.used), limit: formatNumber(request.limit) };
+  let approveMax;
+  if (isAdmin()) {
+    if (caps) {
+      approveMax = caps.maxCap;
+    }
+    if (approveMax === null || approveMax === undefined) {
+      approveMax = 200;
+    }
+  } else {
+    approveMax = request.requested;
+  }
+  const compromise = { min: request.limit + 1, max: request.requested - 1 };
   return createElement('li', { class: 'data-row' }, [
     createElement('div', {}, [
-      pageLink(r.slug, r.displayName),
+      pageLink(request.slug, request.displayName),
       createElement('div', { class: 'secondary', text: translate('admin.caps-wants', numbers) }),
-      createElement('pre', { text: r.reason }),
-      createElement('div', { class: 'secondary', text: formatDate(r.createdAt) }),
+      createElement('pre', { text: request.reason }),
+      createElement('div', { class: 'secondary', text: formatDate(request.createdAt) }),
     ]),
     createElement('div', { class: 'row-actions' }, [
       actionButton('admin.approve', 'check', () => askCap({
-        title: translate('admin.caps-approve-title', { slug: r.slug }),
-        body: translate('admin.caps-approve-body', { ...numbers, min: formatNumber(r.limit + 1), max: formatNumber(approveMax) }),
-        value: r.requested,
-        min: r.limit + 1,
+        title: translate('admin.caps-approve-title', { slug: request.slug }),
+        body: translate('admin.caps-approve-body', { ...numbers, min: formatNumber(request.limit + 1), max: formatNumber(approveMax) }),
+        value: request.requested,
+        min: request.limit + 1,
         max: approveMax,
         note: true,
-        run: (cap, note) => sendCaps({ action: 'approve', id: r.id, cap, note }),
+        run: (cap, note) => sendCaps({ action: 'approve', id: request.id, cap, note }),
       }), 'btn-primary'),
       actionButton('admin.decline', 'close', () => {
+        // A smaller raise is offered only when there is room for one.
         const canCompromise = compromise.min <= compromise.max;
+        let declineBody;
+        if (canCompromise) {
+          declineBody = translate('admin.caps-decline-compromise-body', { ...numbers, min: formatNumber(compromise.min), max: formatNumber(compromise.max) });
+        } else {
+          declineBody = translate('admin.caps-decline-body');
+        }
         askCap({
-          title: translate('admin.caps-decline-title', { slug: r.slug }),
-          body: canCompromise
-            ? translate('admin.caps-decline-compromise-body', { ...numbers, min: formatNumber(compromise.min), max: formatNumber(compromise.max) })
-            : translate('admin.caps-decline-body'),
+          title: translate('admin.caps-decline-title', { slug: request.slug }),
+          body: declineBody,
           label: 'admin.caps-compromise',
           min: compromise.min,
           max: compromise.max,
           optional: true,
           askNumber: canCompromise,
           note: true,
-          run: (cap, note) => sendCaps({ action: 'decline', id: r.id, cap, note }),
+          run: (cap, note) => sendCaps({ action: 'decline', id: request.id, cap, note }),
         });
       }),
     ]),
   ]);
 }
 
-function capCustomRow(p) {
+// A page with a limit of its own, tagged when it holds more links than that.
+function capCustomRow(page) {
+  let overTag = null;
+  if (page.used > page.limit) {
+    overTag = createElement('div', { class: 'tags' }, [badge(translate('admin.caps-over'), 'warn')]);
+  }
   return createElement('li', { class: 'data-row' }, [
     createElement('div', {}, [
-      pageLink(p.slug, p.displayName),
-      createElement('div', { class: 'secondary', text: translate('admin.caps-uses', { used: formatNumber(p.used), limit: formatNumber(p.limit) }) }),
-      p.used > p.limit ? createElement('div', { class: 'tags' }, [badge(translate('admin.caps-over'), 'warn')]) : null,
+      pageLink(page.slug, page.displayName),
+      createElement('div', { class: 'secondary', text: translate('admin.caps-uses', { used: formatNumber(page.used), limit: formatNumber(page.limit) }) }),
+      overTag,
     ]),
-    createElement('div', { class: 'row-actions' }, [actionButton('admin.caps-change', 'edit', () => changePageCap(p, caps?.defaultCap ?? null))]),
+    createElement('div', { class: 'row-actions' }, [actionButton('admin.caps-change', 'edit', () => {
+      // The default as it is when the button is pressed, or null.
+      let defaultCap = null;
+      if (caps && caps.defaultCap !== null && caps.defaultCap !== undefined) {
+        defaultCap = caps.defaultCap;
+      }
+      changePageCap(page, defaultCap);
+    })]),
   ]);
 }
 
@@ -1113,24 +1735,33 @@ function renderCaps(data) {
   caps = data;
   const input = byId('capDefault');
   input.max = String(data.maxCap);
-  if (document.activeElement !== input) input.value = String(data.defaultCap);
+  // Don't overwrite the default while it is being typed.
+  if (document.activeElement !== input) {
+    input.value = String(data.defaultCap);
+  }
   fill(byId('capRequestList'), data.pending.map(capRequestRow), 'admin.caps-empty-requests');
   // Admins only: editors are not sent it.
-  if (data.custom) fill(byId('capCustomList'), data.custom.map(capCustomRow), 'admin.caps-empty-custom');
+  if (data.custom) {
+    fill(byId('capCustomList'), data.custom.map(capCustomRow), 'admin.caps-empty-custom');
+  }
 }
 
 loaders.caps = async () => {
   loading(byId('capRequestList'));
-  if (isAdmin()) loading(byId('capCustomList'));
+  if (isAdmin()) {
+    loading(byId('capCustomList'));
+  }
   try {
     renderCaps(await api('/api/admin/link-caps'));
   } catch (error) {
-    if (!guardSession(error)) toast(errorText(error));
+    if (!guardSession(error)) {
+      toast(errorText(error));
+    }
   }
 };
 
-byId('capDefaultForm').addEventListener('submit', (e) => {
-  e.preventDefault();
+byId('capDefaultForm').addEventListener('submit', (event) => {
+  event.preventDefault();
   withBusy(byId('capDefaultSave'), byId('capDefaultError'), async () => {
     await sendCaps({ action: 'set-default', cap: byId('capDefault').value.trim() });
     toast(translate('admin.done'));
@@ -1142,27 +1773,54 @@ byId('capDefaultForm').addEventListener('submit', (e) => {
 // ---------------------------------------------------------------------------
 
 let auditOffset = 0;
+// One page of the audit log, filtered by action. Each entry shows what was
+// done, when, by whom, and its details when it has any.
 loaders.audit = async (offset = auditOffset) => {
-  if (!isAdmin()) return;
+  if (!isAdmin()) {
+    return;
+  }
   auditOffset = offset;
   const list = byId('auditList');
   loading(list);
   try {
     const data = await api(`/api/admin/audit?action=${encodeURIComponent(byId('auditFilter').value)}&offset=${offset}`);
     fill(list, data.entries.map((entry) => {
-      const actor = entry.actorType === 'staff'
-        ? translate('admin.actor-staff', { name: entry.actorName || entry.actorId || '?' })
-        : translate(`admin.actor-${entry.actorType}`);
-      const details = Object.keys(entry.details || {}).length ? JSON.stringify(entry.details, null, 2) : '';
+      let actor;
+      if (entry.actorType === 'staff') {
+        // The staff member's name, else their id, else a question mark.
+        let actorName = '?';
+        if (entry.actorName) {
+          actorName = entry.actorName;
+        } else if (entry.actorId) {
+          actorName = entry.actorId;
+        }
+        actor = translate('admin.actor-staff', { name: actorName });
+      } else {
+        actor = translate(`admin.actor-${entry.actorType}`);
+      }
+      let detailFields = {};
+      if (entry.details) {
+        detailFields = entry.details;
+      }
+      let details = '';
+      if (Object.keys(detailFields).length) {
+        details = JSON.stringify(entry.details, null, 2);
+      }
+      let detailsBlock = null;
+      if (details) {
+        detailsBlock = createElement('pre', { text: details });
+      }
       return createElement('li', { class: 'data-row' }, [createElement('div', {}, [
         createElement('div', { class: 'primary', text: entry.action }),
         createElement('div', { class: 'secondary', text: `${formatDate(entry.createdAt)} · ${actor}` }),
-        details ? createElement('pre', { text: details }) : null,
+        detailsBlock,
       ])]);
     }), 'admin.empty-audit');
     pager(byId('auditPager'), data, loaders.audit);
   } catch (error) {
-    if (!guardSession(error)) toast(errorText(error));
+    if (!guardSession(error)) {
+      toast(errorText(error));
+    }
   }
 };
 byId('auditFilter').addEventListener('change', () => loaders.audit(0));
@@ -1171,22 +1829,40 @@ byId('auditFilter').addEventListener('change', () => loaders.audit(0));
 // Staff passkeys
 // ---------------------------------------------------------------------------
 
+// The staff member's own passkeys: name (or a number), when last used (or
+// added), and a remove button that asks for the password again.
 function renderStaffPasskeys(passkeys) {
   const list = byId('staffPasskeyList');
-  list.replaceChildren(...(passkeys.length ? passkeys.map((key, n) => {
-    const remove = createElement('button', { class: 'btn btn-small btn-quiet', type: 'button', text: translate('common.remove') });
-    remove.addEventListener('click', () => askPassword(
-      (password) => post('/api/admin/passkeys', { action: 'remove', id: key.id, password }),
-      (data) => renderStaffPasskeys(data.passkeys)
-    ));
-    return createElement('li', {}, [
-      createElement('div', {}, [
-        createElement('div', { text: key.label || translate('security.passkey-n', { n: n + 1 }) }),
-        createElement('small', { text: key.lastUsedAt ? translate('security.last-used', { when: formatDate(key.lastUsedAt) }) : translate('security.added', { when: formatDate(key.createdAt) }) }),
-      ]),
-      remove,
-    ]);
-  }) : [createElement('li', { class: 'empty-state', text: translate('admin.no-passkeys') })]));
+  let items;
+  if (passkeys.length) {
+    items = passkeys.map((passkey, index) => {
+      const remove = createElement('button', { class: 'btn btn-small btn-quiet', type: 'button', text: translate('common.remove') });
+      remove.addEventListener('click', () => askPassword(
+        (password) => post('/api/admin/passkeys', { action: 'remove', id: passkey.id, password }),
+        (data) => renderStaffPasskeys(data.passkeys)
+      ));
+      let name = passkey.label;
+      if (!name) {
+        name = translate('security.passkey-n', { n: index + 1 });
+      }
+      let lastUse;
+      if (passkey.lastUsedAt) {
+        lastUse = translate('security.last-used', { when: formatDate(passkey.lastUsedAt) });
+      } else {
+        lastUse = translate('security.added', { when: formatDate(passkey.createdAt) });
+      }
+      return createElement('li', {}, [
+        createElement('div', {}, [
+          createElement('div', { text: name }),
+          createElement('small', { text: lastUse }),
+        ]),
+        remove,
+      ]);
+    });
+  } else {
+    items = [createElement('li', { class: 'empty-state', text: translate('admin.no-passkeys') })];
+  }
+  list.replaceChildren(...items);
 }
 
 loaders.account = async () => {
@@ -1194,27 +1870,35 @@ loaders.account = async () => {
   try {
     renderStaffPasskeys((await api('/api/admin/passkeys')).passkeys);
   } catch (error) {
-    if (!guardSession(error)) toast(errorText(error));
+    if (!guardSession(error)) {
+      toast(errorText(error));
+    }
   }
 };
 
+// The password dialog in front of a passkey change. sendWithPassword sends
+// the change with the password; then, when given, takes the answer.
 let pending = null;
-function askPassword(fn, then) {
-  pending = { fn, then };
+function askPassword(sendWithPassword, then) {
+  pending = { fn: sendWithPassword, then };
   byId('confirmPassword').value = '';
   byId('passwordError').textContent = '';
   byId('passwordModalTitle').textContent = translate('confirm.title');
   openModal('passwordModal', { initialFocus: byId('confirmPassword') });
 }
-byId('passwordForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  if (!pending) return;
-  const { fn, then } = pending;
+byId('passwordForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!pending) {
+    return;
+  }
+  const { fn: sendWithPassword, then } = pending;
   withBusy(byId('passwordSubmit'), byId('passwordError'), async () => {
-    const data = await fn(byId('confirmPassword').value);
+    const data = await sendWithPassword(byId('confirmPassword').value);
     pending = null;
     closeModal('passwordModal');
-    if (then) await then(data);
+    if (then) {
+      await then(data);
+    }
   });
 });
 
@@ -1239,13 +1923,23 @@ byId('staffPasskeyAdd').addEventListener('click', () => askPassword(
 // Start
 // ---------------------------------------------------------------------------
 
+// A language change redraws what was translated in code: the signed-in line,
+// the open tab and the code form's label.
 onChange(() => {
   if (staff) {
-    byId('staffWho').textContent = translate('admin.signed-in-as', { name: staff.displayName || staff.username, role: translate(`admin.role-${staff.role}`) });
-    const current = tabs.find((x) => x.getAttribute('aria-selected') === 'true');
-    if (current) selectTab(current);
+    let staffName = staff.username;
+    if (staff.displayName) {
+      staffName = staff.displayName;
+    }
+    byId('staffWho').textContent = translate('admin.signed-in-as', { name: staffName, role: translate(`admin.role-${staff.role}`) });
+    const current = tabs.find((tab) => tab.getAttribute('aria-selected') === 'true');
+    if (current) {
+      selectTab(current);
+    }
   }
-  if (method) pickMethod(method);
+  if (method) {
+    pickMethod(method);
+  }
 });
 
 api('/api/admin/auth')
