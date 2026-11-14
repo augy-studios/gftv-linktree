@@ -16,26 +16,45 @@ import { requireOwner } from '../_lib/session.js';
 import { ownerLinkCap, ownerCapRequest } from '../_lib/serialize.js';
 import { linkCapFor, linksUsed, latestCapRequest, checkCap } from '../_lib/link-cap.js';
 
+// How many of the page's links count towards its limit.
 async function usedLinks(pageId) {
   const { data, error } = await database().from(TABLES.links).select('id, removed_at').eq('page_id', pageId);
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
   return linksUsed(data);
 }
 
+// Signs the owner in. GET answers at once; DELETE (after the write rate
+// limit) withdraws the open request; POST (after the write rate limit and
+// the ban check) checks the number and reason, refuses a second open request,
+// applies the request rate limit and stores it. Every answer is the whole
+// picture again.
 export default route('me/link-cap', async (request, response) => {
-  if (guard(request, response, ['GET', 'POST', 'DELETE'])) return;
+  if (guard(request, response, ['GET', 'POST', 'DELETE'])) {
+    return;
+  }
   const owner = await requireOwner(request, response);
-  if (!owner) return;
+  if (!owner) {
+    return;
+  }
   const pageId = owner.page.id;
+  // The limit, the links in use and the latest request, read fresh.
   const answer = async () => {
     const [cap, used, capRequest] = await Promise.all([linkCapFor(pageId), usedLinks(pageId), latestCapRequest(pageId)]);
     return ok(response, { linkCap: ownerLinkCap(cap, used), request: ownerCapRequest(capRequest) });
   };
-  if (request.method === 'GET') return answer();
+  if (request.method === 'GET') {
+    return answer();
+  }
 
   const body = await readJson(request, response);
-  if (!body) return;
-  if (await limited(request, response, 'ownerWrite', [`page:${pageId}`])) return;
+  if (!body) {
+    return;
+  }
+  if (await limited(request, response, 'ownerWrite', [`page:${pageId}`])) {
+    return;
+  }
 
   if (request.method === 'DELETE') {
     const { error } = await database()
@@ -43,27 +62,45 @@ export default route('me/link-cap', async (request, response) => {
       .update({ status: 'withdrawn' })
       .eq('page_id', pageId)
       .eq('status', 'pending');
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
     return answer();
   }
 
-  if (await refusedForBan(request, response, { pageId })) return;
+  if (await refusedForBan(request, response, { pageId })) {
+    return;
+  }
   const cap = await linkCapFor(pageId);
   const requested = checkCap(body.requested);
-  if (requested === null) return fail(response, 400, 'cap_invalid', { max: MAX_LINKS });
-  if (requested <= cap.limit) return fail(response, 400, 'cap_not_higher', { limit: cap.limit });
+  if (requested === null) {
+    return fail(response, 400, 'cap_invalid', { max: MAX_LINKS });
+  }
+  if (requested <= cap.limit) {
+    return fail(response, 400, 'cap_not_higher', { limit: cap.limit });
+  }
   const reason = cleanText(body.reason, LIMITS.reason, { multiline: true });
-  if (!reason) return fail(response, 400, 'cap_reason_required');
+  if (!reason) {
+    return fail(response, 400, 'cap_reason_required');
+  }
   const open = await latestCapRequest(pageId);
-  if (open?.status === 'pending') return fail(response, 409, 'cap_request_open');
-  if (await limited(request, response, 'capRequest', [`page:${pageId}`])) return;
+  if (open && open.status === 'pending') {
+    return fail(response, 409, 'cap_request_open');
+  }
+  if (await limited(request, response, 'capRequest', [`page:${pageId}`])) {
+    return;
+  }
 
   const { error } = await database()
     .from(TABLES.linkCapRequests)
     .insert({ page_id: pageId, requested_cap: requested, current_cap: cap.limit, reason });
   // Two sent at once: the unique index on open requests lets one through.
-  if (error?.code === '23505') return fail(response, 409, 'cap_request_open');
-  if (error) throw error;
+  if (error && error.code === '23505') {
+    return fail(response, 409, 'cap_request_open');
+  }
+  if (error) {
+    throw error;
+  }
   await audit(request, { action: 'page.link_cap_requested', actorType: 'owner', actorId: pageId, pageId, details: { requested, from: cap.limit } });
   return answer();
 });

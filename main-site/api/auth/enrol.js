@@ -30,21 +30,33 @@ import {
   createOwnerSession,
 } from '../_lib/session.js';
 
+// Rate limit, find the enrolment challenge and its pending page, then run
+// the action. Either finish step activates the page through activate().
 export default route('auth/enrol', async (request, response) => {
-  if (guard(request, response, ['POST'])) return;
+  if (guard(request, response, ['POST'])) {
+    return;
+  }
   const body = await readJson(request, response);
-  if (!body) return;
-  if (await limited(request, response, 'secondFactor')) return;
+  if (!body) {
+    return;
+  }
+  if (await limited(request, response, 'secondFactor')) {
+    return;
+  }
 
   const challenge = await findChallenge(body.challenge, 'owner', 'enrol');
-  if (!challenge) return fail(response, 401, 'challenge_expired');
+  if (!challenge) {
+    return fail(response, 401, 'challenge_expired');
+  }
 
   const { data: page, error } = await database()
     .from(TABLES.pages)
     .select('id, slug, status, needs_review')
     .eq('id', challenge.subject_id)
     .maybeSingle();
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
   if (!page || page.status !== 'pending') {
     await deleteChallenge(challenge);
     return fail(response, 401, 'challenge_expired');
@@ -59,7 +71,9 @@ export default route('auth/enrol', async (request, response) => {
 
     case 'totp-finish': {
       const secret = decryptSecret(challenge.pending_totp_secret);
-      if (!secret) return fail(response, 400, 'totp_not_started');
+      if (!secret) {
+        return fail(response, 400, 'totp_not_started');
+      }
       if (!verifyTotp(body.code, secret)) {
         await failChallengeAttempt(challenge);
         return fail(response, 401, 'code_wrong');
@@ -90,6 +104,9 @@ export default route('auth/enrol', async (request, response) => {
   }
 });
 
+// Finishes setup: turns the page active (only if it is still pending), issues
+// the backup codes, spends the challenge, signs the owner in, and alerts staff
+// when the name is on the review list.
 async function activate(request, response, page, challenge, fields, method) {
   const now = new Date().toISOString();
   const { data, error } = await database()
@@ -98,8 +115,16 @@ async function activate(request, response, page, challenge, fields, method) {
     .eq('id', page.id)
     .eq('status', 'pending')
     .select('id');
-  if (error) throw error;
-  if ((data ?? []).length !== 1) return fail(response, 409, 'challenge_expired');
+  if (error) {
+    throw error;
+  }
+  let activated = [];
+  if (data) {
+    activated = data;
+  }
+  if (activated.length !== 1) {
+    return fail(response, 409, 'challenge_expired');
+  }
 
   const backupCodes = await issueBackupCodes(page.id);
   await deleteChallenge(challenge);
@@ -109,7 +134,9 @@ async function activate(request, response, page, challenge, fields, method) {
   // about it now rather than at registration, which may never be finished.
   if (page.needs_review) {
     const sent = await notifyStaff(newPageReviewMessage({ slug: page.slug, adminUrl: `${siteUrl()}/admin` }));
-    if (sent) await audit(request, { action: 'mod.staff_alerted', pageId: page.id, details: { about: 'new_page_review', slug: page.slug, chats: sent } });
+    if (sent) {
+      await audit(request, { action: 'mod.staff_alerted', pageId: page.id, details: { about: 'new_page_review', slug: page.slug, chats: sent } });
+    }
   }
   ok(response, { slug: page.slug, backupCodes });
 }

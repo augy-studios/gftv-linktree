@@ -7,8 +7,11 @@
 import { route, guard, ok } from '../_lib/http.js';
 import { turnstileSiteKey } from '../_lib/turnstile.js';
 
+// Answers the site key, cached briefly at the edge.
 export default route('public/turnstile', async (request, response) => {
-  if (guard(request, response, ['GET'])) return;
+  if (guard(request, response, ['GET'])) {
+    return;
+  }
   response.setHeader('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=300');
   ok(response, { siteKey: turnstileSiteKey() });
 });

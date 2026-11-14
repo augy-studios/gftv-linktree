@@ -11,28 +11,50 @@ import { requireOwner } from '../_lib/session.js';
 import { loadOwnerView } from '../_lib/owner-view.js';
 import { prepareAvatar, storeAvatar, deleteAvatarFile, MAX_UPLOAD_BYTES } from '../_lib/avatar.js';
 
+// Signs the owner in, applies the picture rate limit and the ban check, then
+// removes the picture (DELETE) or checks, stores and swaps in the new one
+// (POST). The old file is deleted only once the page points elsewhere.
 export default route('me/avatar', async (request, response) => {
-  if (guard(request, response, ['POST', 'DELETE'])) return;
+  if (guard(request, response, ['POST', 'DELETE'])) {
+    return;
+  }
   const owner = await requireOwner(request, response);
-  if (!owner) return;
+  if (!owner) {
+    return;
+  }
   const page = owner.page;
-  if (await limited(request, response, 'avatar', [`page:${page.id}`])) return;
-  if (await refusedForBan(request, response, { pageId: owner.page.id })) return;
+  if (await limited(request, response, 'avatar', [`page:${page.id}`])) {
+    return;
+  }
+  if (await refusedForBan(request, response, { pageId: owner.page.id })) {
+    return;
+  }
 
-  const previous = page.avatar_path || null;
+  let previous = null;
+  if (page.avatar_path) {
+    previous = page.avatar_path;
+  }
 
   if (request.method === 'DELETE') {
     const { error } = await database().from(TABLES.pages).update({ avatar_path: null }).eq('id', page.id);
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
     await deleteAvatarFile(previous);
     await audit(request, { action: 'page.avatar_removed', actorType: 'owner', actorId: page.id, pageId: page.id });
     return ok(response, { page: await loadOwnerView(page.id) });
   }
 
+  // Base64 is four characters for every three bytes, plus room for the rest
+  // of the JSON.
   const body = await readJson(request, response, { maxBytes: Math.ceil((MAX_UPLOAD_BYTES * 4) / 3) + 1024 });
-  if (!body) return;
+  if (!body) {
+    return;
+  }
   const prepared = await prepareAvatar(body.image);
-  if (!prepared.ok) return fail(response, 400, prepared.error);
+  if (!prepared.ok) {
+    return fail(response, 400, prepared.error);
+  }
 
   const path = await storeAvatar(page.id, prepared.buffer);
   const { error } = await database().from(TABLES.pages).update({ avatar_path: path }).eq('id', page.id);

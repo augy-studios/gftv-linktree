@@ -21,87 +21,151 @@ import { linkCapFor, linksUsed, isCapRefusal } from '../_lib/link-cap.js';
 
 const LINK_COLUMNS = 'id, title, url, icon, order_index, is_active, click_count, removed_at, removed_reason';
 
+// Every link on the page, in order.
 async function allLinks(pageId) {
   const { data, error } = await database().from(TABLES.links).select(LINK_COLUMNS).eq('page_id', pageId).order('order_index');
-  if (error) throw error;
-  return data ?? [];
+  if (error) {
+    throw error;
+  }
+  if (data !== null && data !== undefined) {
+    return data;
+  }
+  return [];
 }
 
+// Signs the owner in, applies the write rate limit and the ban check (and the
+// refused-address check when an address is sent), then reorders (POST with
+// action "reorder"), adds (POST), deletes (DELETE) or edits (PATCH) a link.
+// Every answer is the full list and the link limit.
 export default route('me/links', async (request, response) => {
-  if (guard(request, response, ['POST', 'PATCH', 'DELETE'])) return;
+  if (guard(request, response, ['POST', 'PATCH', 'DELETE'])) {
+    return;
+  }
   const owner = await requireOwner(request, response);
-  if (!owner) return;
+  if (!owner) {
+    return;
+  }
   const body = await readJson(request, response);
-  if (!body) return;
-  if (await limited(request, response, 'ownerWrite', [`page:${owner.page.id}`])) return;
-  if (await refusedForBan(request, response, { pageId: owner.page.id })) return;
+  if (!body) {
+    return;
+  }
+  if (await limited(request, response, 'ownerWrite', [`page:${owner.page.id}`])) {
+    return;
+  }
+  if (await refusedForBan(request, response, { pageId: owner.page.id })) {
+    return;
+  }
   const pageId = owner.page.id;
   // A refused address also counts towards quarantine (guards.js).
-  const refuse = async (url, input) => {
-    await noteRefusedLink(request, owner.page, url.error, input);
-    return fail(response, 400, url.error);
+  const refuse = async (urlCheck, input) => {
+    await noteRefusedLink(request, owner.page, urlCheck.error, input);
+    return fail(response, 400, urlCheck.error);
   };
-  if (body.url !== undefined && (await refusedForAttempts(request, response))) return;
+  if (body.url !== undefined && (await refusedForAttempts(request, response))) {
+    return;
+  }
   // A title is shown as the link's text, so an address in it is checked too.
+  // True when the title was refused and the request has been answered.
   const titleRefused = async (title) => {
     const refused = await addressRefusedInText(title);
-    if (!refused) return false;
+    if (!refused) {
+      return false;
+    }
     await noteRefusedLink(request, owner.page, refused.error, `https://${refused.host}/`);
     fail(response, 400, 'text_address', { host: refused.host });
     return true;
   };
 
   if (request.method === 'POST' && body.action === 'reorder') {
-    const ids = Array.isArray(body.ids) ? body.ids.filter(isUuid).slice(0, MAX_LINKS) : [];
+    let ids = [];
+    if (Array.isArray(body.ids)) {
+      ids = body.ids.filter(isUuid).slice(0, MAX_LINKS);
+    }
     const { error } = await database().rpc('gftvonelink_reorder_links', { p_page_id: pageId, p_ids: ids });
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
   } else if (request.method === 'POST') {
     const [existing, cap] = await Promise.all([allLinks(pageId), linkCapFor(pageId)]);
-    if (linksUsed(existing) >= cap.limit) return fail(response, 400, 'too_many_links', { limit: cap.limit });
+    if (linksUsed(existing) >= cap.limit) {
+      return fail(response, 400, 'too_many_links', { limit: cap.limit });
+    }
     const title = cleanText(body.title, LIMITS.title);
-    if (!title) return fail(response, 400, 'title_required');
-    if (await titleRefused(title)) return;
-    const url = await checkLinkUrl(body.url, { mail: true });
-    if (!url.ok) return refuse(url, body.url);
-    const nextIndex = existing.reduce((max, l) => Math.max(max, l.order_index), -1) + 1;
+    if (!title) {
+      return fail(response, 400, 'title_required');
+    }
+    if (await titleRefused(title)) {
+      return;
+    }
+    const urlCheck = await checkLinkUrl(body.url, { mail: true });
+    if (!urlCheck.ok) {
+      return refuse(urlCheck, body.url);
+    }
+    const nextIndex = existing.reduce((max, link) => Math.max(max, link.order_index), -1) + 1;
     const { error } = await database()
       .from(TABLES.links)
-      .insert({ page_id: pageId, title, url: url.url, icon: checkIcon(body.icon), order_index: nextIndex });
+      .insert({ page_id: pageId, title, url: urlCheck.url, icon: checkIcon(body.icon), order_index: nextIndex });
     // Another add got in first and filled the last place (the trigger in 013).
-    if (isCapRefusal(error)) return fail(response, 400, 'too_many_links', { limit: cap.limit });
-    if (error) throw error;
+    if (isCapRefusal(error)) {
+      return fail(response, 400, 'too_many_links', { limit: cap.limit });
+    }
+    if (error) {
+      throw error;
+    }
   } else {
-    if (!isUuid(body.id)) return fail(response, 400, 'bad_request');
+    if (!isUuid(body.id)) {
+      return fail(response, 400, 'bad_request');
+    }
     const { data: link, error } = await database()
       .from(TABLES.links)
       .select('id, removed_at')
       .eq('id', body.id)
       .eq('page_id', pageId)
       .maybeSingle();
-    if (error) throw error;
-    if (!link) return fail(response, 404, 'link_not_found');
-    if (link.removed_at) return fail(response, 403, 'link_removed');
+    if (error) {
+      throw error;
+    }
+    if (!link) {
+      return fail(response, 404, 'link_not_found');
+    }
+    if (link.removed_at) {
+      return fail(response, 403, 'link_removed');
+    }
 
     if (request.method === 'DELETE') {
       const { error: deleteError } = await database().from(TABLES.links).delete().eq('id', link.id).eq('page_id', pageId);
-      if (deleteError) throw deleteError;
+      if (deleteError) {
+        throw deleteError;
+      }
     } else {
       const fields = {};
       if (body.title !== undefined) {
         fields.title = cleanText(body.title, LIMITS.title);
-        if (!fields.title) return fail(response, 400, 'title_required');
-        if (await titleRefused(fields.title)) return;
+        if (!fields.title) {
+          return fail(response, 400, 'title_required');
+        }
+        if (await titleRefused(fields.title)) {
+          return;
+        }
       }
       if (body.url !== undefined) {
-        const url = await checkLinkUrl(body.url, { mail: true });
-        if (!url.ok) return refuse(url, body.url);
-        fields.url = url.url;
+        const urlCheck = await checkLinkUrl(body.url, { mail: true });
+        if (!urlCheck.ok) {
+          return refuse(urlCheck, body.url);
+        }
+        fields.url = urlCheck.url;
       }
-      if (body.icon !== undefined) fields.icon = checkIcon(body.icon);
-      if (body.isActive !== undefined) fields.is_active = body.isActive === true;
+      if (body.icon !== undefined) {
+        fields.icon = checkIcon(body.icon);
+      }
+      if (body.isActive !== undefined) {
+        fields.is_active = body.isActive === true;
+      }
       if (Object.keys(fields).length > 0) {
         const { error: updateError } = await database().from(TABLES.links).update(fields).eq('id', link.id).eq('page_id', pageId);
-        if (updateError) throw updateError;
+        if (updateError) {
+          throw updateError;
+        }
       }
     }
   }
