@@ -233,6 +233,12 @@ stops at once with `Cannot find module 'playwright'`.
 `npm test` also pins every reply's exact keys (`tests/reply-keys.test.js`), so a
 field can't be added to or dropped from an answer by accident.
 
+`npm run lint` checks Augy's code style (help desk #17, decision 8): no
+ternaries, braces always, names of at least two letters, and no `?.`, `??`, or
+`&&` / `||` used as a value. The rules are in `eslint.config.js`, with the files
+it leaves alone (the shared GFTV copies, `assets/i18n/`, the vendored
+libraries, the generated `js/icon-data.js` and the tests). Run `npm ci` first.
+
 ### Offline
 
 Every public page a visitor opens is kept on their device (the last 30 pages,

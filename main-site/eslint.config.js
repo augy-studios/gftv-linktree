@@ -1,6 +1,6 @@
 // ESLint 9 flat config: `npm run lint`.
 //
-// It enforces Augy's code style decisions for help desk #17 (decisions 6 and
+// It enforces Augy's code style decisions for help desk #17 (decisions 5 to
 // 8): no ternaries, braces on every if / else / for / while, names of at
 // least two letters, and no `&&`, `||`, `??` or `?.` used to produce a value.
 // `&&` and `||` inside an `if` condition are fine; they are conditions, not

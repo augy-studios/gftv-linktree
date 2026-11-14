@@ -33,8 +33,9 @@ affects a session on gftv.asia or any other GFTV site.
 From `main-site/`:
 
 ```sh
-npm install
+npm ci
 npm test             # API flows end to end, plus unit tests
+npm run lint         # Augy's code style (eslint.config.js)
 npm run check-i18n   # every locale has every key; add --scan to check the pages too
 npm run check-sw     # the service worker only skips waiting when asked
 ```
