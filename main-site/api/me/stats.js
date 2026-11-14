@@ -12,7 +12,7 @@
 // Clicks per link, all time, are on the links themselves (/api/me/page).
 
 import { route, guard, ok, query } from '../_lib/http.js';
-import { db, T } from '../_lib/supabase.js';
+import { database, TABLES } from '../_lib/supabase.js';
 import { limited } from '../_lib/guards.js';
 import { requireOwner } from '../_lib/session.js';
 
@@ -23,45 +23,84 @@ export function singaporeDay(date) {
   return new Date(date.getTime() + 8 * 3600_000).toISOString().slice(0, 10);
 }
 
-function top(map, n) {
-  return [...map].map(([key, hits]) => ({ key, hits })).sort((a, b) => b.hits - a.hits || a.key.localeCompare(b.key)).slice(0, n);
+// The `limit` biggest entries of a key -> hits map, as [{ key, hits }]: most
+// hits first, ties in key order.
+function top(map, limit) {
+  return [...map]
+    .map(([key, hits]) => ({ key, hits }))
+    .sort((first, second) => {
+      const byHits = second.hits - first.hits;
+      if (byHits) {
+        return byHits;
+      }
+      return first.key.localeCompare(second.key);
+    })
+    .slice(0, limit);
 }
 
-export default route('me/stats', async (req, res) => {
-  if (guard(req, res, ['GET'])) return;
-  const owner = await requireOwner(req, res);
-  if (!owner) return;
-  if (await limited(req, res, 'ownerRead', [`page:${owner.page.id}`])) return;
+// Signs the owner in and applies the read rate limit, reads the page's daily
+// rows for the period (30 days unless 7 or 90 is asked for), and adds them up
+// into totals, one entry per day and the top countries, devices and sites.
+export default route('me/stats', async (request, response) => {
+  if (guard(request, response, ['GET'])) {
+    return;
+  }
+  const owner = await requireOwner(request, response);
+  if (!owner) {
+    return;
+  }
+  if (await limited(request, response, 'ownerRead', [`page:${owner.page.id}`])) {
+    return;
+  }
 
-  const asked = Number(query(req, 'days'));
-  const days = PERIODS.has(asked) ? asked : 30;
+  const asked = Number(query(request, 'days'));
+  let days = 30;
+  if (PERIODS.has(asked)) {
+    days = asked;
+  }
   const today = new Date();
-  const dayList = Array.from({ length: days }, (_, i) => singaporeDay(new Date(today.getTime() - (days - 1 - i) * 86400_000)));
+  // Every day of the period, oldest first, ending today.
+  const dayList = Array.from({ length: days }, (unused, dayIndex) => singaporeDay(new Date(today.getTime() - (days - 1 - dayIndex) * 86400_000)));
 
-  const { data, error } = await db()
-    .from(T.pageStats)
+  const { data, error } = await database()
+    .from(TABLES.pageStats)
     .select('day, kind, key, hits')
     .eq('page_id', owner.page.id)
     .gte('day', dayList[0]);
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
 
   const daily = new Map(dayList.map((day) => [day, { day, visits: 0, clicks: 0 }]));
   const breakdown = { country: new Map(), device: new Map(), referrer: new Map() };
   const totals = { visits: 0, clicks: 0 };
-  for (const row of data ?? []) {
-    const hits = Number(row.hits) || 0;
+  let rows = [];
+  if (data) {
+    rows = data;
+  }
+  for (const row of rows) {
+    let hits = Number(row.hits);
+    if (!hits) {
+      hits = 0;
+    }
     const day = String(row.day).slice(0, 10);
     if (row.kind === 'visits' || row.kind === 'clicks') {
       totals[row.kind] += hits;
       const entry = daily.get(day);
-      if (entry) entry[row.kind] += hits;
+      if (entry) {
+        entry[row.kind] += hits;
+      }
     } else if (breakdown[row.kind]) {
       const map = breakdown[row.kind];
-      map.set(row.key, (map.get(row.key) || 0) + hits);
+      let previousHits = map.get(row.key);
+      if (!previousHits) {
+        previousHits = 0;
+      }
+      map.set(row.key, previousHits + hits);
     }
   }
 
-  ok(res, {
+  ok(response, {
     days,
     totals,
     daily: [...daily.values()],

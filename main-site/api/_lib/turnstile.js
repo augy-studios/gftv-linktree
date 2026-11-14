@@ -44,21 +44,33 @@ const isProduction = () => process.env.VERCEL_ENV === 'production';
 
 // TURNSTILE_SECRET_KEY is the name the first setup guide used; still read.
 function secret() {
-  return optionalEnv('TURNSTILE_SECRET') || optionalEnv('TURNSTILE_SECRET_KEY');
+  const value = optionalEnv('TURNSTILE_SECRET');
+  if (value) {
+    return value;
+  }
+  return optionalEnv('TURNSTILE_SECRET_KEY');
 }
 
 const switchedOff = () => secret().toLowerCase() === 'off';
 
 // Whether protected forms need a token here.
 export function turnstileOn() {
-  if (switchedOff()) return false;
-  return Boolean(secret()) || isProduction();
+  if (switchedOff()) {
+    return false;
+  }
+  if (secret()) {
+    return true;
+  }
+  return isProduction();
 }
 
 // The site key for the page, or null when the check is off and the page
 // should show no widget.
 export function turnstileSiteKey() {
-  return turnstileOn() ? optionalEnv('TURNSTILE_SITE_KEY', SITE_KEY) : null;
+  if (turnstileOn()) {
+    return optionalEnv('TURNSTILE_SITE_KEY', SITE_KEY);
+  }
+  return null;
 }
 
 // The hostnames a token may come from: TURNSTILE_HOSTNAMES, comma-separated,
@@ -66,21 +78,45 @@ export function turnstileSiteKey() {
 export function allowedHostnames() {
   const listed = optionalEnv('TURNSTILE_HOSTNAMES')
     .split(',')
-    .map((h) => h.trim().toLowerCase().replace(/\.$/, ''))
+    .map((hostname) => hostname.trim().toLowerCase().replace(/\.$/, ''))
     .filter(Boolean);
-  const hosts = listed.length ? listed : [new URL(siteUrl()).hostname.toLowerCase()];
-  if (!isProduction()) return hosts;
-  return hosts.filter((h) => !LOCAL_HOSTS.has(h) && !h.endsWith('.localhost'));
+  let hosts;
+  if (listed.length) {
+    hosts = listed;
+  } else {
+    hosts = [new URL(siteUrl()).hostname.toLowerCase()];
+  }
+  if (!isProduction()) {
+    return hosts;
+  }
+  return hosts.filter((host) => {
+    if (LOCAL_HOSTS.has(host)) {
+      return false;
+    }
+    return !host.endsWith('.localhost');
+  });
 }
 
 // Checks a token for action. Returns { ok: true } or { ok: false, status,
 // error, reason }, where error is what the page is told and reason is for
-// the logs and tests only.
-export async function verifyTurnstile(req, token, action) {
+// the logs and tests only. The checks, in order: a secret is set (or the
+// check is skipped), the token is there, Cloudflare answers, our setup is
+// fine, Cloudflare says success, the action matches, the hostname is allowed.
+export async function verifyTurnstile(request, token, action) {
   const key = secret();
-  if (!key && isProduction()) return { ok: false, status: 503, error: 'human_check_unavailable', reason: 'no-secret' };
+  if (!key && isProduction()) {
+    return { ok: false, status: 503, error: 'human_check_unavailable', reason: 'no-secret' };
+  }
   if (!key || switchedOff()) {
-    if (!warned) console.warn(key ? '[onelink] TURNSTILE_SECRET is "off": the Turnstile check is skipped' : '[onelink] TURNSTILE_SECRET is not set: the Turnstile check is skipped (not production)');
+    if (!warned) {
+      let warning;
+      if (key) {
+        warning = '[onelink] TURNSTILE_SECRET is "off": the Turnstile check is skipped';
+      } else {
+        warning = '[onelink] TURNSTILE_SECRET is not set: the Turnstile check is skipped (not production)';
+      }
+      console.warn(warning);
+    }
     warned = true;
     return { ok: true, skipped: true };
   }
@@ -91,28 +127,51 @@ export async function verifyTurnstile(req, token, action) {
   try {
     const response = await fetch(ENDPOINT, {
       method: 'POST',
-      body: new URLSearchParams({ secret: key, response: token, remoteip: clientIp(req) }),
+      body: new URLSearchParams({ secret: key, response: token, remoteip: clientIp(request) }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
     data = await response.json();
   } catch (cause) {
-    console.warn('[onelink] turnstile siteverify:', cause?.name === 'TimeoutError' ? 'timed out' : cause?.message ?? cause);
+    let detail = cause;
+    if (cause !== null && cause !== undefined) {
+      if (cause.name === 'TimeoutError') {
+        detail = 'timed out';
+      } else if (cause.message !== null && cause.message !== undefined) {
+        detail = cause.message;
+      }
+    }
+    console.warn('[onelink] turnstile siteverify:', detail);
     return { ok: false, status: 503, error: 'human_check_unavailable', reason: 'unreachable' };
   }
-  const codes = Array.isArray(data?.['error-codes']) ? data['error-codes'] : [];
+  let codes = [];
+  if (data !== null && data !== undefined && Array.isArray(data['error-codes'])) {
+    codes = data['error-codes'];
+  }
   // Our own setup is wrong (a bad secret, say), or Cloudflare's is.
   if (codes.includes('missing-input-secret') || codes.includes('invalid-input-secret') || codes.includes('internal-error')) {
     console.error('[onelink] turnstile:', codes.join(', '));
     return { ok: false, status: 503, error: 'human_check_unavailable', reason: 'setup' };
   }
-  if (data?.success !== true) return { ok: false, status: 403, error: 'human_check_failed', reason: 'rejected' };
+  if (data === null || data === undefined || data.success !== true) {
+    return { ok: false, status: 403, error: 'human_check_failed', reason: 'rejected' };
+  }
   // A token made for another form does not count.
   if (data.action !== action) {
-    console.warn(`[onelink] turnstile: token for action "${String(data.action ?? '').slice(0, 32)}" sent to "${action}"`);
+    let sentAction = '';
+    if (data.action !== null && data.action !== undefined) {
+      sentAction = data.action;
+    }
+    console.warn(`[onelink] turnstile: token for action "${String(sentAction).slice(0, 32)}" sent to "${action}"`);
     return { ok: false, status: 403, error: 'human_check_failed', reason: 'action' };
   }
-  const hostname = String(data.hostname ?? '').toLowerCase();
+  let sentHostname = '';
+  if (data.hostname !== null && data.hostname !== undefined) {
+    sentHostname = data.hostname;
+  }
+  const hostname = String(sentHostname).toLowerCase();
   if (!allowedHostnames().includes(hostname)) {
     console.warn(`[onelink] turnstile: hostname "${hostname.slice(0, 253)}" is not in TURNSTILE_HOSTNAMES`);
     return { ok: false, status: 403, error: 'human_check_failed', reason: 'hostname' };
@@ -123,15 +182,24 @@ export async function verifyTurnstile(req, token, action) {
 // The token in a request body: "cf-turnstile-response", or "turnstile" from a
 // page cached before the rename.
 export function turnstileToken(body) {
-  return body?.['cf-turnstile-response'] ?? body?.turnstile;
+  if (body === null || body === undefined) {
+    return undefined;
+  }
+  const token = body['cf-turnstile-response'];
+  if (token !== null && token !== undefined) {
+    return token;
+  }
+  return body.turnstile;
 }
 
 // Answers the request and returns true when it needed a passed check for
 // action ("register", "login", "recover" or "report", as the widget was
 // given) and has none.
-export async function refusedForTurnstile(req, res, body, action) {
-  const result = await verifyTurnstile(req, turnstileToken(body), action);
-  if (result.ok) return false;
-  fail(res, result.status, result.error);
+export async function refusedForTurnstile(request, response, body, action) {
+  const result = await verifyTurnstile(request, turnstileToken(body), action);
+  if (result.ok) {
+    return false;
+  }
+  fail(response, result.status, result.error);
   return true;
 }

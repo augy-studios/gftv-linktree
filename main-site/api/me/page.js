@@ -6,51 +6,72 @@
 // off again with redirectUrl: "".
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
-import { db, T } from '../_lib/supabase.js';
+import { database, TABLES } from '../_lib/supabase.js';
 import { cleanText, LIMITS } from '../_lib/validate.js';
 import { limited, checkLinkUrl, noteRefusedLink, refusedForAttempts, addressRefusedInText, refusedForBan } from '../_lib/guards.js';
 import { requireOwner } from '../_lib/session.js';
 import { loadOwnerView } from '../_lib/owner-view.js';
 
-export default route('me/page', async (req, res) => {
-  if (guard(req, res, ['GET', 'PATCH'])) return;
-  const owner = await requireOwner(req, res);
-  if (!owner) return;
+// Signs the owner in. A PATCH then applies the write rate limit and the ban
+// check, checks each field it carries and saves them. Both methods answer
+// the editor view.
+export default route('me/page', async (request, response) => {
+  if (guard(request, response, ['GET', 'PATCH'])) {
+    return;
+  }
+  const owner = await requireOwner(request, response);
+  if (!owner) {
+    return;
+  }
 
-  if (req.method === 'PATCH') {
-    const body = await readJson(req, res);
-    if (!body) return;
-    if (await limited(req, res, 'ownerWrite', [`page:${owner.page.id}`])) return;
-    if (await refusedForBan(req, res, { pageId: owner.page.id })) return;
+  if (request.method === 'PATCH') {
+    const body = await readJson(request, response);
+    if (!body) {
+      return;
+    }
+    if (await limited(request, response, 'ownerWrite', [`page:${owner.page.id}`])) {
+      return;
+    }
+    if (await refusedForBan(request, response, { pageId: owner.page.id })) {
+      return;
+    }
     const fields = {};
-    if (body.displayName !== undefined) fields.display_name = cleanText(body.displayName, LIMITS.displayName);
-    if (body.bio !== undefined) fields.bio = cleanText(body.bio, LIMITS.bio, { multiline: true });
+    if (body.displayName !== undefined) {
+      fields.display_name = cleanText(body.displayName, LIMITS.displayName);
+    }
+    if (body.bio !== undefined) {
+      fields.bio = cleanText(body.bio, LIMITS.bio, { multiline: true });
+    }
     // An address typed into the name or bio follows the rules for links.
     if (fields.display_name !== undefined || fields.bio !== undefined) {
       const refused = await addressRefusedInText(fields.display_name, fields.bio);
       if (refused) {
-        await noteRefusedLink(req, owner.page, refused.error, `https://${refused.host}/`);
-        return fail(res, 400, 'text_address', { host: refused.host });
+        await noteRefusedLink(request, owner.page, refused.error, `https://${refused.host}/`);
+        return fail(response, 400, 'text_address', { host: refused.host });
       }
     }
     if (body.redirectUrl !== undefined) {
       if (body.redirectUrl === null || String(body.redirectUrl).trim() === '') {
         fields.redirect_url = null;
       } else {
-        if (await refusedForAttempts(req, res)) return;
-        const url = await checkLinkUrl(body.redirectUrl);
-        if (!url.ok) {
-          await noteRefusedLink(req, owner.page, url.error, body.redirectUrl);
-          return fail(res, 400, url.error);
+        if (await refusedForAttempts(request, response)) {
+          return;
         }
-        fields.redirect_url = url.url;
+        const urlCheck = await checkLinkUrl(body.redirectUrl);
+        if (!urlCheck.ok) {
+          await noteRefusedLink(request, owner.page, urlCheck.error, body.redirectUrl);
+          return fail(response, 400, urlCheck.error);
+        }
+        fields.redirect_url = urlCheck.url;
       }
     }
     if (Object.keys(fields).length > 0) {
-      const { error } = await db().from(T.pages).update(fields).eq('id', owner.page.id);
-      if (error) throw error;
+      const { error } = await database().from(TABLES.pages).update(fields).eq('id', owner.page.id);
+      if (error) {
+        throw error;
+      }
     }
   }
 
-  ok(res, { page: await loadOwnerView(owner.page.id) });
+  ok(response, { page: await loadOwnerView(owner.page.id) });
 });

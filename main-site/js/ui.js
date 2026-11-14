@@ -1,6 +1,6 @@
 // Shared UI helpers: dialogs, the toast, busy buttons, formatting.
 
-import { t, getLocale } from '../assets/i18n/i18n.js';
+import { t as translate, getLocale } from '../assets/i18n/i18n.js';
 
 // ---------------------------------------------------------------------------
 // Dialogs
@@ -15,21 +15,37 @@ const open = [];
 
 function focusable(root) {
   return [...root.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
-    .filter((el) => !el.closest('[hidden]') && el.offsetParent !== null);
+    .filter((element) => {
+      if (element.closest('[hidden]')) {
+        return false;
+      }
+      return element.offsetParent !== null;
+    });
 }
 
-function setBackgroundInert(on) {
+function setBackgroundInert(inert) {
   for (const child of document.body.children) {
-    if (child.classList.contains('modal-backdrop') || child.id === 'toast') continue;
-    if (on) child.setAttribute('inert', '');
-    else child.removeAttribute('inert');
+    if (child.classList.contains('modal-backdrop') || child.id === 'toast') {
+      continue;
+    }
+    if (inert) {
+      child.setAttribute('inert', '');
+    } else {
+      child.removeAttribute('inert');
+    }
   }
-  document.documentElement.style.overflow = on ? 'hidden' : '';
+  if (inert) {
+    document.documentElement.style.overflow = 'hidden';
+  } else {
+    document.documentElement.style.overflow = '';
+  }
 }
 
 export function openModal(id, { initialFocus = null, onClose = null } = {}) {
   const backdrop = document.getElementById(id);
-  if (!backdrop || !backdrop.classList.contains('hidden')) return;
+  if (!backdrop || !backdrop.classList.contains('hidden')) {
+    return;
+  }
   open.forEach((entry) => entry.backdrop.setAttribute('inert', ''));
   open.push({ id, backdrop, returnTo: document.activeElement, onClose });
   // Every backdrop is z-index 50 in style.css, so a dialog opened from inside
@@ -41,51 +57,75 @@ export function openModal(id, { initialFocus = null, onClose = null } = {}) {
   backdrop.removeAttribute('inert');
   backdrop.classList.remove('hidden');
   setBackgroundInert(true);
-  const target = initialFocus || focusable(backdrop)[0];
-  if (target) target.focus();
+  let target = initialFocus;
+  if (!target) {
+    target = focusable(backdrop)[0];
+  }
+  if (target) {
+    target.focus();
+  }
 }
 
 export function closeModal(id) {
   const index = open.findIndex((entry) => entry.id === id);
-  if (index < 0) return;
+  if (index < 0) {
+    return;
+  }
   const [entry] = open.splice(index, 1);
   entry.backdrop.classList.add('hidden');
-  if (open.length === 0) setBackgroundInert(false);
-  else open[open.length - 1].backdrop.removeAttribute('inert');
-  if (entry.onClose) entry.onClose();
-  if (entry.returnTo && typeof entry.returnTo.focus === 'function') entry.returnTo.focus();
+  if (open.length === 0) {
+    setBackgroundInert(false);
+  } else {
+    open[open.length - 1].backdrop.removeAttribute('inert');
+  }
+  if (entry.onClose) {
+    entry.onClose();
+  }
+  if (entry.returnTo && typeof entry.returnTo.focus === 'function') {
+    entry.returnTo.focus();
+  }
 }
 
+// One click listener and one key listener serve every dialog: close buttons,
+// the backdrop and Escape close the top one, and Tab stays inside it.
 export function wireModals() {
-  document.addEventListener('click', (e) => {
-    const closer = e.target.closest('[data-close-modal]');
+  document.addEventListener('click', (event) => {
+    const closer = event.target.closest('[data-close-modal]');
     if (closer) {
       closeModal(closer.getAttribute('data-close-modal'));
       return;
     }
-    if (e.target.classList && e.target.classList.contains('modal-backdrop')) closeModal(e.target.id);
+    if (event.target.classList && event.target.classList.contains('modal-backdrop')) {
+      closeModal(event.target.id);
+    }
   });
-  document.addEventListener('keydown', (e) => {
+  document.addEventListener('keydown', (event) => {
     const top = open[open.length - 1];
-    if (!top) return;
-    if (e.key === 'Escape') {
-      e.preventDefault();
+    if (!top) {
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
       closeModal(top.id);
       return;
     }
-    if (e.key !== 'Tab') return;
+    if (event.key !== 'Tab') {
+      return;
+    }
     const items = focusable(top.backdrop);
-    if (items.length === 0) return;
+    if (items.length === 0) {
+      return;
+    }
     const first = items[0];
     const last = items[items.length - 1];
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
       last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
       first.focus();
     } else if (!top.backdrop.contains(document.activeElement)) {
-      e.preventDefault();
+      event.preventDefault();
       first.focus();
     }
   });
@@ -97,20 +137,21 @@ export function wireModals() {
 
 let toastTimer = null;
 
-export function toast(message, ms = 2200) {
-  let el = document.getElementById('toast');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'toast';
-    el.className = 'toast hidden';
-    el.setAttribute('role', 'status');
-    document.body.appendChild(el);
+export function toast(message, milliseconds = 2200) {
+  let toastElement = document.getElementById('toast');
+  if (!toastElement) {
+    toastElement = document.createElement('div');
+    toastElement.id = 'toast';
+    toastElement.className = 'toast hidden';
+    toastElement.setAttribute('role', 'status');
+    document.body.appendChild(toastElement);
   }
   clearTimeout(toastTimer);
-  el.textContent = message;
-  void el.offsetHeight;
-  el.classList.remove('hidden');
-  toastTimer = setTimeout(() => el.classList.add('hidden'), ms);
+  toastElement.textContent = message;
+  // Reading offsetHeight forces a layout first, so a new toast still fades in.
+  void toastElement.offsetHeight;
+  toastElement.classList.remove('hidden');
+  toastTimer = setTimeout(() => toastElement.classList.add('hidden'), milliseconds);
 }
 
 // ---------------------------------------------------------------------------
@@ -119,18 +160,20 @@ export function toast(message, ms = 2200) {
 // ---------------------------------------------------------------------------
 
 export function setBusy(button, busy) {
-  if (!button) return;
+  if (!button) {
+    return;
+  }
   button.disabled = busy;
   button.setAttribute('aria-busy', String(busy));
   const existing = button.querySelector('.busy-indicator');
   if (busy && !existing) {
-    const wrap = document.createElement('span');
-    wrap.className = 'delayed busy-indicator';
-    wrap.setAttribute('aria-hidden', 'true');
+    const wrapper = document.createElement('span');
+    wrapper.className = 'delayed busy-indicator';
+    wrapper.setAttribute('aria-hidden', 'true');
     const spinner = document.createElement('span');
     spinner.className = 'spinner';
-    wrap.appendChild(spinner);
-    button.prepend(wrap);
+    wrapper.appendChild(spinner);
+    button.prepend(wrapper);
   } else if (!busy && existing) {
     existing.remove();
   }
@@ -138,14 +181,19 @@ export function setBusy(button, busy) {
 
 // Run an async action with a button showing busy, and the error, if any,
 // written to a callout as a translated sentence.
-export async function withBusy(button, errorBox, fn) {
+export async function withBusy(button, errorBox, action) {
   setBusy(button, true);
-  if (errorBox) errorBox.textContent = '';
+  if (errorBox) {
+    errorBox.textContent = '';
+  }
   try {
-    return await fn();
+    return await action();
   } catch (error) {
-    if (errorBox) errorBox.textContent = errorText(error);
-    else toast(errorText(error));
+    if (errorBox) {
+      errorBox.textContent = errorText(error);
+    } else {
+      toast(errorText(error));
+    }
     return undefined;
   } finally {
     setBusy(button, false);
@@ -154,32 +202,64 @@ export async function withBusy(button, errorBox, fn) {
 
 // The server adds what a message names: { host } for an address the lists
 // refused, { limit }, { min } and { max } for link limits.
-const ERROR_PARAMS = ['host', 'limit', 'min', 'max'];
+const ERROR_PARAMETERS = ['host', 'limit', 'min', 'max'];
 
+// The sentence for an error in the reader's language. A code with no sentence
+// of its own reads as the generic one.
 export function errorText(error) {
-  const code = error && error.code ? error.code : 'generic';
-  const detail = error?.detail || {};
-  const params = {};
-  for (const name of ERROR_PARAMS) if (detail[name] !== undefined && detail[name] !== null) params[name] = name === 'host' ? detail[name] : formatNumber(detail[name]);
-  const text = t(`error.${code}`, Object.keys(params).length ? params : undefined);
-  return text === `error.${code}` ? t('error.generic') : text;
+  let code = 'generic';
+  if (error && error.code) {
+    code = error.code;
+  }
+  let detail = {};
+  if (error !== null && error !== undefined && error.detail) {
+    detail = error.detail;
+  }
+  // The host goes in as written; the numbers are formatted for the locale.
+  const parameters = {};
+  for (const name of ERROR_PARAMETERS) {
+    if (detail[name] !== undefined && detail[name] !== null) {
+      if (name === 'host') {
+        parameters[name] = detail[name];
+      } else {
+        parameters[name] = formatNumber(detail[name]);
+      }
+    }
+  }
+  let textParameters;
+  if (Object.keys(parameters).length) {
+    textParameters = parameters;
+  } else {
+    textParameters = undefined;
+  }
+  const text = translate(`error.${code}`, textParameters);
+  if (text === `error.${code}`) {
+    return translate('error.generic');
+  }
+  return text;
 }
 
 // ---------------------------------------------------------------------------
 // Formatting and escaping
 // ---------------------------------------------------------------------------
 
-export function formatNumber(n) {
-  return new Intl.NumberFormat(getLocale()).format(Number(n) || 0);
+export function formatNumber(value) {
+  let number = Number(value);
+  if (!number) {
+    number = 0;
+  }
+  return new Intl.NumberFormat(getLocale()).format(number);
 }
 
 export function formatDate(value) {
-  if (!value) return '';
+  if (!value) {
+    return '';
+  }
   return new Intl.DateTimeFormat(getLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
 
-export function escapeHtml(s) {
-  return String(s)
+export function escapeHtml(text) {
+  return String(text)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -187,24 +267,39 @@ export function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
-// Build an element: el('p', { class: 'muted', text: 'hello' }, [children]).
+// Build an element: createElement('p', { class: 'muted', text: 'hello' }, [children]).
 // Text always goes in through textContent, so owner-written content can never
 // become markup.
-export function el(tag, props = {}, children = []) {
+export function createElement(tag, properties = {}, children = []) {
   const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(props)) {
-    if (value === undefined || value === null || value === false) continue;
-    if (key === 'class') node.className = value;
-    else if (key === 'text') node.textContent = value;
-    else if (key === 'i18n') {
+  for (const [key, value] of Object.entries(properties)) {
+    if (value === undefined || value === null || value === false) {
+      continue;
+    }
+    if (key === 'class') {
+      node.className = value;
+    } else if (key === 'text') {
+      node.textContent = value;
+    } else if (key === 'i18n') {
       node.setAttribute('data-i18n', value);
-      node.textContent = t(value);
-    } else if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2), value);
-    else node.setAttribute(key, value === true ? '' : String(value));
+      node.textContent = translate(value);
+    } else if (key.startsWith('on') && typeof value === 'function') {
+      node.addEventListener(key.slice(2), value);
+    } else if (value === true) {
+      node.setAttribute(key, '');
+    } else {
+      node.setAttribute(key, String(value));
+    }
   }
   for (const child of [].concat(children)) {
-    if (child === null || child === undefined || child === false) continue;
-    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+    if (child === null || child === undefined || child === false) {
+      continue;
+    }
+    if (child instanceof Node) {
+      node.append(child);
+    } else {
+      node.append(document.createTextNode(String(child)));
+    }
   }
   return node;
 }
@@ -212,8 +307,8 @@ export function el(tag, props = {}, children = []) {
 export async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
-    toast(t('common.copied'));
+    toast(translate('common.copied'));
   } catch {
-    toast(t('error.copy'));
+    toast(translate('error.copy'));
   }
 }

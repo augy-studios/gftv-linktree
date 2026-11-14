@@ -12,9 +12,11 @@ const loaded = new Map();
 
 function blobUrl(url) {
   if (!loaded.has(url)) {
-    const job = fetch(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' }).then(async (res) => {
-      if (!res.ok) throw new Error(`image ${res.status}`);
-      return URL.createObjectURL(await res.blob());
+    const job = fetch(url, { mode: 'cors', credentials: 'omit', referrerPolicy: 'no-referrer' }).then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`image ${response.status}`);
+      }
+      return URL.createObjectURL(await response.blob());
     });
     // A failure is not remembered, so the next try fetches again.
     job.catch(() => loaded.delete(url));
@@ -25,17 +27,17 @@ function blobUrl(url) {
 
 // When the fetch fails, the plain address is used instead, so the image
 // still shows and its own error handling still runs.
-export function setBlobSrc(img, url) {
+export function setBlobSrc(image, url) {
   return blobUrl(url).then(
-    (objectUrl) => { img.src = objectUrl; },
-    () => { img.src = url; }
+    (objectUrl) => { image.src = objectUrl; },
+    () => { image.src = url; }
   );
 }
 
 export function hydrateImages(root = document) {
-  root.querySelectorAll('img[data-src]').forEach((img) => {
-    const url = img.dataset.src;
-    img.removeAttribute('data-src');
-    setBlobSrc(img, url);
+  root.querySelectorAll('img[data-src]').forEach((image) => {
+    const url = image.dataset.src;
+    image.removeAttribute('data-src');
+    setBlobSrc(image, url);
   });
 }

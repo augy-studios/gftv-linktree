@@ -17,6 +17,12 @@
     "check-i18n": "node assets/i18n/check-keys.js",
     "check-sw": "node scripts/check-sw.js",
     "test": "node --test \"tests/**/*.test.js\"",
-    "e2e": "node tests/e2e/run.js"
+    "e2e": "node tests/e2e/run.js",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
+    "globals": "17.13.0"
   }
 }

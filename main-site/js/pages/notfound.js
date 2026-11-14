@@ -5,5 +5,7 @@ import '../app.js';
 const path = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
 if (/^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){1,31}$/.test(path)) {
   const claim = document.querySelector('a[href="/register"]');
-  if (claim) claim.href = `/register?slug=${encodeURIComponent(path)}`;
+  if (claim) {
+    claim.href = `/register?slug=${encodeURIComponent(path)}`;
+  }
 }

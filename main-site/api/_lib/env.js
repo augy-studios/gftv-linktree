@@ -11,7 +11,10 @@ export function requiredEnv(name) {
 
 export function optionalEnv(name, fallback = '') {
   const value = process.env[name];
-  return typeof value === 'string' && value.trim() !== '' ? value.trim() : fallback;
+  if (typeof value === 'string' && value.trim() !== '') {
+    return value.trim();
+  }
+  return fallback;
 }
 
 // The public origin. Passkeys are bound to its hostname, and every

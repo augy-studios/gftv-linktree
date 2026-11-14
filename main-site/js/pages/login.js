@@ -2,56 +2,79 @@
 
 import '../app.js';
 import '../visitor.js';
-import { t, onChange } from '../../assets/i18n/i18n.js';
+import { t as translate, onChange } from '../../assets/i18n/i18n.js';
 import { api, post } from '../api.js';
 import { withBusy, toast } from '../ui.js';
 import { normaliseSlugInput } from '../slug-check.js';
 import { passkeysSupported, usePasskey, passkeyErrorCode } from '../passkeys.js';
 import { humanCheck } from '../turnstile.js';
 
-const $ = (id) => document.getElementById(id);
+const byId = (id) => document.getElementById(id);
 let challenge = null;
 let method = null;
 // Turnstile on the password step (turnstile.js).
-const check = humanCheck($('humanCheck'));
+const check = humanCheck(byId('humanCheck'));
 
 // Somebody already signed in goes straight to their editor.
 api('/api/auth/session')
-  .then((s) => { if (s.signedIn) window.location.replace('/edit'); })
+  .then((session) => {
+    if (session.signedIn) {
+      window.location.replace('/edit');
+    }
+  })
   .catch(() => {});
 
 const prefill = normaliseSlugInput(new URLSearchParams(window.location.search).get('slug'));
-if (prefill) $('slug').value = prefill;
+if (prefill) {
+  byId('slug').value = prefill;
+}
 
-$('passwordForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  withBusy($('passwordSubmit'), $('passwordError'), async () => {
+byId('passwordForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  withBusy(byId('passwordSubmit'), byId('passwordError'), async () => {
     const token = await check.token();
     let data;
     try {
-      data = await post('/api/auth/login', { slug: normaliseSlugInput($('slug').value), password: $('password').value, 'cf-turnstile-response': token });
+      data = await post('/api/auth/login', { slug: normaliseSlugInput(byId('slug').value), password: byId('password').value, 'cf-turnstile-response': token });
     } finally {
       check.reset();
     }
     challenge = data.challenge;
-    $('password').value = '';
+    byId('password').value = '';
     showFactors(data.methods);
   });
 });
 
+// After the password: show only the second factors this page has (and this
+// browser can use), and open the first of them.
 function showFactors(methods) {
+  // A passkey counts only when the browser supports them.
+  let passkeyUsable = methods.passkey;
+  if (passkeyUsable) {
+    passkeyUsable = passkeysSupported();
+  }
   const usable = {
     totp: methods.totp,
-    passkey: methods.passkey && passkeysSupported(),
+    passkey: passkeyUsable,
     telegram: methods.telegram,
     backup: true,
   };
-  document.querySelectorAll('#methodPicker [data-method]').forEach((b) => { b.hidden = !usable[b.dataset.method]; });
-  $('stepPassword').hidden = true;
-  $('stepFactor').hidden = false;
+  document.querySelectorAll('#methodPicker [data-method]').forEach((button) => { button.hidden = !usable[button.dataset.method]; });
+  byId('stepPassword').hidden = true;
+  byId('stepFactor').hidden = false;
   // The authenticator app first. Picking Telegram sends nothing by itself:
   // the code goes out only when "Send me a code" is pressed.
-  pick(usable.totp ? 'totp' : usable.passkey ? 'passkey' : usable.telegram ? 'telegram' : 'backup');
+  let firstMethod;
+  if (usable.totp) {
+    firstMethod = 'totp';
+  } else if (usable.passkey) {
+    firstMethod = 'passkey';
+  } else if (usable.telegram) {
+    firstMethod = 'telegram';
+  } else {
+    firstMethod = 'backup';
+  }
+  pick(firstMethod);
   const heading = document.querySelector('#stepFactor h1');
   heading.tabIndex = -1;
   heading.focus();
@@ -59,30 +82,52 @@ function showFactors(methods) {
 
 const HELP = { totp: 'login.help-totp', passkey: 'login.help-passkey', telegram: 'login.help-telegram', backup: 'login.help-backup' };
 
+// Switch to one second factor: press its button, and set the help, the code
+// field (digits only for the authenticator and Telegram) and which rows show.
 function pick(name) {
   method = name;
-  document.querySelectorAll('#methodPicker [data-method]').forEach((b) => {
-    b.setAttribute('aria-pressed', String(b.dataset.method === name));
+  document.querySelectorAll('#methodPicker [data-method]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.method === name));
   });
-  $('codeHelp').textContent = t(HELP[name]);
-  const code = $('code');
+  byId('codeHelp').textContent = translate(HELP[name]);
+  const code = byId('code');
   code.value = '';
-  $('codeError').textContent = '';
-  const numeric = name === 'totp' || name === 'telegram';
-  code.inputMode = numeric ? 'numeric' : 'text';
-  code.maxLength = numeric ? 6 : 16;
+  byId('codeError').textContent = '';
+  let numeric = false;
+  if (name === 'totp' || name === 'telegram') {
+    numeric = true;
+  }
+  if (numeric) {
+    code.inputMode = 'numeric';
+    code.maxLength = 6;
+  } else {
+    code.inputMode = 'text';
+    code.maxLength = 16;
+  }
   code.classList.toggle('code-input', numeric);
-  $('codeLabel').textContent = t(name === 'backup' ? 'field.backup-code' : name === 'telegram' ? 'field.telegram-code' : 'field.code');
-  $('codeField').hidden = name === 'passkey';
-  $('codeSubmitRow').hidden = name === 'passkey';
-  $('passkeyRow').hidden = name !== 'passkey';
-  $('telegramSendRow').hidden = name !== 'telegram';
+  let labelKey;
+  if (name === 'backup') {
+    labelKey = 'field.backup-code';
+  } else if (name === 'telegram') {
+    labelKey = 'field.telegram-code';
+  } else {
+    labelKey = 'field.code';
+  }
+  byId('codeLabel').textContent = translate(labelKey);
+  byId('codeField').hidden = name === 'passkey';
+  byId('codeSubmitRow').hidden = name === 'passkey';
+  byId('passkeyRow').hidden = name !== 'passkey';
+  byId('telegramSendRow').hidden = name !== 'telegram';
 }
 
-document.querySelectorAll('#methodPicker [data-method]').forEach((b) => {
-  b.addEventListener('click', () => pick(b.dataset.method));
+document.querySelectorAll('#methodPicker [data-method]').forEach((button) => {
+  button.addEventListener('click', () => pick(button.dataset.method));
 });
-onChange(() => { if (method) pick(method); });
+onChange(() => {
+  if (method) {
+    pick(method);
+  }
+});
 
 function signedIn() {
   window.location.replace('/edit');
@@ -90,17 +135,17 @@ function signedIn() {
 
 function handleExpiry(error) {
   if (error.code === 'challenge_expired') {
-    $('stepFactor').hidden = true;
-    $('stepPassword').hidden = false;
-    $('passwordError').textContent = t('error.challenge_expired');
+    byId('stepFactor').hidden = true;
+    byId('stepPassword').hidden = false;
+    byId('passwordError').textContent = translate('error.challenge_expired');
   }
 }
 
-$('codeForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  withBusy($('codeSubmit'), $('codeError'), async () => {
+byId('codeForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  withBusy(byId('codeSubmit'), byId('codeError'), async () => {
     try {
-      await post('/api/auth/verify', { challenge, method, code: $('code').value });
+      await post('/api/auth/verify', { challenge, method, code: byId('code').value });
       signedIn();
     } catch (error) {
       handleExpiry(error);
@@ -109,16 +154,16 @@ $('codeForm').addEventListener('submit', (e) => {
   });
 });
 
-$('telegramSend').addEventListener('click', () => {
-  withBusy($('telegramSend'), $('codeError'), async () => {
+byId('telegramSend').addEventListener('click', () => {
+  withBusy(byId('telegramSend'), byId('codeError'), async () => {
     await post('/api/auth/verify', { challenge, method: 'telegram-send' });
-    toast(t('telegram.sent'));
-    $('code').focus();
+    toast(translate('telegram.sent'));
+    byId('code').focus();
   });
 });
 
-$('passkeyUse').addEventListener('click', () => {
-  withBusy($('passkeyUse'), $('codeError'), async () => {
+byId('passkeyUse').addEventListener('click', () => {
+  withBusy(byId('passkeyUse'), byId('codeError'), async () => {
     try {
       const { options } = await post('/api/auth/verify', { challenge, method: 'passkey-options' });
       let response;
@@ -136,9 +181,9 @@ $('passkeyUse').addEventListener('click', () => {
   });
 });
 
-$('startOver').addEventListener('click', () => {
+byId('startOver').addEventListener('click', () => {
   challenge = null;
-  $('stepFactor').hidden = true;
-  $('stepPassword').hidden = false;
-  $('password').focus();
+  byId('stepFactor').hidden = true;
+  byId('stepPassword').hidden = false;
+  byId('password').focus();
 });

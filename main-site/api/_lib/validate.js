@@ -18,7 +18,11 @@ export const RESERVED_SLUGS = new Set([
 const SLUG_SHAPE = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){1,31}$/;
 
 export function normaliseSlug(input) {
-  return String(input ?? '').trim().toLowerCase();
+  let text = '';
+  if (input !== null && input !== undefined) {
+    text = input;
+  }
+  return String(text).trim().toLowerCase();
 }
 
 // { ok: true, slug } or { ok: false, error }. Database blocks are checked by
@@ -27,9 +31,15 @@ export function normaliseSlug(input) {
 // "reserved", without saying which list it is on.
 export function checkSlug(input) {
   const slug = normaliseSlug(input);
-  if (!SLUG_SHAPE.test(slug)) return { ok: false, error: 'slug_invalid' };
-  if (RESERVED_SLUGS.has(slug)) return { ok: false, error: 'slug_reserved' };
-  if (nameIsUnwelcome(slug)) return { ok: false, error: 'slug_not_allowed' };
+  if (!SLUG_SHAPE.test(slug)) {
+    return { ok: false, error: 'slug_invalid' };
+  }
+  if (RESERVED_SLUGS.has(slug)) {
+    return { ok: false, error: 'slug_reserved' };
+  }
+  if (nameIsUnwelcome(slug)) {
+    return { ok: false, error: 'slug_not_allowed' };
+  }
   return { ok: true, slug };
 }
 
@@ -47,17 +57,36 @@ const EMAIL = new RegExp(`^${EMAIL_PATTERN}$`);
 // refused, never rewritten. host is the web address's host, or the email
 // address's domain.
 export function sanitizeUrl(input, { mail = false } = {}) {
-  let raw = String(input ?? '').trim();
-  if (raw === '' || raw.length > 2048) return { ok: false, error: 'url_invalid' };
+  let typed = '';
+  if (input !== null && input !== undefined) {
+    typed = input;
+  }
+  let raw = String(typed).trim();
+  if (raw === '' || raw.length > 2048) {
+    return { ok: false, error: 'url_invalid' };
+  }
   // Control characters and whitespace are how scheme filters get dodged
   // ("java\tscript:"), so they end the check rather than being stripped.
-  if (/[\u0000- \u007f-\u009f]/.test(raw)) return { ok: false, error: 'url_invalid' };
+  if (/[\u0000- \u007f-\u009f]/.test(raw)) {
+    return { ok: false, error: 'url_invalid' };
+  }
 
   const scheme = raw.match(/^([a-z][a-z0-9+.-]*):/i);
-  const name = scheme ? scheme[1].toLowerCase() : null;
-  if (mail && (name === 'mailto' || (!scheme && raw.includes('@') && !raw.includes('/')))) return sanitizeMail(raw);
+  let name = null;
   if (scheme) {
-    if (name !== 'http' && name !== 'https') return { ok: false, error: mail ? 'url_scheme_link' : 'url_scheme' };
+    name = scheme[1].toLowerCase();
+  }
+  // With mail, a mailto: address, or one typed bare (an @ and no slash).
+  if (mail && (name === 'mailto' || (!scheme && raw.includes('@') && !raw.includes('/')))) {
+    return sanitizeMail(raw);
+  }
+  if (scheme) {
+    if (name !== 'http' && name !== 'https') {
+      if (mail) {
+        return { ok: false, error: 'url_scheme_link' };
+      }
+      return { ok: false, error: 'url_scheme' };
+    }
   } else {
     raw = `https://${raw.replace(/^\/+/, '')}`;
   }
@@ -68,21 +97,29 @@ export function sanitizeUrl(input, { mail = false } = {}) {
   } catch {
     return { ok: false, error: 'url_invalid' };
   }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') return { ok: false, error: 'url_scheme' };
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return { ok: false, error: 'url_scheme' };
+  }
   // https://gftv.asia@evil.example shows a trusted name and goes elsewhere.
-  if (url.username || url.password) return { ok: false, error: 'url_credentials' };
+  if (url.username || url.password) {
+    return { ok: false, error: 'url_credentials' };
+  }
   const host = url.hostname.toLowerCase();
   if (!host.includes('.') || host.endsWith('.') || host === 'localhost') {
     return { ok: false, error: 'url_invalid' };
   }
-  if (url.href.length > 2048) return { ok: false, error: 'url_invalid' };
+  if (url.href.length > 2048) {
+    return { ok: false, error: 'url_invalid' };
+  }
   return { ok: true, url: url.href, host };
 }
 
 // mailto: and one address, the domain in lower case.
 function sanitizeMail(raw) {
   const address = raw.replace(/^mailto:/i, '');
-  if (address.length > 254 || !EMAIL.test(address)) return { ok: false, error: 'mail_invalid' };
+  if (address.length > 254 || !EMAIL.test(address)) {
+    return { ok: false, error: 'mail_invalid' };
+  }
   const at = address.lastIndexOf('@');
   const host = address.slice(at + 1).toLowerCase();
   return { ok: true, url: `mailto:${address.slice(0, at)}@${host}`, host, mail: true };
@@ -91,8 +128,14 @@ function sanitizeMail(raw) {
 // Where a saved link leads: an email address's domain, or a web address's
 // host. '' when it is neither.
 export function linkHost(url) {
-  const value = String(url ?? '');
-  if (/^mailto:/i.test(value)) return value.slice(value.lastIndexOf('@') + 1).toLowerCase();
+  let text = '';
+  if (url !== null && url !== undefined) {
+    text = url;
+  }
+  const value = String(text);
+  if (/^mailto:/i.test(value)) {
+    return value.slice(value.lastIndexOf('@') + 1).toLowerCase();
+  }
   try {
     return new URL(value).hostname;
   } catch {
@@ -103,7 +146,10 @@ export function linkHost(url) {
 // The address Safe Browsing is asked about for a link: the link itself, or
 // for an email address, its domain's home page.
 export function lookupUrl(url) {
-  return /^mailto:/i.test(url) ? `https://${linkHost(url)}/` : url;
+  if (/^mailto:/i.test(url)) {
+    return `https://${linkHost(url)}/`;
+  }
+  return url;
 }
 
 // Web addresses written into text (a bio, a display name, a link title),
@@ -146,10 +192,14 @@ const ADDRESS_IN_TEXT = /(?:https?:\/\/)?((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])
 const LEET = { 0: 'o', 1: 'l', 3: 'e', 4: 'a', 5: 's', 7: 't', 8: 'b', 9: 'g' };
 
 export function flattenForAddresses(text) {
-  return String(text ?? '')
+  let given = '';
+  if (text !== null && text !== undefined) {
+    given = text;
+  }
+  return String(given)
     .normalize('NFKC')
     .toLowerCase()
-    .replace(LOOKALIKE_CHARS, (c) => LOOKALIKES[c])
+    .replace(LOOKALIKE_CHARS, (character) => LOOKALIKES[character])
     .replace(SPACED_OUT, (run) => run.replace(/ /g, ''))
     .replace(DOT_SPELLINGS, '.');
 }
@@ -160,17 +210,39 @@ export function flattenForAddresses(text) {
 export function addressesInText(text) {
   const flat = flattenForAddresses(text);
   const found = new Map();
+  // Keeps one address per host, without www., as a https:// address.
   const add = (host, path) => {
     const bare = host.replace(/^www\./, '');
-    if (/^[a-z0-9.-]+\.[a-z]{2,24}$/.test(bare) && !found.has(bare)) found.set(bare, `https://${bare}${path || '/'}`);
-  };
-  for (const m of flat.matchAll(ADDRESS_IN_TEXT)) {
-    add(m[1], m[2]);
-    if (/\d/.test(m[1])) {
-      add(m[1].replace(/\d/g, (d) => LEET[d] ?? d), m[2]);
-      add(m[1].replace(/\d/g, (d) => (d === '1' ? 'i' : LEET[d] ?? d)), m[2]);
+    if (/^[a-z0-9.-]+\.[a-z]{2,24}$/.test(bare) && !found.has(bare)) {
+      let rest = '/';
+      if (path) {
+        rest = path;
+      }
+      found.set(bare, `https://${bare}${rest}`);
     }
-    if (found.size >= 40) break;
+  };
+  // A digit as the letter it stands for, or itself when it stands for none.
+  const digitAsLetter = (digit) => {
+    const letter = LEET[digit];
+    if (letter !== null && letter !== undefined) {
+      return letter;
+    }
+    return digit;
+  };
+  for (const match of flat.matchAll(ADDRESS_IN_TEXT)) {
+    add(match[1], match[2]);
+    if (/\d/.test(match[1])) {
+      add(match[1].replace(/\d/g, (digit) => digitAsLetter(digit)), match[2]);
+      add(match[1].replace(/\d/g, (digit) => {
+        if (digit === '1') {
+          return 'i';
+        }
+        return digitAsLetter(digit);
+      }), match[2]);
+    }
+    if (found.size >= 40) {
+      break;
+    }
   }
   return [...found].map(([host, url]) => ({ host, url })).slice(0, 40);
 }
@@ -193,8 +265,17 @@ export function isShortener(host) {
 
 // True when host is a blocked domain or a subdomain of one.
 export function hostIsBlocked(host, blockedDomains) {
-  const h = String(host || '').toLowerCase();
-  return blockedDomains.some((d) => h === d || h.endsWith(`.${d}`));
+  let given = '';
+  if (host) {
+    given = host;
+  }
+  const hostname = String(given).toLowerCase();
+  return blockedDomains.some((domain) => {
+    if (hostname === domain) {
+      return true;
+    }
+    return hostname.endsWith(`.${domain}`);
+  });
 }
 
 // A staff block pattern: a JavaScript regular expression, matched without
@@ -208,14 +289,22 @@ export const PATTERN_MAX = 200;
 // one.
 const NESTED_REPEAT = /\((?:[^()\\]|\\.)*(?:[+*]|\{\d*,\d*\})(?:[^()\\]|\\.)*\)\s*(?:[+*]|\{\d*,\d*\})/;
 export function checkPattern(input) {
-  const pattern = String(input ?? '').trim();
-  if (!pattern || pattern.length > PATTERN_MAX) return { ok: false, error: 'pattern_invalid' };
+  let typed = '';
+  if (input !== null && input !== undefined) {
+    typed = input;
+  }
+  const pattern = String(typed).trim();
+  if (!pattern || pattern.length > PATTERN_MAX) {
+    return { ok: false, error: 'pattern_invalid' };
+  }
   try {
     new RegExp(pattern, 'i');
   } catch {
     return { ok: false, error: 'pattern_invalid' };
   }
-  if (NESTED_REPEAT.test(pattern)) return { ok: false, error: 'pattern_slow' };
+  if (NESTED_REPEAT.test(pattern)) {
+    return { ok: false, error: 'pattern_slow' };
+  }
   return { ok: true, pattern };
 }
 
@@ -224,7 +313,16 @@ export const PATTERN_SCOPES = new Set(['links', 'names', 'both']);
 // Compiled staff patterns ({ re, appliesTo }) against a text. scope:
 // "links" for a link's full address, "names" for a page name.
 export function patternBlocks(text, patterns, scope) {
-  return (patterns ?? []).some((p) => (p.appliesTo === scope || p.appliesTo === 'both') && p.re.test(text));
+  let list = [];
+  if (patterns !== null && patterns !== undefined) {
+    list = patterns;
+  }
+  return list.some((pattern) => {
+    if (pattern.appliesTo === scope || pattern.appliesTo === 'both') {
+      return pattern.re.test(text);
+    }
+    return false;
+  });
 }
 
 // An address against both staff lists ({ domains, patterns }). An address
@@ -232,25 +330,53 @@ export function patternBlocks(text, patterns, scope) {
 // email address is blocked by its domain.
 export function addressBlocked(url, { domains = [], patterns = [] } = {}) {
   const host = linkHost(url);
-  if (!host) return true;
-  return hostIsBlocked(host, domains) || patternBlocks(url, patterns, 'links');
+  if (!host) {
+    return true;
+  }
+  if (hostIsBlocked(host, domains)) {
+    return true;
+  }
+  return patternBlocks(url, patterns, 'links');
 }
 
 export function normaliseDomain(input) {
-  let value = String(input ?? '').trim().toLowerCase();
+  let typed = '';
+  if (input !== null && input !== undefined) {
+    typed = input;
+  }
+  let value = String(typed).trim().toLowerCase();
   value = value.replace(/^[a-z]+:\/\//, '').split('/')[0].split('?')[0].replace(/^\*\./, '').replace(/^www\./, '');
-  return /^[a-z0-9.-]{3,253}$/.test(value) && value.includes('.') ? value : null;
+  if (/^[a-z0-9.-]{3,253}$/.test(value) && value.includes('.')) {
+    return value;
+  }
+  return null;
 }
 
 // Plain text for names, bios and titles: NFC, no control characters except
 // newlines where allowed, trimmed, capped.
 export function cleanText(input, max, { multiline = false } = {}) {
-  let value = String(input ?? '').normalize('NFC');
-  value = multiline
-    ? value.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, '')
-    : value.replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, ' ');
-  value = value.replace(multiline ? /[ \t]+/g : /\s+/g, ' ').trim();
-  if (multiline) value = value.replace(/\n{3,}/g, '\n\n');
+  let typed = '';
+  if (input !== null && input !== undefined) {
+    typed = input;
+  }
+  let value = String(typed).normalize('NFC');
+  if (multiline) {
+    value = value.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, '');
+  } else {
+    value = value.replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, ' ');
+  }
+  // Runs of whitespace become one space. With multiline only spaces and tabs
+  // count, so the newlines stay.
+  let spaces;
+  if (multiline) {
+    spaces = /[ \t]+/g;
+  } else {
+    spaces = /\s+/g;
+  }
+  value = value.replace(spaces, ' ').trim();
+  if (multiline) {
+    value = value.replace(/\n{3,}/g, '\n\n');
+  }
   return [...value].slice(0, max).join('');
 }
 
@@ -260,9 +386,15 @@ export const PASSWORD_MIN = 10;
 export const PASSWORD_MAX_BYTES = 72;
 
 export function checkPassword(value) {
-  if (typeof value !== 'string' || value.length === 0) return { ok: false, error: 'password_required' };
-  if ([...value].length < PASSWORD_MIN) return { ok: false, error: 'password_too_short' };
-  if (Buffer.byteLength(value, 'utf8') > PASSWORD_MAX_BYTES) return { ok: false, error: 'password_too_long' };
+  if (typeof value !== 'string' || value.length === 0) {
+    return { ok: false, error: 'password_required' };
+  }
+  if ([...value].length < PASSWORD_MIN) {
+    return { ok: false, error: 'password_too_short' };
+  }
+  if (Buffer.byteLength(value, 'utf8') > PASSWORD_MAX_BYTES) {
+    return { ok: false, error: 'password_too_long' };
+  }
   return { ok: true };
 }
 
@@ -301,7 +433,10 @@ export const LINK_ICONS = new Set([
 ]);
 
 export function checkIcon(value) {
-  return LINK_ICONS.has(value) ? value : 'link';
+  if (LINK_ICONS.has(value)) {
+    return value;
+  }
+  return 'link';
 }
 
 // A page left in `pending` (setup never finished) for this long releases its
@@ -319,7 +454,9 @@ export const DORMANT_AFTER_DAYS = 365;
 export const DORMANCY_WARNING_DAYS = 30;
 
 export function isDormant(lastSignInAt, now = Date.now()) {
-  if (!lastSignInAt) return false;
+  if (!lastSignInAt) {
+    return false;
+  }
   return now - new Date(lastSignInAt).getTime() > DORMANT_AFTER_DAYS * 86400_000;
 }
 
@@ -330,5 +467,8 @@ export function dormantFrom(lastSignInAt) {
 export const REPORT_REASONS = new Set(['spam', 'scam', 'malware', 'impersonation', 'abuse', 'adult', 'other']);
 
 export function isUuid(value) {
-  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+  if (typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+    return true;
+  }
+  return false;
 }

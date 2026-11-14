@@ -8,7 +8,7 @@
 // Before 016 is run nothing is held, and renaming answers
 // rename_unavailable, because neither the hold nor the cooldown could be kept.
 
-import { db, T } from './supabase.js';
+import { database, TABLES } from './supabase.js';
 import { missingSchema } from './link-cap.js';
 
 export const SLUG_HOLD_DAYS = 30;
@@ -19,78 +19,119 @@ const daysAgo = (days) => new Date(Date.now() - days * 86400_000).toISOString();
 // The id of the page holding this old name, or null. A name the page holding
 // it has taken back counts as that page's name, not as held.
 export async function slugHeldBy(slug) {
-  const { data, error } = await db()
-    .from(T.slugChanges)
+  const { data, error } = await database()
+    .from(TABLES.slugChanges)
     .select('page_id, created_at')
     .eq('old_slug', slug)
     .gte('created_at', daysAgo(SLUG_HOLD_DAYS))
     .order('created_at', { ascending: false })
     .limit(1);
   if (error) {
-    if (missingSchema(error)) return null;
+    if (missingSchema(error)) {
+      return null;
+    }
     throw error;
   }
-  return data?.[0]?.page_id ?? null;
+  let newest;
+  if (data !== null && data !== undefined) {
+    newest = data[0];
+  }
+  if (newest !== null && newest !== undefined && newest.page_id !== null && newest.page_id !== undefined) {
+    return newest.page_id;
+  }
+  return null;
 }
 
 // Where /<slug> should go now, when slug is a held old name: the page's name
 // now, or null.
 export async function slugMovedTo(slug) {
   const pageId = await slugHeldBy(slug);
-  if (!pageId) return null;
-  const { data, error } = await db().from(T.pages).select('slug, status').eq('id', pageId).maybeSingle();
-  if (error) throw error;
-  if (!data || data.status === 'pending' || data.slug === slug) return null;
+  if (!pageId) {
+    return null;
+  }
+  const { data, error } = await database().from(TABLES.pages).select('slug, status').eq('id', pageId).maybeSingle();
+  if (error) {
+    throw error;
+  }
+  if (!data || data.status === 'pending' || data.slug === slug) {
+    return null;
+  }
   return data.slug;
 }
 
 // The page's latest rename, as { oldSlug, newSlug, at }, or null. Throws
 // { code: 'rename_unavailable' } before migration 016 is run.
 export async function lastRename(pageId) {
-  const { data, error } = await db()
-    .from(T.slugChanges)
+  const { data, error } = await database()
+    .from(TABLES.slugChanges)
     .select('old_slug, new_slug, created_at')
     .eq('page_id', pageId)
     .order('created_at', { ascending: false })
     .limit(1);
   if (error) {
-    if (missingSchema(error)) throw Object.assign(new Error('rename_unavailable'), { code: 'rename_unavailable' });
+    if (missingSchema(error)) {
+      throw Object.assign(new Error('rename_unavailable'), { code: 'rename_unavailable' });
+    }
     throw error;
   }
-  const row = data?.[0];
-  return row ? { oldSlug: row.old_slug, newSlug: row.new_slug, at: row.created_at } : null;
+  let row;
+  if (data !== null && data !== undefined) {
+    row = data[0];
+  }
+  if (!row) {
+    return null;
+  }
+  return { oldSlug: row.old_slug, newSlug: row.new_slug, at: row.created_at };
 }
 
 // When the page may be renamed again, as an ISO date, or null for now.
 export function nextRenameAt(last) {
-  if (!last) return null;
+  if (!last) {
+    return null;
+  }
   const next = new Date(last.at).getTime() + RENAME_COOLDOWN_DAYS * 86400_000;
-  return next > Date.now() ? new Date(next).toISOString() : null;
+  if (next > Date.now()) {
+    return new Date(next).toISOString();
+  }
+  return null;
 }
 
 export async function recordRename({ pageId, oldSlug, newSlug, neededReview }) {
-  const { error } = await db()
-    .from(T.slugChanges)
+  const { error } = await database()
+    .from(TABLES.slugChanges)
     .insert({ page_id: pageId, old_slug: oldSlug, new_slug: newSlug, needed_review: neededReview });
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
 }
 
 // For staff: each page's latest previous name, as Map(pageId -> { slug, at }).
 // Empty before migration 016 is run.
 export async function previousSlugs(pageIds) {
   const result = new Map();
-  if (pageIds.length === 0) return result;
-  const { data, error } = await db()
-    .from(T.slugChanges)
+  if (pageIds.length === 0) {
+    return result;
+  }
+  const { data, error } = await database()
+    .from(TABLES.slugChanges)
     .select('page_id, old_slug, created_at')
     .in('page_id', pageIds)
     .order('created_at', { ascending: false });
   if (error) {
-    if (missingSchema(error)) return result;
+    if (missingSchema(error)) {
+      return result;
+    }
     throw error;
   }
-  for (const row of data ?? []) {
-    if (!result.has(row.page_id)) result.set(row.page_id, { slug: row.old_slug, at: row.created_at });
+  let rows = [];
+  if (data !== null && data !== undefined) {
+    rows = data;
+  }
+  // Newest first, so the first row seen for a page is its latest rename.
+  for (const row of rows) {
+    if (!result.has(row.page_id)) {
+      result.set(row.page_id, { slug: row.old_slug, at: row.created_at });
+    }
   }
   return result;
 }
@@ -104,13 +145,24 @@ export async function ownerRenameState(pageId) {
   try {
     last = await lastRename(pageId);
   } catch (cause) {
-    if (cause.code === 'rename_unavailable') return { available: false, nextAt: null, previous: null };
+    if (cause.code === 'rename_unavailable') {
+      return { available: false, nextAt: null, previous: null };
+    }
     throw cause;
   }
-  const heldUntil = last ? new Date(new Date(last.at).getTime() + SLUG_HOLD_DAYS * 86400_000) : null;
+  let heldUntil = null;
+  if (last) {
+    heldUntil = new Date(new Date(last.at).getTime() + SLUG_HOLD_DAYS * 86400_000);
+  }
+  const nextAt = nextRenameAt(last);
+  // The old name, while it is still held for the page.
+  let previous = null;
+  if (heldUntil && heldUntil.getTime() > Date.now()) {
+    previous = { slug: last.oldSlug, heldUntil: heldUntil.toISOString() };
+  }
   return {
     available: true,
-    nextAt: nextRenameAt(last),
-    previous: heldUntil && heldUntil.getTime() > Date.now() ? { slug: last.oldSlug, heldUntil: heldUntil.toISOString() } : null,
+    nextAt,
+    previous,
   };
 }

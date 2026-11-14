@@ -2,9 +2,9 @@
 
 import '../app.js';
 import '../visitor.js';
-import { t, onChange, getLocale } from '../../assets/i18n/i18n.js';
+import { t as translate, onChange, getLocale } from '../../assets/i18n/i18n.js';
 import { api, post } from '../api.js';
-import { openModal, closeModal, withBusy, toast, copyText, el, formatNumber, formatDate, errorText, setBusy } from '../ui.js';
+import { openModal, closeModal, withBusy, toast, copyText, createElement, formatNumber, formatDate, errorText, setBusy } from '../ui.js';
 import { icon, iconNode, ICON_CATEGORIES, brandTitle, guessIcon } from '../icons.js';
 import { PLATFORMS, PLATFORM_CATEGORIES, platformById, matchPlatform, cleanUsername, buildUrl, usernameOk } from '../platforms.js';
 import { qrSvg, downloadQr } from '../qr.js';
@@ -15,11 +15,11 @@ import { editAvatar } from '../avatar-composer.js';
 import { drawColumns, fillBarList, dayLabel } from '../insights.js';
 import { wireSlugCheck, normaliseSlugInput } from '../slug-check.js';
 
-const $ = (id) => document.getElementById(id);
+const byId = (id) => document.getElementById(id);
 let page = null;
 
 // What a platform is called in the current language (platforms.js).
-const platformName = (p) => t(`platform.${p.id}`);
+const platformName = (entry) => translate(`platform.${entry.id}`);
 
 function pageUrl() {
   return `${window.location.origin}/${page.slug}`;
@@ -30,11 +30,11 @@ function pageUrl() {
 // ---------------------------------------------------------------------------
 
 function view(name) {
-  $('editorLoading').hidden = name !== 'loading';
-  $('editorSignedOut').hidden = name !== 'signedOut';
-  $('editorBanned').hidden = name !== 'banned';
-  $('editorReady').hidden = name !== 'ready';
-  $('signOut').hidden = name !== 'ready';
+  byId('editorLoading').hidden = name !== 'loading';
+  byId('editorSignedOut').hidden = name !== 'signedOut';
+  byId('editorBanned').hidden = name !== 'banned';
+  byId('editorReady').hidden = name !== 'ready';
+  byId('signOut').hidden = name !== 'ready';
 }
 
 async function load() {
@@ -45,9 +45,11 @@ async function load() {
     render();
     loadOwnQuote();
   } catch (error) {
-    if (error.code === 'page_banned') view('banned');
-    else if (error.status === 401) view('signedOut');
-    else {
+    if (error.code === 'page_banned') {
+      view('banned');
+    } else if (error.status === 401) {
+      view('signedOut');
+    } else {
       view('signedOut');
       toast(errorText(error));
     }
@@ -55,18 +57,22 @@ async function load() {
 }
 
 function setPage(next) {
-  if (next) page = next;
+  if (next) {
+    page = next;
+  }
   render();
 }
 
 function render() {
-  if (!page) return;
+  if (!page) {
+    return;
+  }
   const url = pageUrl();
-  $('pageUrl').textContent = url.replace(/^https?:\/\//, '');
-  $('pageUrl').href = url;
-  $('viewPage').href = url;
-  $('reviewNotice').hidden = !page.awaitingReview;
-  $('quarantineNotice').hidden = !page.quarantined;
+  byId('pageUrl').textContent = url.replace(/^https?:\/\//, '');
+  byId('pageUrl').href = url;
+  byId('viewPage').href = url;
+  byId('reviewNotice').hidden = !page.awaitingReview;
+  byId('quarantineNotice').hidden = !page.quarantined;
   renderRedirect();
   renderLinks();
   renderProfile();
@@ -84,29 +90,46 @@ const tabs = [...document.querySelectorAll('.tabs [role="tab"]')];
 
 function selectTab(tab, focus = false) {
   for (const other of tabs) {
-    const on = other === tab;
-    other.setAttribute('aria-selected', String(on));
-    other.tabIndex = on ? 0 : -1;
-    $(other.getAttribute('aria-controls')).hidden = !on;
+    const selected = other === tab;
+    other.setAttribute('aria-selected', String(selected));
+    if (selected) {
+      other.tabIndex = 0;
+    } else {
+      other.tabIndex = -1;
+    }
+    byId(other.getAttribute('aria-controls')).hidden = !selected;
   }
-  if (focus) tab.focus();
+  if (focus) {
+    tab.focus();
+  }
   // Stats are fetched when first looked at, not with the page.
-  if (tab.id === 'tab-stats' && !stats) loadStats();
+  if (tab.id === 'tab-stats' && !stats) {
+    loadStats();
+  }
 }
 
-tabs.forEach((tab, i) => {
+// The arrow keys move to the next or previous tab (the other way round in a
+// right-to-left language), wrapping at the ends; Home and End go to the
+// first and last.
+tabs.forEach((tab, index) => {
   tab.addEventListener('click', () => selectTab(tab));
-  tab.addEventListener('keydown', (e) => {
-    const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+  tab.addEventListener('keydown', (event) => {
+    const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
     const rtl = document.documentElement.dir === 'rtl';
     if (step) {
-      e.preventDefault();
-      selectTab(tabs[(i + (rtl ? -step : step) + tabs.length) % tabs.length], true);
-    } else if (e.key === 'Home') {
-      e.preventDefault();
+      event.preventDefault();
+      let direction;
+      if (rtl) {
+        direction = -step;
+      } else {
+        direction = step;
+      }
+      selectTab(tabs[(index + direction + tabs.length) % tabs.length], true);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
       selectTab(tabs[0], true);
-    } else if (e.key === 'End') {
-      e.preventDefault();
+    } else if (event.key === 'End') {
+      event.preventDefault();
       selectTab(tabs[tabs.length - 1], true);
     }
   });
@@ -121,32 +144,55 @@ tabs.forEach((tab, i) => {
 
 let redirectOpen = false;
 
+// Draws the redirect section from page.redirectUrl: the switch, the address
+// field (shown when a redirect is on or the switch was just opened), the state
+// line, the save button's label and the note that links are hidden.
 function renderRedirect() {
   const on = Boolean(page.redirectUrl);
-  const form = $('redirectForm');
-  $('redirectToggle').checked = on || redirectOpen;
-  form.hidden = !(on || redirectOpen);
-  if (on && document.activeElement !== $('redirectUrl')) $('redirectUrl').value = page.redirectUrl;
-  $('redirectState').textContent = on ? t('redirect.on', { url: page.redirectUrl.replace(/^https?:\/\//, '') }) : t('redirect.off');
-  $('redirectSave').querySelector('span').textContent = t(on ? 'redirect.update' : 'redirect.save');
-  $('redirectLinksNote').hidden = !on;
+  const form = byId('redirectForm');
+  let showForm = on;
+  if (!on) {
+    showForm = redirectOpen;
+  }
+  byId('redirectToggle').checked = showForm;
+  form.hidden = !showForm;
+  if (on && document.activeElement !== byId('redirectUrl')) {
+    byId('redirectUrl').value = page.redirectUrl;
+  }
+  let stateText;
+  if (on) {
+    stateText = translate('redirect.on', { url: page.redirectUrl.replace(/^https?:\/\//, '') });
+  } else {
+    stateText = translate('redirect.off');
+  }
+  byId('redirectState').textContent = stateText;
+  let saveKey;
+  if (on) {
+    saveKey = 'redirect.update';
+  } else {
+    saveKey = 'redirect.save';
+  }
+  byId('redirectSave').querySelector('span').textContent = translate(saveKey);
+  byId('redirectLinksNote').hidden = !on;
 }
 
-$('redirectToggle').addEventListener('change', (e) => {
-  $('redirectError').textContent = '';
-  if (e.target.checked) {
+byId('redirectToggle').addEventListener('change', (event) => {
+  byId('redirectError').textContent = '';
+  if (event.target.checked) {
     redirectOpen = true;
     renderRedirect();
-    $('redirectUrl').focus();
+    byId('redirectUrl').focus();
     return;
   }
   redirectOpen = false;
-  if (!page.redirectUrl) return renderRedirect();
-  withBusy($('redirectSave'), $('redirectError'), async () => {
+  if (!page.redirectUrl) {
+    return renderRedirect();
+  }
+  withBusy(byId('redirectSave'), byId('redirectError'), async () => {
     try {
       const data = await api('/api/me/page', { method: 'PATCH', body: { redirectUrl: '' } });
       setPage(data.page);
-      toast(t('redirect.turned-off'));
+      toast(translate('redirect.turned-off'));
     } catch (error) {
       renderRedirect();
       throw error;
@@ -154,14 +200,14 @@ $('redirectToggle').addEventListener('change', (e) => {
   });
 });
 
-$('redirectForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  withBusy($('redirectSave'), $('redirectError'), async () => {
-    const data = await api('/api/me/page', { method: 'PATCH', body: { redirectUrl: $('redirectUrl').value } });
+byId('redirectForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  withBusy(byId('redirectSave'), byId('redirectError'), async () => {
+    const data = await api('/api/me/page', { method: 'PATCH', body: { redirectUrl: byId('redirectUrl').value } });
     redirectOpen = false;
-    $('redirectUrl').blur();
+    byId('redirectUrl').blur();
     setPage(data.page);
-    toast(t('redirect.turned-on'));
+    toast(translate('redirect.turned-on'));
   });
 });
 
@@ -169,52 +215,86 @@ $('redirectForm').addEventListener('submit', (e) => {
 // Links
 // ---------------------------------------------------------------------------
 
+// One row per link: move up and down (links the GFTV team removed stay at
+// the end and cannot move), its icon, title, address and clicks or the
+// reason it was removed, and the show switch, edit and delete.
 function renderLinks() {
   renderLinkCap();
-  const list = $('linkList');
+  const list = byId('linkList');
   list.replaceChildren();
-  $('linksEmpty').hidden = page.links.length > 0;
-  const movable = page.links.filter((l) => !l.removed);
+  byId('linksEmpty').hidden = page.links.length > 0;
+  const movable = page.links.filter((link) => !link.removed);
 
   page.links.forEach((link) => {
     const index = movable.indexOf(link);
-    const up = el('button', {
-      class: 'icon-btn small', type: 'button', 'aria-label': t('link.move-up', { title: link.title }),
-      disabled: link.removed || index <= 0, onclick: () => move(link, -1),
+    let upDisabled = link.removed;
+    if (!upDisabled) {
+      upDisabled = index <= 0;
+    }
+    const up = createElement('button', {
+      class: 'icon-btn small', type: 'button', 'aria-label': translate('link.move-up', { title: link.title }),
+      disabled: upDisabled, onclick: () => move(link, -1),
     });
     up.innerHTML = icon('arrow-up');
-    const down = el('button', {
-      class: 'icon-btn small', type: 'button', 'aria-label': t('link.move-down', { title: link.title }),
-      disabled: link.removed || index < 0 || index >= movable.length - 1, onclick: () => move(link, 1),
+    let downDisabled = link.removed;
+    if (!downDisabled) {
+      downDisabled = index < 0;
+    }
+    if (!downDisabled) {
+      downDisabled = index >= movable.length - 1;
+    }
+    const down = createElement('button', {
+      class: 'icon-btn small', type: 'button', 'aria-label': translate('link.move-down', { title: link.title }),
+      disabled: downDisabled, onclick: () => move(link, 1),
     });
     down.innerHTML = icon('arrow-down');
 
-    const title = el('div', { class: 'title' }, [iconNode(link.icon), el('span', { text: link.title })]);
-    if (link.removed) title.append(el('span', { class: 'badge danger', text: t('link.removed') }));
-    else if (!link.isActive) title.append(el('span', { class: 'badge', text: t('link.hidden') }));
+    const title = createElement('div', { class: 'title' }, [iconNode(link.icon), createElement('span', { text: link.title })]);
+    if (link.removed) {
+      title.append(createElement('span', { class: 'badge danger', text: translate('link.removed') }));
+    } else if (!link.isActive) {
+      title.append(createElement('span', { class: 'badge', text: translate('link.hidden') }));
+    }
 
-    const meta = el('div', { class: 'meta' }, [
+    let statsText;
+    if (link.removed) {
+      let reason = link.removedReason;
+      if (!reason) {
+        reason = translate('link.removed-no-reason');
+      }
+      statsText = translate('link.removed-reason', { reason });
+    } else {
+      statsText = translate('link.clicks', { count: link.clicks, n: formatNumber(link.clicks) });
+    }
+    const meta = createElement('div', { class: 'meta' }, [
       title,
-      el('div', { class: 'url', text: link.url }),
-      el('div', { class: 'stats', text: link.removed ? t('link.removed-reason', { reason: link.removedReason || t('link.removed-no-reason') }) : t('link.clicks', { count: link.clicks, n: formatNumber(link.clicks) }) }),
+      createElement('div', { class: 'url', text: link.url }),
+      createElement('div', { class: 'stats', text: statsText }),
     ]);
 
-    const controls = el('div', { class: 'controls' });
+    const controls = createElement('div', { class: 'controls' });
     if (!link.removed) {
-      const toggle = el('label', { class: 'switch', title: t('link.show') });
-      const box = el('input', { type: 'checkbox', 'aria-label': t('link.show-named', { title: link.title }) });
+      const toggle = createElement('label', { class: 'switch', title: translate('link.show') });
+      const box = createElement('input', { type: 'checkbox', 'aria-label': translate('link.show-named', { title: link.title }) });
       box.checked = link.isActive;
       box.addEventListener('change', () => saveLink({ id: link.id, isActive: box.checked }, 'PATCH'));
-      toggle.append(box, el('span', { class: 'track', 'aria-hidden': 'true' }));
-      const edit = el('button', { class: 'icon-btn small', type: 'button', 'aria-label': t('link.edit-named', { title: link.title }), onclick: () => openLinkModal(link) });
+      toggle.append(box, createElement('span', { class: 'track', 'aria-hidden': 'true' }));
+      const edit = createElement('button', { class: 'icon-btn small', type: 'button', 'aria-label': translate('link.edit-named', { title: link.title }), onclick: () => openLinkModal(link) });
       edit.innerHTML = icon('edit');
-      const remove = el('button', { class: 'icon-btn small', type: 'button', 'aria-label': t('link.delete-named', { title: link.title }), onclick: () => deleteLink(link) });
+      const remove = createElement('button', { class: 'icon-btn small', type: 'button', 'aria-label': translate('link.delete-named', { title: link.title }), onclick: () => deleteLink(link) });
       remove.innerHTML = icon('trash');
       controls.append(toggle, edit, remove);
     }
 
-    list.append(el('li', { class: `edit-link${link.isActive && !link.removed ? '' : ' off'}` }, [
-      el('div', { class: 'order' }, [up, down]),
+    // A hidden or removed link's row is dimmed.
+    let offClass;
+    if (link.isActive && !link.removed) {
+      offClass = '';
+    } else {
+      offClass = ' off';
+    }
+    list.append(createElement('li', { class: `edit-link${offClass}` }, [
+      createElement('div', { class: 'order' }, [up, down]),
       meta,
       controls,
     ]));
@@ -224,13 +304,19 @@ function renderLinks() {
 // Every answer from /api/me/links is the whole list, and the limit with it.
 function takeLinks(data) {
   page.links = data.links;
-  if (data.linkCap) page.linkCap = data.linkCap;
+  if (data.linkCap) {
+    page.linkCap = data.linkCap;
+  }
 }
 
 // A refusal for being at the limit says what the limit is now, which may be
 // lower than when the editor loaded.
 function noteLimit(error) {
-  if (error?.code === 'too_many_links' && page.linkCap && Number.isInteger(error.detail?.limit)) {
+  if (error !== null && error !== undefined
+    && error.code === 'too_many_links'
+    && page.linkCap
+    && error.detail !== null && error.detail !== undefined
+    && Number.isInteger(error.detail.limit)) {
     page.linkCap.limit = error.detail.limit;
     renderLinks();
   }
@@ -248,25 +334,55 @@ async function saveLink(body, method) {
   }
 }
 
+// Moves a link up (delta -1) or down (delta 1) among the links that aren't
+// removed, saves the new order (removed links keep their place at the end),
+// and keeps keyboard focus on the moved link's arrow.
 async function move(link, delta) {
-  const movable = page.links.filter((l) => !l.removed);
+  const movable = page.links.filter((other) => !other.removed);
   const from = movable.indexOf(link);
   const to = from + delta;
-  if (from < 0 || to < 0 || to >= movable.length) return;
+  if (from < 0 || to < 0 || to >= movable.length) {
+    return;
+  }
   movable.splice(to, 0, movable.splice(from, 1)[0]);
-  const ids = [...movable, ...page.links.filter((l) => l.removed)].map((l) => l.id);
+  const ids = [...movable, ...page.links.filter((other) => other.removed)].map((other) => other.id);
   if (await saveLink({ action: 'reorder', ids }, 'POST')) {
     // Keep focus on the same control of the moved link, so moving twice is
-    // two key presses rather than a hunt.
-    const row = [...$('linkList').children][page.links.findIndex((l) => l.id === link.id)];
-    const target = row?.querySelectorAll('.order .icon-btn')[delta < 0 ? 0 : 1];
-    (target && !target.disabled ? target : row?.querySelector('.icon-btn:not([disabled])'))?.focus();
+    // two key presses rather than a hunt. When that arrow is now disabled
+    // (the link reached the top or bottom), the row's first enabled button
+    // takes it.
+    const row = [...byId('linkList').children][page.links.findIndex((other) => other.id === link.id)];
+    let target;
+    if (row !== null && row !== undefined) {
+      let arrowIndex;
+      if (delta < 0) {
+        arrowIndex = 0;
+      } else {
+        arrowIndex = 1;
+      }
+      target = row.querySelectorAll('.order .icon-btn')[arrowIndex];
+    }
+    let focusTarget;
+    if (target && !target.disabled) {
+      focusTarget = target;
+    } else if (row !== null && row !== undefined) {
+      focusTarget = row.querySelector('.icon-btn:not([disabled])');
+    }
+    if (focusTarget !== null && focusTarget !== undefined) {
+      focusTarget.focus();
+    }
   }
 }
 
 function deleteLink(link) {
-  if (!window.confirm(t('link.delete-confirm', { title: link.title }))) return;
-  saveLink({ id: link.id }, 'DELETE').then((ok) => { if (ok) toast(t('link.deleted')); });
+  if (!window.confirm(translate('link.delete-confirm', { title: link.title }))) {
+    return;
+  }
+  saveLink({ id: link.id }, 'DELETE').then((saved) => {
+    if (saved) {
+      toast(translate('link.deleted'));
+    }
+  });
 }
 
 // The add and edit dialog.
@@ -282,50 +398,77 @@ let format = null;
 let autoTitle = '';
 
 function buildLinkTypes() {
-  const select = $('linkType');
-  select.replaceChildren(el('option', { value: '', text: t('link.type-custom') }));
+  const select = byId('linkType');
+  select.replaceChildren(createElement('option', { value: '', text: translate('link.type-custom') }));
   for (const category of PLATFORM_CATEGORIES) {
-    const group = el('optgroup', { label: t(`link.category-${category}`) });
-    for (const p of PLATFORMS.filter((x) => x.category === category)) {
-      group.append(el('option', { value: p.id, text: platformName(p) }));
+    const group = createElement('optgroup', { label: translate(`link.category-${category}`) });
+    for (const entry of PLATFORMS.filter((item) => item.category === category)) {
+      group.append(createElement('option', { value: entry.id, text: platformName(entry) }));
     }
     select.append(group);
   }
 }
 
+// Every icon, grouped by category, with the chosen one pressed. A service
+// logo is labelled with the service's name.
 function renderIconPicker() {
-  const picker = $('iconPicker');
+  const picker = byId('iconPicker');
   picker.replaceChildren();
   for (const [category, names] of ICON_CATEGORIES) {
-    const heading = el('p', { class: 'icon-category', id: `icons-${category}`, text: t(`icon.category-${category}`) });
-    const grid = el('div', { class: 'icon-picker', role: 'group', 'aria-labelledby': `icons-${category}` });
+    const heading = createElement('p', { class: 'icon-category', id: `icons-${category}`, text: translate(`icon.category-${category}`) });
+    const grid = createElement('div', { class: 'icon-picker', role: 'group', 'aria-labelledby': `icons-${category}` });
     for (const name of names) {
-      const brand = PLATFORMS.find((p) => p.icon === name && brandTitle(name));
-      const label = brand ? platformName(brand) : brandTitle(name) || t(`icon.${name}`);
-      const b = el('button', { type: 'button', 'aria-pressed': String(name === chosenIcon), 'aria-label': label, title: label });
-      b.innerHTML = icon(name);
-      b.addEventListener('click', () => {
+      const brand = PLATFORMS.find((entry) => {
+        if (entry.icon === name && brandTitle(name)) {
+          return true;
+        }
+        return false;
+      });
+      let label;
+      if (brand) {
+        label = platformName(brand);
+      } else {
+        label = brandTitle(name);
+        if (!label) {
+          label = translate(`icon.${name}`);
+        }
+      }
+      const button = createElement('button', { type: 'button', 'aria-pressed': String(name === chosenIcon), 'aria-label': label, title: label });
+      button.innerHTML = icon(name);
+      button.addEventListener('click', () => {
         chosenIcon = name;
         iconTouched = true;
         renderIconPicker();
-        picker.querySelector('[aria-pressed="true"]')?.focus();
+        const pressed = picker.querySelector('[aria-pressed="true"]');
+        if (pressed !== null && pressed !== undefined) {
+          pressed.focus();
+        }
       });
-      grid.append(b);
+      grid.append(button);
     }
     picker.append(heading, grid);
   }
   // Keep the chosen icon in view inside the scrolling box, without moving
   // the dialog itself.
   const chosen = picker.querySelector('[aria-pressed="true"]');
-  if (chosen) picker.scrollTop = chosen.offsetTop - picker.offsetTop - picker.clientHeight / 2 + chosen.offsetHeight / 2;
+  if (chosen) {
+    picker.scrollTop = chosen.offsetTop - picker.offsetTop - picker.clientHeight / 2 + chosen.offsetHeight / 2;
+  }
 }
 
 function setIconFromLink() {
-  if (iconTouched) return;
-  if (platform) chosenIcon = platform.icon;
-  else {
-    const matched = matchPlatform($('linkUrl').value);
-    chosenIcon = matched ? matched.platform.icon : guessIcon($('linkUrl').value);
+  if (iconTouched) {
+    return;
+  }
+  if (platform) {
+    chosenIcon = platform.icon;
+  } else {
+    const matched = matchPlatform(byId('linkUrl').value);
+    if (matched) {
+      chosenIcon = matched.platform.icon;
+    } else {
+      chosenIcon = guessIcon(byId('linkUrl').value);
+    }
   }
   renderIconPicker();
 }
@@ -333,49 +476,73 @@ function setIconFromLink() {
 // The username field's start, end, example and the address it makes.
 function renderPlatformFields() {
   const isPlatform = Boolean(platform);
-  $('linkPlatformFields').hidden = !isPlatform;
-  $('linkUrlField').hidden = isPlatform;
-  if (!isPlatform) return;
+  byId('linkPlatformFields').hidden = !isPlatform;
+  byId('linkUrlField').hidden = isPlatform;
+  if (!isPlatform) {
+    return;
+  }
 
-  const formatSelect = $('linkFormat');
-  formatSelect.replaceChildren(...platform.formats.map((x) => el('option', { value: x.id, text: t(`link.format-${x.id}`) })));
+  const formatSelect = byId('linkFormat');
+  formatSelect.replaceChildren(...platform.formats.map((formatOption) => createElement('option', { value: formatOption.id, text: translate(`link.format-${formatOption.id}`) })));
   formatSelect.value = format.id;
-  $('linkFormatField').hidden = platform.formats.length < 2;
+  byId('linkFormatField').hidden = platform.formats.length < 2;
   // mailto: means nothing to most people, so an email address shows no start.
-  $('linkPrefix').textContent = format.prefix.replace(/^(https:\/\/(www\.)?|mailto:)/, '');
-  $('linkSuffix').textContent = format.suffix;
-  $('linkSuffix').hidden = !format.suffix;
-  $('linkUsernameLabel').setAttribute('data-i18n', format.label);
-  $('linkUsernameLabel').textContent = t(format.label);
-  $('linkUsername').inputMode = format.inputmode;
-  $('linkUsername').placeholder = format.example;
-  $('linkUsernameHint').textContent = t('link.username-hint', { example: format.example });
-  $('linkFormatNote').hidden = !format.note;
-  $('linkFormatNote').textContent = format.note ? t(format.note) : '';
+  byId('linkPrefix').textContent = format.prefix.replace(/^(https:\/\/(www\.)?|mailto:)/, '');
+  byId('linkSuffix').textContent = format.suffix;
+  byId('linkSuffix').hidden = !format.suffix;
+  byId('linkUsernameLabel').setAttribute('data-i18n', format.label);
+  byId('linkUsernameLabel').textContent = translate(format.label);
+  byId('linkUsername').inputMode = format.inputmode;
+  byId('linkUsername').placeholder = format.example;
+  byId('linkUsernameHint').textContent = translate('link.username-hint', { example: format.example });
+  byId('linkFormatNote').hidden = !format.note;
+  let noteText;
+  if (format.note) {
+    noteText = translate(format.note);
+  } else {
+    noteText = '';
+  }
+  byId('linkFormatNote').textContent = noteText;
   updateUrlPreview();
 }
 
 function updateUrlPreview() {
-  if (!platform) return;
-  const username = cleanUsername(format, $('linkUsername').value);
-  const preview = $('linkUrlPreview');
+  if (!platform) {
+    return;
+  }
+  const username = cleanUsername(format, byId('linkUsername').value);
+  const preview = byId('linkUrlPreview');
   if (!username) {
     preview.textContent = '';
     return;
   }
-  preview.textContent = usernameOk(format, username)
-    ? t('link.will-open', { url: buildUrl(format, username) })
-    : t(format.invalid, { platform: platformName(platform) });
+  if (usernameOk(format, username)) {
+    preview.textContent = translate('link.will-open', { url: buildUrl(format, username) });
+  } else {
+    preview.textContent = translate(format.invalid, { platform: platformName(platform) });
+  }
   preview.classList.toggle('bad', !usernameOk(format, username));
 }
 
+// The owner picked a link type: a platform (by id) or a custom address.
 function choosePlatform(id, { keepUsername = false } = {}) {
-  const previousName = platform ? platformName(platform) : '';
+  let previousName;
+  if (platform) {
+    previousName = platformName(platform);
+  } else {
+    previousName = '';
+  }
   platform = platformById(id);
-  format = platform ? platform.formats[0] : null;
-  if (!keepUsername) $('linkUsername').value = '';
+  if (platform) {
+    format = platform.formats[0];
+  } else {
+    format = null;
+  }
+  if (!keepUsername) {
+    byId('linkUsername').value = '';
+  }
   // Fill the title with the platform's name, unless the owner wrote their own.
-  const title = $('linkTitle');
+  const title = byId('linkTitle');
   if (platform && (!title.value || title.value === previousName || title.value === autoTitle)) {
     title.value = platformName(platform);
     autoTitle = platformName(platform);
@@ -384,64 +551,126 @@ function choosePlatform(id, { keepUsername = false } = {}) {
   setIconFromLink();
 }
 
+// Open the dialog empty to add a link, or filled in to edit one.
 function openLinkModal(link = null) {
   editing = link;
   buildLinkTypes();
-  $('linkModalTitle').textContent = t(link ? 'link.edit-title' : 'link.add-title');
-  $('linkTitle').value = link ? link.title : '';
-  $('linkUrl').value = link ? link.url : '';
-  $('linkUsername').value = '';
-  chosenIcon = link ? link.icon : 'link';
+  let titleKey;
+  if (link) {
+    titleKey = 'link.edit-title';
+  } else {
+    titleKey = 'link.add-title';
+  }
+  byId('linkModalTitle').textContent = translate(titleKey);
+  let titleValue;
+  if (link) {
+    titleValue = link.title;
+  } else {
+    titleValue = '';
+  }
+  byId('linkTitle').value = titleValue;
+  let urlValue;
+  if (link) {
+    urlValue = link.url;
+  } else {
+    urlValue = '';
+  }
+  byId('linkUrl').value = urlValue;
+  byId('linkUsername').value = '';
+  if (link) {
+    chosenIcon = link.icon;
+  } else {
+    chosenIcon = 'link';
+  }
   iconTouched = Boolean(link);
   autoTitle = '';
-  $('linkError').textContent = '';
+  byId('linkError').textContent = '';
 
   // An existing link to a known platform opens as that platform, with its
   // username, so changing it means typing only the name again.
-  const matched = link ? matchPlatform(link.url) : null;
-  platform = matched ? matched.platform : null;
-  format = matched ? matched.format : null;
-  $('linkType').value = platform ? platform.id : '';
-  if (matched) $('linkUsername').value = matched.username;
+  let matched;
+  if (link) {
+    matched = matchPlatform(link.url);
+  } else {
+    matched = null;
+  }
+  if (matched) {
+    platform = matched.platform;
+  } else {
+    platform = null;
+  }
+  if (matched) {
+    format = matched.format;
+  } else {
+    format = null;
+  }
+  let typeValue;
+  if (platform) {
+    typeValue = platform.id;
+  } else {
+    typeValue = '';
+  }
+  byId('linkType').value = typeValue;
+  if (matched) {
+    byId('linkUsername').value = matched.username;
+  }
   renderPlatformFields();
   renderIconPicker();
-  openModal('linkModal', { initialFocus: $('linkType') });
+  openModal('linkModal', { initialFocus: byId('linkType') });
 }
 
-$('addLink').addEventListener('click', () => openLinkModal());
-$('linkType').addEventListener('change', (e) => choosePlatform(e.target.value));
-$('linkFormat').addEventListener('change', (e) => {
-  format = platform.formats.find((x) => x.id === e.target.value) || platform.formats[0];
+byId('addLink').addEventListener('click', () => openLinkModal());
+byId('linkType').addEventListener('change', (event) => choosePlatform(event.target.value));
+byId('linkFormat').addEventListener('change', (event) => {
+  let chosenFormat = platform.formats.find((formatOption) => formatOption.id === event.target.value);
+  if (!chosenFormat) {
+    chosenFormat = platform.formats[0];
+  }
+  format = chosenFormat;
   renderPlatformFields();
 });
-$('linkUsername').addEventListener('input', updateUrlPreview);
+byId('linkUsername').addEventListener('input', updateUrlPreview);
 // A whole address pasted into the username field is cut down to the name.
-$('linkUsername').addEventListener('change', () => {
-  if (platform) $('linkUsername').value = cleanUsername(format, $('linkUsername').value);
+byId('linkUsername').addEventListener('change', () => {
+  if (platform) {
+    byId('linkUsername').value = cleanUsername(format, byId('linkUsername').value);
+  }
   updateUrlPreview();
 });
-$('linkUrl').addEventListener('input', setIconFromLink);
+byId('linkUrl').addEventListener('input', setIconFromLink);
 
-$('linkForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  let url = $('linkUrl').value;
+// Save the dialog. A platform link's address is built from the username,
+// which has to fit the platform's format first. An empty title becomes the
+// platform's name.
+byId('linkForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  let url = byId('linkUrl').value;
   if (platform) {
-    const username = cleanUsername(format, $('linkUsername').value);
+    const username = cleanUsername(format, byId('linkUsername').value);
     if (!usernameOk(format, username)) {
-      $('linkError').textContent = t(format.invalid, { platform: platformName(platform) });
-      $('linkUsername').focus();
+      byId('linkError').textContent = translate(format.invalid, { platform: platformName(platform) });
+      byId('linkUsername').focus();
       return;
     }
     url = buildUrl(format, username);
   }
-  const title = $('linkTitle').value.trim() || (platform ? platformName(platform) : '');
-  withBusy($('linkSave'), $('linkError'), async () => {
+  let title = byId('linkTitle').value.trim();
+  if (!title) {
+    if (platform) {
+      title = platformName(platform);
+    } else {
+      title = '';
+    }
+  }
+  withBusy(byId('linkSave'), byId('linkError'), async () => {
     const body = { title, url, icon: chosenIcon };
     let data;
     try {
-      data = editing
-        ? await api('/api/me/links', { method: 'PATCH', body: { id: editing.id, ...body } })
-        : await post('/api/me/links', body);
+      if (editing) {
+        data = await api('/api/me/links', { method: 'PATCH', body: { id: editing.id, ...body } });
+      } else {
+        data = await post('/api/me/links', body);
+      }
     } catch (error) {
       noteLimit(error);
       throw error;
@@ -449,7 +678,13 @@ $('linkForm').addEventListener('submit', (e) => {
     takeLinks(data);
     renderLinks();
     closeModal('linkModal');
-    toast(t(editing ? 'link.saved' : 'link.added'));
+    let doneKey;
+    if (editing) {
+      doneKey = 'link.saved';
+    } else {
+      doneKey = 'link.added';
+    }
+    toast(translate(doneKey));
   });
 });
 
@@ -466,48 +701,91 @@ $('linkForm').addEventListener('submit', (e) => {
 const MAX_LINK_CAP = 200;
 
 function linksInUse() {
-  return page.links.filter((l) => !l.removed).length;
+  return page.links.filter((link) => !link.removed).length;
 }
 
 // A decline can come with a smaller raise (granted), which reads differently.
-function capRequestText(r) {
-  const key = r.status === 'declined' && r.granted ? 'compromise' : r.status;
-  const text = t(`link-cap.status-${key}`, {
-    requested: formatNumber(r.requested),
-    granted: formatNumber(r.granted ?? 0),
-    when: formatDate(r.sentAt),
+function capRequestText(request) {
+  let key;
+  if (request.status === 'declined' && request.granted) {
+    key = 'compromise';
+  } else {
+    key = request.status;
+  }
+  let granted = request.granted;
+  if (granted === null || granted === undefined) {
+    granted = 0;
+  }
+  const text = translate(`link-cap.status-${key}`, {
+    requested: formatNumber(request.requested),
+    granted: formatNumber(granted),
+    when: formatDate(request.sentAt),
   });
-  return r.note ? `${text} ${t('link-cap.note', { note: r.note })}` : text;
+  if (request.note) {
+    return `${text} ${translate('link-cap.note', { note: request.note })}`;
+  }
+  return text;
 }
 
+// The limit, how much of it is used, and the request for more: the form to
+// ask, or the request waiting for an answer, or the last answer.
 function renderLinkCap() {
   const cap = page.linkCap;
-  const box = $('capRequestBox');
+  const box = byId('capRequestBox');
   if (!cap) {
-    $('linkCapUsage').textContent = '';
-    $('linkCapNotice').textContent = '';
-    $('addLink').disabled = false;
+    byId('linkCapUsage').textContent = '';
+    byId('linkCapNotice').textContent = '';
+    byId('addLink').disabled = false;
     box.hidden = true;
     return;
   }
   const used = linksInUse();
   const numbers = { count: cap.limit, used: formatNumber(used), limit: formatNumber(cap.limit) };
-  $('linkCapUsage').textContent = t('link-cap.usage', numbers);
-  $('linkCapNotice').textContent = used > cap.limit ? t('link-cap.over', numbers) : used === cap.limit ? t('link-cap.full') : '';
-  $('addLink').disabled = used >= cap.limit;
+  byId('linkCapUsage').textContent = translate('link-cap.usage', numbers);
+  let notice;
+  if (used > cap.limit) {
+    notice = translate('link-cap.over', numbers);
+  } else if (used === cap.limit) {
+    notice = translate('link-cap.full');
+  } else {
+    notice = '';
+  }
+  byId('linkCapNotice').textContent = notice;
+  byId('addLink').disabled = used >= cap.limit;
 
   const request = page.linkCapRequest;
-  const pending = request?.status === 'pending';
+  // The request's status, or undefined when there is no request.
+  let requestStatus;
+  if (request !== null && request !== undefined) {
+    requestStatus = request.status;
+  }
+  const requestPending = requestStatus === 'pending';
   const atMost = cap.limit >= MAX_LINK_CAP;
-  box.hidden = atMost && !request;
-  const status = $('capRequestStatus');
-  status.classList.toggle('ok', request?.status === 'approved');
-  status.classList.toggle('warn', request?.status === 'declined' && !request.granted);
-  status.textContent = request ? capRequestText(request) : '';
-  $('capRequestForm').hidden = pending || atMost;
-  $('capWithdrawRow').hidden = !pending;
-  $('capRequested').min = String(Math.min(cap.limit + 1, MAX_LINK_CAP));
-  $('capReasonCount').textContent = t('field.bio-count', { used: [...$('capReason').value].length, max: 500 });
+  let hideBox = false;
+  if (atMost && !request) {
+    hideBox = true;
+  }
+  box.hidden = hideBox;
+  const status = byId('capRequestStatus');
+  status.classList.toggle('ok', requestStatus === 'approved');
+  let declinedOutright = false;
+  if (requestStatus === 'declined' && !request.granted) {
+    declinedOutright = true;
+  }
+  status.classList.toggle('warn', declinedOutright);
+  if (request) {
+    status.textContent = capRequestText(request);
+  } else {
+    status.textContent = '';
+  }
+  let hideForm = requestPending;
+  if (!requestPending) {
+    hideForm = atMost;
+  }
+  byId('capRequestForm').hidden = hideForm;
+  byId('capWithdrawRow').hidden = !requestPending;
+  byId('capRequested').min = String(Math.min(cap.limit + 1, MAX_LINK_CAP));
+  byId('capReasonCount').textContent = translate('field.bio-count', { used: [...byId('capReason').value].length, max: 500 });
 }
 
 function takeCap(data) {
@@ -516,22 +794,24 @@ function takeCap(data) {
   renderLinks();
 }
 
-$('capReason').addEventListener('input', renderLinkCap);
-$('capRequestForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  withBusy($('capRequestSend'), $('capRequestError'), async () => {
-    takeCap(await post('/api/me/link-cap', { requested: $('capRequested').value, reason: $('capReason').value }));
-    $('capRequested').value = '';
-    $('capReason').value = '';
+byId('capReason').addEventListener('input', renderLinkCap);
+byId('capRequestForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  withBusy(byId('capRequestSend'), byId('capRequestError'), async () => {
+    takeCap(await post('/api/me/link-cap', { requested: byId('capRequested').value, reason: byId('capReason').value }));
+    byId('capRequested').value = '';
+    byId('capReason').value = '';
     renderLinkCap();
-    toast(t('link-cap.sent'));
+    toast(translate('link-cap.sent'));
   });
 });
-$('capRequestWithdraw').addEventListener('click', () => {
-  if (!window.confirm(t('link-cap.withdraw-confirm'))) return;
-  withBusy($('capRequestWithdraw'), $('capRequestError'), async () => {
+byId('capRequestWithdraw').addEventListener('click', () => {
+  if (!window.confirm(translate('link-cap.withdraw-confirm'))) {
+    return;
+  }
+  withBusy(byId('capRequestWithdraw'), byId('capRequestError'), async () => {
     takeCap(await api('/api/me/link-cap', { method: 'DELETE', body: {} }));
-    toast(t('link-cap.withdrawn'));
+    toast(translate('link-cap.withdrawn'));
   });
 });
 
@@ -539,42 +819,64 @@ $('capRequestWithdraw').addEventListener('click', () => {
 // Profile
 // ---------------------------------------------------------------------------
 
+// The name and bio fields (left alone while the owner is typing in them),
+// the picture, and its buttons.
 function renderProfile() {
-  if (document.activeElement !== $('displayName')) $('displayName').value = page.displayName;
-  if (document.activeElement !== $('bio')) $('bio').value = page.bio;
-  $('displayName').placeholder = page.slug;
+  if (document.activeElement !== byId('displayName')) {
+    byId('displayName').value = page.displayName;
+  }
+  if (document.activeElement !== byId('bio')) {
+    byId('bio').value = page.bio;
+  }
+  byId('displayName').placeholder = page.slug;
   updateBioCount();
-  fillAvatar($('avatarPreview'), page.avatarUrl, page.displayName || page.slug);
-  $('avatarRemove').hidden = !page.avatarUrl;
-  $('avatarPickLabel').textContent = t(page.avatarUrl ? 'avatar.change' : 'avatar.upload');
+  let name = page.displayName;
+  if (!name) {
+    name = page.slug;
+  }
+  fillAvatar(byId('avatarPreview'), page.avatarUrl, name);
+  byId('avatarRemove').hidden = !page.avatarUrl;
+  let pickKey;
+  if (page.avatarUrl) {
+    pickKey = 'avatar.change';
+  } else {
+    pickKey = 'avatar.upload';
+  }
+  byId('avatarPickLabel').textContent = translate(pickKey);
 }
 
 // Picking a file opens the picture editor (js/avatar-composer.js), where it
 // is framed, optionally cut out, and only then uploaded.
-$('avatarFile').addEventListener('change', async () => {
-  const input = $('avatarFile');
-  const file = input.files && input.files[0];
+byId('avatarFile').addEventListener('change', async () => {
+  const input = byId('avatarFile');
+  const files = input.files;
+  let file = files;
+  if (files) {
+    file = files[0];
+  }
   input.value = '';
-  if (!file) return;
-  $('avatarError').textContent = '';
+  if (!file) {
+    return;
+  }
+  byId('avatarError').textContent = '';
   try {
     await editAvatar(file, async (image) => {
       const data = await post('/api/me/avatar', { image });
       page = data.page;
       renderProfile();
-      toast(t('avatar.updated'));
+      toast(translate('avatar.updated'));
     });
   } catch (error) {
-    $('avatarError').textContent = errorText(error);
+    byId('avatarError').textContent = errorText(error);
   }
 });
 
-$('avatarRemove').addEventListener('click', () => {
-  withBusy($('avatarRemove'), $('avatarError'), async () => {
+byId('avatarRemove').addEventListener('click', () => {
+  withBusy(byId('avatarRemove'), byId('avatarError'), async () => {
     const data = await api('/api/me/avatar', { method: 'DELETE', body: {} });
     page = data.page;
     renderProfile();
-    toast(t('avatar.removed'));
+    toast(translate('avatar.removed'));
   });
 });
 
@@ -582,15 +884,30 @@ $('avatarRemove').addEventListener('click', () => {
 // see whether staff put it up, withdraw.
 let ownQuote = null;
 
+// The testimonial's status (waiting, up or declined), the send or replace
+// button, withdraw, and the length counter.
 function renderOwnQuote() {
-  const status = $('ownQuoteStatus');
+  const status = byId('ownQuoteStatus');
   status.hidden = !ownQuote;
-  status.classList.toggle('ok', ownQuote?.status === 'approved');
-  status.classList.toggle('warn', ownQuote?.status === 'declined');
-  if (ownQuote) status.textContent = t(`testimonial.status-${ownQuote.status}`, { quote: ownQuote.quote });
-  $('ownQuoteWithdraw').hidden = !ownQuote;
-  $('ownQuoteSend').querySelector('span:last-child').textContent = t(ownQuote ? 'testimonial.replace' : 'testimonial.send');
-  $('ownQuoteCount').textContent = t('field.bio-count', { used: [...$('ownQuote').value].length, max: 280 });
+  // The testimonial's status, or undefined when there is none.
+  let quoteStatus;
+  if (ownQuote !== null && ownQuote !== undefined) {
+    quoteStatus = ownQuote.status;
+  }
+  status.classList.toggle('ok', quoteStatus === 'approved');
+  status.classList.toggle('warn', quoteStatus === 'declined');
+  if (ownQuote) {
+    status.textContent = translate(`testimonial.status-${ownQuote.status}`, { quote: ownQuote.quote });
+  }
+  byId('ownQuoteWithdraw').hidden = !ownQuote;
+  let sendKey;
+  if (ownQuote) {
+    sendKey = 'testimonial.replace';
+  } else {
+    sendKey = 'testimonial.send';
+  }
+  byId('ownQuoteSend').querySelector('span:last-child').textContent = translate(sendKey);
+  byId('ownQuoteCount').textContent = translate('field.bio-count', { used: [...byId('ownQuote').value].length, max: 280 });
 }
 
 async function loadOwnQuote() {
@@ -602,39 +919,41 @@ async function loadOwnQuote() {
   renderOwnQuote();
 }
 
-$('ownQuote').addEventListener('input', renderOwnQuote);
-$('ownQuoteForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  withBusy($('ownQuoteSend'), $('ownQuoteError'), async () => {
-    const data = await post('/api/me/testimonial', { quote: $('ownQuote').value, consent: $('ownQuoteConsent').checked });
+byId('ownQuote').addEventListener('input', renderOwnQuote);
+byId('ownQuoteForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  withBusy(byId('ownQuoteSend'), byId('ownQuoteError'), async () => {
+    const data = await post('/api/me/testimonial', { quote: byId('ownQuote').value, consent: byId('ownQuoteConsent').checked });
     ownQuote = data.testimonial;
-    $('ownQuote').value = '';
-    $('ownQuoteConsent').checked = false;
+    byId('ownQuote').value = '';
+    byId('ownQuoteConsent').checked = false;
     renderOwnQuote();
-    toast(t('testimonial.sent'));
+    toast(translate('testimonial.sent'));
   });
 });
-$('ownQuoteWithdraw').addEventListener('click', () => {
-  if (!window.confirm(t('testimonial.withdraw-confirm'))) return;
-  withBusy($('ownQuoteWithdraw'), $('ownQuoteError'), async () => {
+byId('ownQuoteWithdraw').addEventListener('click', () => {
+  if (!window.confirm(translate('testimonial.withdraw-confirm'))) {
+    return;
+  }
+  withBusy(byId('ownQuoteWithdraw'), byId('ownQuoteError'), async () => {
     ownQuote = (await api('/api/me/testimonial', { method: 'DELETE', body: {} })).testimonial;
     renderOwnQuote();
-    toast(t('testimonial.withdrawn'));
+    toast(translate('testimonial.withdrawn'));
   });
 });
 
 function updateBioCount() {
-  $('bioCount').textContent = t('field.bio-count', { used: [...$('bio').value].length, max: 512 });
+  byId('bioCount').textContent = translate('field.bio-count', { used: [...byId('bio').value].length, max: 512 });
 }
-$('bio').addEventListener('input', updateBioCount);
+byId('bio').addEventListener('input', updateBioCount);
 
-$('profileForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  withBusy($('profileSave'), $('profileError'), async () => {
-    const data = await api('/api/me/page', { method: 'PATCH', body: { displayName: $('displayName').value, bio: $('bio').value } });
+byId('profileForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  withBusy(byId('profileSave'), byId('profileError'), async () => {
+    const data = await api('/api/me/page', { method: 'PATCH', body: { displayName: byId('displayName').value, bio: byId('bio').value } });
     page = data.page;
     renderProfile();
-    toast(t('common.saved'));
+    toast(translate('common.saved'));
   });
 });
 
@@ -643,14 +962,18 @@ $('profileForm').addEventListener('submit', (e) => {
 // ---------------------------------------------------------------------------
 
 function renderShare() {
-  $('shareQr').innerHTML = qrSvg(pageUrl(), t('share.qr-label', { slug: page.slug }));
-  $('shareNative').hidden = typeof navigator.share !== 'function';
+  byId('shareQr').innerHTML = qrSvg(pageUrl(), translate('share.qr-label', { slug: page.slug }));
+  byId('shareNative').hidden = typeof navigator.share !== 'function';
 }
 
-$('shareCopy').addEventListener('click', () => copyText(pageUrl()));
-$('shareDownload').addEventListener('click', () => downloadQr(pageUrl(), `onelink-${page.slug}-qr.png`));
-$('shareNative').addEventListener('click', () => {
-  navigator.share({ title: page.displayName || page.slug, url: pageUrl() }).catch(() => {});
+byId('shareCopy').addEventListener('click', () => copyText(pageUrl()));
+byId('shareDownload').addEventListener('click', () => downloadQr(pageUrl(), `onelink-${page.slug}-qr.png`));
+byId('shareNative').addEventListener('click', () => {
+  let title = page.displayName;
+  if (!title) {
+    title = page.slug;
+  }
+  navigator.share({ title, url: pageUrl() }).catch(() => {});
 });
 
 // ---------------------------------------------------------------------------
@@ -662,9 +985,11 @@ let statsDays = 30;
 let statsSeries = 'visits';
 
 async function loadStats() {
-  const tiles = $('statsTiles');
+  const tiles = byId('statsTiles');
   tiles.setAttribute('aria-busy', 'true');
-  if (!stats) tiles.replaceChildren(...Array.from({ length: 4 }, () => el('div', { class: 'skeleton delayed stat-tile', 'aria-hidden': 'true' })));
+  if (!stats) {
+    tiles.replaceChildren(...Array.from({ length: 4 }, () => createElement('div', { class: 'skeleton delayed stat-tile', 'aria-hidden': 'true' })));
+  }
   try {
     stats = await api(`/api/me/stats?days=${statsDays}`);
     renderStats();
@@ -676,9 +1001,15 @@ async function loadStats() {
 }
 
 function countryName(code) {
-  if (code === 'XX') return t('stats.unknown');
+  if (code === 'XX') {
+    return translate('stats.unknown');
+  }
   try {
-    return new Intl.DisplayNames([getLocale()], { type: 'region' }).of(code) || code;
+    const name = new Intl.DisplayNames([getLocale()], { type: 'region' }).of(code);
+    if (name) {
+      return name;
+    }
+    return code;
   } catch {
     return code;
   }
@@ -687,10 +1018,24 @@ function countryName(code) {
 // words: the value is a name (a country), not a number, so it is set smaller
 // and wraps between words rather than through them.
 function tile(label, value, note, { words = false } = {}) {
-  return el('div', { class: 'stat-tile' }, [
-    el('div', { class: words ? 'value words' : 'value', text: value }),
-    el('div', { class: 'label', text: label }),
-    note ? el('div', { class: 'note', text: note }) : null,
+  let valueClass;
+  if (words) {
+    valueClass = 'value words';
+  } else {
+    valueClass = 'value';
+  }
+  const valueElement = createElement('div', { class: valueClass, text: value });
+  const labelElement = createElement('div', { class: 'label', text: label });
+  let noteElement;
+  if (note) {
+    noteElement = createElement('div', { class: 'note', text: note });
+  } else {
+    noteElement = null;
+  }
+  return createElement('div', { class: 'stat-tile' }, [
+    valueElement,
+    labelElement,
+    noteElement,
   ]);
 }
 
@@ -702,7 +1047,7 @@ const FIT_MIN = 0.7; // of the starting size
 function fitWords(value) {
   const tile = value.closest('.stat-tile');
   const grid = tile.parentElement;
-  grid.querySelectorAll('.stat-tile.wide').forEach((x) => x.classList.remove('wide'));
+  grid.querySelectorAll('.stat-tile.wide').forEach((wideTile) => wideTile.classList.remove('wide'));
   value.style.fontSize = '';
   const start = parseFloat(getComputedStyle(value).fontSize);
   const overflows = () => value.scrollWidth > value.clientWidth + 1;
@@ -713,109 +1058,217 @@ function fitWords(value) {
     }
   };
   shrink();
-  if (!overflows()) return;
+  if (!overflows()) {
+    return;
+  }
   tile.classList.add('wide');
   // In two columns the tile before it would be left alone in its row, so it
   // takes the whole row too.
-  if (getComputedStyle(grid).gridTemplateColumns.split(' ').length === 2) tile.previousElementSibling?.classList.add('wide');
+  if (getComputedStyle(grid).gridTemplateColumns.split(' ').length === 2) {
+    const before = tile.previousElementSibling;
+    if (before !== null && before !== undefined) {
+      before.classList.add('wide');
+    }
+  }
   value.style.fontSize = '';
   shrink();
 }
 // The site font can arrive after the first render and is wider than the
 // fallback, so fit again once it has.
-document.fonts?.ready.then(() => $('statsTiles').querySelectorAll('.value.words').forEach(fitWords));
-
-function renderStats() {
-  document.querySelectorAll('#statsPeriod [data-days]').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.days) === statsDays)));
-  document.querySelectorAll('#statsSeries [data-series]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.series === statsSeries)));
-  if (!stats || !page) return;
-  const { totals } = stats;
-  const rate = totals.visits > 0 ? `${Math.round((totals.clicks / totals.visits) * 100)}%` : '–';
-  const topCountry = stats.countries.find((c) => c.key !== 'XX');
-  const topSource = stats.referrers.find((r) => r.key);
-  $('statsTiles').replaceChildren(
-    tile(t('stats.visits'), formatNumber(totals.visits)),
-    tile(t('stats.clicks'), formatNumber(totals.clicks)),
-    tile(t('stats.click-rate'), rate, t('stats.click-rate-note')),
-    tile(t('stats.top-country'), topCountry ? countryName(topCountry.key) : '–', topSource ? t('stats.top-source', { site: topSource.key }) : null, { words: Boolean(topCountry) }),
-  );
-  $('statsTiles').querySelectorAll('.value.words').forEach(fitWords);
-
-  const series = statsSeries;
-  const title = t(`stats.chart-${series}`, { days: statsDays });
-  $('statsChartTitle').textContent = title;
-  drawColumns($('statsChart'), stats.daily.map((d) => ({ day: d.day, value: d[series] })), {
-    label: title,
-    caption: title,
-    describe: (p) => t(`stats.tip-${series}`, { day: dayLabel(p.day, { weekday: 'short', day: 'numeric', month: 'short' }), count: p.value, n: formatNumber(p.value) }),
-  });
-
-  fillBarList($('statsCountries'), stats.countries.map((c) => ({ label: countryName(c.key), value: c.hits })), t('stats.none'));
-  fillBarList($('statsReferrers'), stats.referrers.map((r) => ({ label: r.key || t('stats.direct'), value: r.hits })), t('stats.none'));
-  fillBarList($('statsDevices'), stats.devices.map((d) => ({ label: t(`stats.device-${d.key}`), value: d.hits })), t('stats.none'));
-  const linked = page.links.filter((l) => !l.removed && l.clicks > 0).sort((a, b) => b.clicks - a.clicks).slice(0, 5);
-  fillBarList($('statsLinks'), linked.map((l) => ({ label: l.title, value: l.clicks })), t('stats.none'));
+const fonts = document.fonts;
+if (fonts !== null && fonts !== undefined) {
+  fonts.ready.then(() => byId('statsTiles').querySelectorAll('.value.words').forEach(fitWords));
 }
 
-$('statsPeriod').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-days]');
-  if (!b || Number(b.dataset.days) === statsDays) return;
-  statsDays = Number(b.dataset.days);
+// The period and series buttons, the four tiles (visits, clicks, click rate,
+// top country with the top source), the daily chart, and the lists of
+// countries, sources, devices and the five most clicked links.
+function renderStats() {
+  document.querySelectorAll('#statsPeriod [data-days]').forEach((button) => button.setAttribute('aria-pressed', String(Number(button.dataset.days) === statsDays)));
+  document.querySelectorAll('#statsSeries [data-series]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.series === statsSeries)));
+  if (!stats || !page) {
+    return;
+  }
+  const { totals } = stats;
+  let rate;
+  if (totals.visits > 0) {
+    rate = `${Math.round((totals.clicks / totals.visits) * 100)}%`;
+  } else {
+    rate = '–';
+  }
+  const topCountry = stats.countries.find((country) => country.key !== 'XX');
+  const topSource = stats.referrers.find((referrer) => referrer.key);
+  let topCountryName;
+  if (topCountry) {
+    topCountryName = countryName(topCountry.key);
+  } else {
+    topCountryName = '–';
+  }
+  let topSourceNote;
+  if (topSource) {
+    topSourceNote = translate('stats.top-source', { site: topSource.key });
+  } else {
+    topSourceNote = null;
+  }
+  byId('statsTiles').replaceChildren(
+    tile(translate('stats.visits'), formatNumber(totals.visits)),
+    tile(translate('stats.clicks'), formatNumber(totals.clicks)),
+    tile(translate('stats.click-rate'), rate, translate('stats.click-rate-note')),
+    tile(translate('stats.top-country'), topCountryName, topSourceNote, { words: Boolean(topCountry) }),
+  );
+  byId('statsTiles').querySelectorAll('.value.words').forEach(fitWords);
+
+  const series = statsSeries;
+  const title = translate(`stats.chart-${series}`, { days: statsDays });
+  byId('statsChartTitle').textContent = title;
+  drawColumns(byId('statsChart'), stats.daily.map((entry) => ({ day: entry.day, value: entry[series] })), {
+    label: title,
+    caption: title,
+    describe: (point) => translate(`stats.tip-${series}`, { day: dayLabel(point.day, { weekday: 'short', day: 'numeric', month: 'short' }), count: point.value, n: formatNumber(point.value) }),
+  });
+
+  fillBarList(byId('statsCountries'), stats.countries.map((country) => ({ label: countryName(country.key), value: country.hits })), translate('stats.none'));
+  fillBarList(byId('statsReferrers'), stats.referrers.map((referrer) => {
+    let label = referrer.key;
+    if (!label) {
+      label = translate('stats.direct');
+    }
+    return { label, value: referrer.hits };
+  }), translate('stats.none'));
+  fillBarList(byId('statsDevices'), stats.devices.map((device) => ({ label: translate(`stats.device-${device.key}`), value: device.hits })), translate('stats.none'));
+  const linked = page.links.filter((link) => {
+    if (!link.removed && link.clicks > 0) {
+      return true;
+    }
+    return false;
+  }).sort((first, second) => second.clicks - first.clicks).slice(0, 5);
+  fillBarList(byId('statsLinks'), linked.map((link) => ({ label: link.title, value: link.clicks })), translate('stats.none'));
+}
+
+byId('statsPeriod').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-days]');
+  if (!button || Number(button.dataset.days) === statsDays) {
+    return;
+  }
+  statsDays = Number(button.dataset.days);
   renderStats();
   loadStats();
 });
-$('statsSeries').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-series]');
-  if (!b) return;
-  statsSeries = b.dataset.series;
+byId('statsSeries').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-series]');
+  if (!button) {
+    return;
+  }
+  statsSeries = button.dataset.series;
   renderStats();
 });
 // Columns are laid out for the chart's width, so a resize redraws them.
-new ResizeObserver(() => { if (stats && !$('panel-stats').hidden) renderStats(); }).observe($('statsChart'));
+new ResizeObserver(() => {
+  if (stats && !byId('panel-stats').hidden) {
+    renderStats();
+  }
+}).observe(byId('statsChart'));
 
 // ---------------------------------------------------------------------------
 // Security
 // ---------------------------------------------------------------------------
 
+// The second factors (authenticator app, passkeys, backup codes), Telegram,
+// how long the page stays live, and the page name. The last second factor
+// cannot be removed.
 function renderSecurity() {
-  const s = page.security;
-  const passkeyCount = s.passkeys.length;
-  const factors = (s.totp ? 1 : 0) + passkeyCount;
+  const security = page.security;
+  const passkeyCount = security.passkeys.length;
+  let totpCount;
+  if (security.totp) {
+    totpCount = 1;
+  } else {
+    totpCount = 0;
+  }
+  const factors = totpCount + passkeyCount;
 
-  $('totpState').textContent = t(s.totp ? 'security.on' : 'security.off');
-  $('totpAdd').hidden = s.totp;
-  $('totpRemove').hidden = !s.totp;
-  $('totpRemove').disabled = factors <= 1;
-  $('totpRemove').title = factors <= 1 ? t('security.last-factor') : '';
+  let totpKey;
+  if (security.totp) {
+    totpKey = 'security.on';
+  } else {
+    totpKey = 'security.off';
+  }
+  byId('totpState').textContent = translate(totpKey);
+  byId('totpAdd').hidden = security.totp;
+  byId('totpRemove').hidden = !security.totp;
+  byId('totpRemove').disabled = factors <= 1;
+  let totpRemoveTitle;
+  if (factors <= 1) {
+    totpRemoveTitle = translate('security.last-factor');
+  } else {
+    totpRemoveTitle = '';
+  }
+  byId('totpRemove').title = totpRemoveTitle;
 
-  $('passkeyState').textContent = t('security.passkey-count', { count: passkeyCount, n: formatNumber(passkeyCount) });
-  $('passkeyAdd').disabled = !passkeysSupported();
-  $('passkeyList').replaceChildren(...s.passkeys.map((key, n) => {
-    const remove = el('button', { class: 'btn btn-small btn-quiet', type: 'button', disabled: factors <= 1, title: factors <= 1 ? t('security.last-factor') : undefined });
-    remove.textContent = t('common.remove');
-    remove.addEventListener('click', () => askPassword((password) => post('/api/me/security', { action: 'passkey-remove', id: key.id, password }), () => toast(t('security.passkey-removed'))));
-    return el('li', {}, [
-      el('div', {}, [
-        el('div', { text: key.label || t('security.passkey-n', { n: n + 1 }) }),
-        el('small', { text: key.lastUsedAt ? t('security.last-used', { when: formatDate(key.lastUsedAt) }) : t('security.added', { when: formatDate(key.createdAt) }) }),
+  byId('passkeyState').textContent = translate('security.passkey-count', { count: passkeyCount, n: formatNumber(passkeyCount) });
+  byId('passkeyAdd').disabled = !passkeysSupported();
+  byId('passkeyList').replaceChildren(...security.passkeys.map((key, keyIndex) => {
+    let removeTitle;
+    if (factors <= 1) {
+      removeTitle = translate('security.last-factor');
+    } else {
+      removeTitle = undefined;
+    }
+    const remove = createElement('button', { class: 'btn btn-small btn-quiet', type: 'button', disabled: factors <= 1, title: removeTitle });
+    remove.textContent = translate('common.remove');
+    remove.addEventListener('click', () => askPassword((password) => post('/api/me/security', { action: 'passkey-remove', id: key.id, password }), () => toast(translate('security.passkey-removed'))));
+    let keyName = key.label;
+    if (!keyName) {
+      keyName = translate('security.passkey-n', { n: keyIndex + 1 });
+    }
+    let usedText;
+    if (key.lastUsedAt) {
+      usedText = translate('security.last-used', { when: formatDate(key.lastUsedAt) });
+    } else {
+      usedText = translate('security.added', { when: formatDate(key.createdAt) });
+    }
+    return createElement('li', {}, [
+      createElement('div', {}, [
+        createElement('div', { text: keyName }),
+        createElement('small', { text: usedText }),
       ]),
       remove,
     ]);
   }));
 
-  $('codesState').textContent = t('security.codes-left', { count: s.backupCodesLeft, n: formatNumber(s.backupCodesLeft) });
-  $('codesState').classList.toggle('warn', s.backupCodesLeft <= 2);
+  byId('codesState').textContent = translate('security.codes-left', { count: security.backupCodesLeft, n: formatNumber(security.backupCodesLeft) });
+  byId('codesState').classList.toggle('warn', security.backupCodesLeft <= 2);
 
-  $('telegramSection').hidden = !s.telegramAvailable && !s.telegram.linked;
-  $('telegramState').textContent = s.telegram.linked
-    ? (s.telegram.username ? t('telegram.linked-as', { username: s.telegram.username }) : t('telegram.linked'))
-    : t('telegram.not-linked');
-  $('telegramLink').hidden = s.telegram.linked || !s.telegramAvailable;
-  $('telegramUnlink').hidden = !s.telegram.linked;
+  let hideTelegram = false;
+  if (!security.telegramAvailable && !security.telegram.linked) {
+    hideTelegram = true;
+  }
+  byId('telegramSection').hidden = hideTelegram;
+  let telegramText;
+  if (security.telegram.linked) {
+    if (security.telegram.username) {
+      telegramText = translate('telegram.linked-as', { username: security.telegram.username });
+    } else {
+      telegramText = translate('telegram.linked');
+    }
+  } else {
+    telegramText = translate('telegram.not-linked');
+  }
+  byId('telegramState').textContent = telegramText;
+  let hideLink = security.telegram.linked;
+  if (!hideLink) {
+    hideLink = !security.telegramAvailable;
+  }
+  byId('telegramLink').hidden = hideLink;
+  byId('telegramUnlink').hidden = !security.telegram.linked;
 
-  $('keepLiveState').textContent = page.dormantFrom
-    ? t('security.keep-live-until', { date: new Intl.DateTimeFormat(getLocale(), { dateStyle: 'long' }).format(new Date(page.dormantFrom)) })
-    : '';
+  let keepLiveText;
+  if (page.dormantFrom) {
+    keepLiveText = translate('security.keep-live-until', { date: new Intl.DateTimeFormat(getLocale(), { dateStyle: 'long' }).format(new Date(page.dormantFrom)) });
+  } else {
+    keepLiveText = '';
+  }
+  byId('keepLiveState').textContent = keepLiveText;
 
   renderRename();
 }
@@ -826,113 +1279,154 @@ function renderSecurity() {
 
 const longDate = (iso) => new Intl.DateTimeFormat(getLocale(), { dateStyle: 'long' }).format(new Date(iso));
 
+// The page name, whether it can be changed yet, and the old name still
+// held for the page.
 function renderRename() {
   const rename = page.rename;
   // Hidden until the server can keep the old name held (migration 016).
-  $('renameSection').hidden = !rename || !rename.available;
-  if (!rename || !rename.available) return;
-  $('renameState').textContent = `links.gftv.asia/${page.slug}`;
-  $('renameOpen').disabled = Boolean(rename.nextAt);
+  let hideRename = false;
+  if (!rename || !rename.available) {
+    hideRename = true;
+  }
+  byId('renameSection').hidden = hideRename;
+  if (!rename || !rename.available) {
+    return;
+  }
+  byId('renameState').textContent = `links.gftv.asia/${page.slug}`;
+  byId('renameOpen').disabled = Boolean(rename.nextAt);
   const notes = [];
-  if (rename.previous) notes.push(t('rename.previous', { slug: rename.previous.slug, date: longDate(rename.previous.heldUntil) }));
-  if (rename.nextAt) notes.push(t('rename.next', { date: longDate(rename.nextAt) }));
-  $('renameNote').textContent = notes.join(' ');
-  $('renameNote').hidden = notes.length === 0;
+  if (rename.previous) {
+    notes.push(translate('rename.previous', { slug: rename.previous.slug, date: longDate(rename.previous.heldUntil) }));
+  }
+  if (rename.nextAt) {
+    notes.push(translate('rename.next', { date: longDate(rename.nextAt) }));
+  }
+  byId('renameNote').textContent = notes.join(' ');
+  byId('renameNote').hidden = notes.length === 0;
 }
 
-const renameCheck = wireSlugCheck($('renameSlug'), $('renameStatus'), {
-  current: () => page && page.slug,
+const renameCheck = wireSlugCheck(byId('renameSlug'), byId('renameStatus'), {
+  current: () => {
+    if (page) {
+      return page.slug;
+    }
+    return page;
+  },
   reviewKey: 'rename.review',
   reviewTone: 'warn',
 });
 
-$('renameOpen').addEventListener('click', () => {
-  $('renameSlug').value = '';
-  $('renameStatus').replaceChildren();
-  $('renameStatus').className = 'field-status';
-  $('renamePassword').value = '';
-  $('renameError').textContent = '';
-  openModal('renameModal', { initialFocus: $('renameSlug') });
+byId('renameOpen').addEventListener('click', () => {
+  byId('renameSlug').value = '';
+  byId('renameStatus').replaceChildren();
+  byId('renameStatus').className = 'field-status';
+  byId('renamePassword').value = '';
+  byId('renameError').textContent = '';
+  openModal('renameModal', { initialFocus: byId('renameSlug') });
 });
 
-$('renameForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const error = $('renameError');
-  const slug = normaliseSlugInput($('renameSlug').value);
-  if (!slug) return void (error.textContent = t('slug.invalid'));
-  if (slug === page.slug) return void (error.textContent = t('error.slug_same'));
+// Change the page name: check the new name here first, then send it with
+// the password.
+byId('renameForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const error = byId('renameError');
+  const slug = normaliseSlugInput(byId('renameSlug').value);
+  if (!slug) {
+    error.textContent = translate('slug.invalid');
+    return;
+  }
+  if (slug === page.slug) {
+    error.textContent = translate('error.slug_same');
+    return;
+  }
   const known = renameCheck();
   // A name that needs approval hides the page until then: say so once more.
-  if (known && known.slug === slug && known.review && !window.confirm(t('rename.review-confirm', { slug }))) return;
-  withBusy($('renameSubmit'), error, async () => {
-    const data = await post('/api/me/security', { action: 'rename', slug, password: $('renamePassword').value });
+  if (known && known.slug === slug && known.review && !window.confirm(translate('rename.review-confirm', { slug }))) {
+    return;
+  }
+  withBusy(byId('renameSubmit'), error, async () => {
+    const data = await post('/api/me/security', { action: 'rename', slug, password: byId('renamePassword').value });
     closeModal('renameModal');
     setPage(data.page);
-    toast(t(data.review ? 'rename.done-review' : 'rename.done', { slug: data.page.slug }));
+    let doneKey;
+    if (data.review) {
+      doneKey = 'rename.done-review';
+    } else {
+      doneKey = 'rename.done';
+    }
+    toast(translate(doneKey, { slug: data.page.slug }));
   });
 });
 
-// Ask for the password, then run fn(password). A wrong password keeps the
-// dialog open with the error; success closes it and hands the answer on.
+// Ask for the password, then call run(password). A wrong password keeps the
+// dialog open with the error; success closes it and hands the answer on to
+// then(answer).
 let pending = null;
-function askPassword(fn, then) {
-  pending = { fn, then };
-  $('confirmPassword').value = '';
-  $('passwordError').textContent = '';
-  openModal('passwordModal', { initialFocus: $('confirmPassword') });
+function askPassword(run, then) {
+  pending = { fn: run, then };
+  byId('confirmPassword').value = '';
+  byId('passwordError').textContent = '';
+  openModal('passwordModal', { initialFocus: byId('confirmPassword') });
 }
 
-$('passwordForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  if (!pending) return;
-  const { fn, then } = pending;
-  withBusy($('passwordSubmit'), $('passwordError'), async () => {
-    const data = await fn($('confirmPassword').value);
+byId('passwordForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (!pending) {
+    return;
+  }
+  const run = pending.fn;
+  const then = pending.then;
+  withBusy(byId('passwordSubmit'), byId('passwordError'), async () => {
+    const data = await run(byId('confirmPassword').value);
     pending = null;
     closeModal('passwordModal');
-    if (data && data.page) setPage(data.page);
-    if (then) await then(data);
+    if (data && data.page) {
+      setPage(data.page);
+    }
+    if (then) {
+      await then(data);
+    }
   });
 });
 
 // Authenticator app
 let totpChallenge = null;
-$('totpAdd').addEventListener('click', () => askPassword(
+byId('totpAdd').addEventListener('click', () => askPassword(
   (password) => post('/api/me/security', { action: 'totp-start', password }),
   (data) => {
     totpChallenge = data.challenge;
-    $('totpQr').innerHTML = qrSvg(data.uri, t('totp.qr-label'));
-    $('totpSecret').textContent = data.secret.replace(/(.{4})/g, '$1 ').trim();
-    $('totpCode').value = '';
-    $('totpError').textContent = '';
-    openModal('totpModal', { initialFocus: $('totpCode') });
+    byId('totpQr').innerHTML = qrSvg(data.uri, translate('totp.qr-label'));
+    byId('totpSecret').textContent = data.secret.replace(/(.{4})/g, '$1 ').trim();
+    byId('totpCode').value = '';
+    byId('totpError').textContent = '';
+    openModal('totpModal', { initialFocus: byId('totpCode') });
   }
 ));
-$('totpForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  withBusy($('totpSubmit'), $('totpError'), async () => {
-    const data = await post('/api/me/security', { action: 'totp-finish', challenge: totpChallenge, code: $('totpCode').value });
+byId('totpForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  withBusy(byId('totpSubmit'), byId('totpError'), async () => {
+    const data = await post('/api/me/security', { action: 'totp-finish', challenge: totpChallenge, code: byId('totpCode').value });
     closeModal('totpModal');
     setPage(data.page);
-    toast(t('security.totp-added'));
+    toast(translate('security.totp-added'));
   });
 });
-$('totpRemove').addEventListener('click', () => askPassword(
+byId('totpRemove').addEventListener('click', () => askPassword(
   (password) => post('/api/me/security', { action: 'totp-remove', password }),
-  () => toast(t('security.totp-removed'))
+  () => toast(translate('security.totp-removed'))
 ));
 
 // Passkeys
-$('passkeyAdd').addEventListener('click', () => askPassword(
+byId('passkeyAdd').addEventListener('click', () => askPassword(
   (password) => post('/api/me/security', { action: 'passkey-options', password }),
   async ({ options }) => {
-    const button = $('passkeyAdd');
+    const button = byId('passkeyAdd');
     setBusy(button, true);
     try {
       const response = await createPasskey(options);
       const data = await post('/api/me/security', { action: 'passkey-finish', response });
       setPage(data.page);
-      toast(t('security.passkey-added'));
+      toast(translate('security.passkey-added'));
     } catch (error) {
       toast(errorText({ code: passkeyErrorCode(error) }));
     } finally {
@@ -942,75 +1436,89 @@ $('passkeyAdd').addEventListener('click', () => askPassword(
 ));
 
 // Backup codes
-$('codesRegenerate').addEventListener('click', () => askPassword(
+byId('codesRegenerate').addEventListener('click', () => askPassword(
   (password) => post('/api/me/security', { action: 'backup-regenerate', password }),
   (data) => {
-    showCodes($('backupCodes'), data.backupCodes, { copyButton: $('codesCopy'), downloadButton: $('codesDownload'), slug: page.slug });
+    showCodes(byId('backupCodes'), data.backupCodes, { copyButton: byId('codesCopy'), downloadButton: byId('codesDownload'), slug: page.slug });
     openModal('codesModal');
   }
 ));
 
 // Telegram
-$('telegramLink').addEventListener('click', () => askPassword(
+byId('telegramLink').addEventListener('click', () => askPassword(
   (password) => post('/api/me/security', { action: 'telegram-link', password }),
   (data) => {
-    $('telegramOpen').href = data.url;
-    openModal('telegramModal', { initialFocus: $('telegramOpen') });
+    byId('telegramOpen').href = data.url;
+    openModal('telegramModal', { initialFocus: byId('telegramOpen') });
   }
 ));
-$('telegramDone').addEventListener('click', async () => {
+byId('telegramDone').addEventListener('click', async () => {
   const data = await api('/api/me/page').catch(() => null);
-  if (data) setPage(data.page);
+  if (data) {
+    setPage(data.page);
+  }
   closeModal('telegramModal');
-  toast(t(page.security.telegram.linked ? 'telegram.now-linked' : 'telegram.not-yet'));
+  let linkedKey;
+  if (page.security.telegram.linked) {
+    linkedKey = 'telegram.now-linked';
+  } else {
+    linkedKey = 'telegram.not-yet';
+  }
+  toast(translate(linkedKey));
 });
-$('telegramUnlink').addEventListener('click', () => askPassword(
+byId('telegramUnlink').addEventListener('click', () => askPassword(
   (password) => post('/api/me/security', { action: 'telegram-unlink', password }),
-  () => toast(t('telegram.unlinked'))
+  () => toast(translate('telegram.unlinked'))
 ));
 
 // Password and devices
-$('passwordChange').addEventListener('click', () => {
-  ['currentPassword', 'changeNewPassword', 'changeNewPasswordConfirm'].forEach((id) => { $(id).value = ''; });
-  $('changePasswordError').textContent = '';
-  openModal('changePasswordModal', { initialFocus: $('currentPassword') });
+byId('passwordChange').addEventListener('click', () => {
+  ['currentPassword', 'changeNewPassword', 'changeNewPasswordConfirm'].forEach((id) => { byId(id).value = ''; });
+  byId('changePasswordError').textContent = '';
+  openModal('changePasswordModal', { initialFocus: byId('currentPassword') });
 });
-$('changePasswordForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const error = $('changePasswordError');
-  const newPassword = $('changeNewPassword').value;
-  if ([...newPassword].length < 10) return void (error.textContent = t('error.password_too_short'));
-  if (newPassword !== $('changeNewPasswordConfirm').value) return void (error.textContent = t('error.password_mismatch'));
-  withBusy($('changePasswordSubmit'), error, async () => {
-    const data = await post('/api/me/security', { action: 'password-change', password: $('currentPassword').value, newPassword });
+byId('changePasswordForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const error = byId('changePasswordError');
+  const newPassword = byId('changeNewPassword').value;
+  if ([...newPassword].length < 10) {
+    error.textContent = translate('error.password_too_short');
+    return;
+  }
+  if (newPassword !== byId('changeNewPasswordConfirm').value) {
+    error.textContent = translate('error.password_mismatch');
+    return;
+  }
+  withBusy(byId('changePasswordSubmit'), error, async () => {
+    const data = await post('/api/me/security', { action: 'password-change', password: byId('currentPassword').value, newPassword });
     closeModal('changePasswordModal');
     setPage(data.page);
-    toast(t('security.password-changed'));
+    toast(translate('security.password-changed'));
   });
 });
-$('sessionsEnd').addEventListener('click', () => askPassword(
+byId('sessionsEnd').addEventListener('click', () => askPassword(
   (password) => post('/api/me/security', { action: 'sessions-end-others', password }),
-  () => toast(t('security.signed-out-others'))
+  () => toast(translate('security.signed-out-others'))
 ));
 
 // Delete
-$('pageDelete').addEventListener('click', () => {
-  $('deleteConfirmLabel').textContent = t('security.delete-type', { slug: page.slug });
-  $('deleteConfirmSlug').value = '';
-  $('deletePassword').value = '';
-  $('deleteError').textContent = '';
-  openModal('deleteModal', { initialFocus: $('deleteConfirmSlug') });
+byId('pageDelete').addEventListener('click', () => {
+  byId('deleteConfirmLabel').textContent = translate('security.delete-type', { slug: page.slug });
+  byId('deleteConfirmSlug').value = '';
+  byId('deletePassword').value = '';
+  byId('deleteError').textContent = '';
+  openModal('deleteModal', { initialFocus: byId('deleteConfirmSlug') });
 });
-$('deleteForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  withBusy($('deleteSubmit'), $('deleteError'), async () => {
-    await post('/api/me/security', { action: 'delete-page', confirmSlug: $('deleteConfirmSlug').value, password: $('deletePassword').value });
+byId('deleteForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  withBusy(byId('deleteSubmit'), byId('deleteError'), async () => {
+    await post('/api/me/security', { action: 'delete-page', confirmSlug: byId('deleteConfirmSlug').value, password: byId('deletePassword').value });
     window.location.replace('/');
   });
 });
 
 // Sign out
-$('signOut').addEventListener('click', async () => {
+byId('signOut').addEventListener('click', async () => {
   await post('/api/auth/session', { action: 'logout' }).catch(() => {});
   window.location.replace('/');
 });

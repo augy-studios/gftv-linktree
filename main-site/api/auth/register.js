@@ -9,7 +9,7 @@
 // is the Cloudflare Turnstile token for action "register" (_lib/turnstile.js).
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
-import { db, T } from '../_lib/supabase.js';
+import { database, TABLES } from '../_lib/supabase.js';
 import { checkSlug, checkPassword, STALE_PENDING_MS } from '../_lib/validate.js';
 import { hashPassword } from '../_lib/crypto.js';
 import { limited, slugRefusal, nameNeedsReview, audit, refusedForBan } from '../_lib/guards.js';
@@ -17,33 +17,53 @@ import { createChallenge } from '../_lib/session.js';
 import { slugHeldBy } from '../_lib/slug-changes.js';
 import { refusedForTurnstile } from '../_lib/turnstile.js';
 
-export default route('auth/register', async (req, res) => {
-  if (guard(req, res, ['POST'])) return;
-  const body = await readJson(req, res);
-  if (!body) return;
-  if (await limited(req, res, 'register')) return;
-  if (await refusedForTurnstile(req, res, body, 'register')) return;
-  if (await refusedForBan(req, res, { newPage: true })) return;
+// Sign-up: rate limit, Turnstile and ban checks, then the name and password
+// rules, then a new pending page and its enrolment challenge.
+export default route('auth/register', async (request, response) => {
+  if (guard(request, response, ['POST'])) {
+    return;
+  }
+  const body = await readJson(request, response);
+  if (!body) {
+    return;
+  }
+  if (await limited(request, response, 'register')) {
+    return;
+  }
+  if (await refusedForTurnstile(request, response, body, 'register')) {
+    return;
+  }
+  if (await refusedForBan(request, response, { newPage: true })) {
+    return;
+  }
 
   const slugCheck = checkSlug(body.slug);
-  if (!slugCheck.ok) return fail(res, 400, slugCheck.error);
+  if (!slugCheck.ok) {
+    return fail(response, 400, slugCheck.error);
+  }
   const passwordCheck = checkPassword(body.password);
-  if (!passwordCheck.ok) return fail(res, 400, passwordCheck.error);
+  if (!passwordCheck.ok) {
+    return fail(response, 400, passwordCheck.error);
+  }
   const refusal = await slugRefusal(slugCheck.slug);
-  if (refusal) return fail(res, 400, refusal);
+  if (refusal) {
+    return fail(response, 400, refusal);
+  }
   // A name a page was renamed away from is held for that page for a while.
-  if (await slugHeldBy(slugCheck.slug)) return fail(res, 409, 'slug_taken');
+  if (await slugHeldBy(slugCheck.slug)) {
+    return fail(response, 409, 'slug_taken');
+  }
 
   // Release this slug if somebody started on it and never finished.
-  await db()
-    .from(T.pages)
+  await database()
+    .from(TABLES.pages)
     .delete()
     .eq('slug', slugCheck.slug)
     .eq('status', 'pending')
     .lt('created_at', new Date(Date.now() - STALE_PENDING_MS).toISOString());
 
-  const { data: page, error } = await db()
-    .from(T.pages)
+  const { data: page, error } = await database()
+    .from(TABLES.pages)
     .insert({
       slug: slugCheck.slug,
       password_hash: await hashPassword(body.password),
@@ -53,11 +73,13 @@ export default route('auth/register', async (req, res) => {
     .select('id, slug, needs_review')
     .single();
   if (error) {
-    if (error.code === '23505') return fail(res, 409, 'slug_taken');
+    if (error.code === '23505') {
+      return fail(response, 409, 'slug_taken');
+    }
     throw error;
   }
 
   const challenge = await createChallenge({ realm: 'owner', purpose: 'enrol', subjectId: page.id });
-  await audit(req, { action: 'page.register', actorType: 'owner', actorId: page.id, pageId: page.id, details: { slug: page.slug } });
-  ok(res, { slug: page.slug, challenge, review: Boolean(page.needs_review) });
+  await audit(request, { action: 'page.register', actorType: 'owner', actorId: page.id, pageId: page.id, details: { slug: page.slug } });
+  ok(response, { slug: page.slug, challenge, review: Boolean(page.needs_review) });
 });

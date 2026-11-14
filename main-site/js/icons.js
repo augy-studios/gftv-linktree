@@ -108,15 +108,26 @@ export function isBrand(name) {
 
 // A brand's own name, for labels ("YouTube"), or null for a general icon.
 export function brandTitle(name) {
-  return isBrand(name) ? BRANDS[name].title : null;
+  if (isBrand(name)) {
+    return BRANDS[name].title;
+  }
+  return null;
 }
 
 export function icon(name) {
   const svg = 'viewBox="0 0 24 24" aria-hidden="true" focusable="false"';
   // Logos are filled shapes; everything else is a stroked outline.
-  if (isBrand(name)) return `<svg ${svg} fill="currentColor"><path d="${BRANDS[name].path}"/></svg>`;
-  const body = PATHS[name] ?? FEATHER[name];
-  if (!body) return '';
+  if (isBrand(name)) {
+    return `<svg ${svg} fill="currentColor"><path d="${BRANDS[name].path}"/></svg>`;
+  }
+  // The drawings above first, then the Feather set.
+  let body = PATHS[name];
+  if (body === null || body === undefined) {
+    body = FEATHER[name];
+  }
+  if (!body) {
+    return '';
+  }
   return `<svg ${svg} fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
 }
 
@@ -124,7 +135,10 @@ export function icon(name) {
 // a language's own name, so it is hidden from screen readers.
 export function flag(code) {
   const body = FLAGS[code];
-  return body ? `<svg viewBox="0 0 640 480" aria-hidden="true" focusable="false">${body}</svg>` : '';
+  if (body) {
+    return `<svg viewBox="0 0 640 480" aria-hidden="true" focusable="false">${body}</svg>`;
+  }
+  return '';
 }
 
 // A span holding an icon, for building nodes in code.
@@ -138,13 +152,15 @@ export function iconNode(name) {
 
 // Replace every [data-icon] span under root with its SVG.
 export function hydrateIcons(root = document) {
-  root.querySelectorAll('[data-icon]').forEach((el) => {
-    const svg = icon(el.getAttribute('data-icon'));
-    if (!svg) return;
-    el.innerHTML = svg;
-    el.setAttribute('aria-hidden', 'true');
-    el.removeAttribute('data-icon');
-    el.classList.add('icon');
+  root.querySelectorAll('[data-icon]').forEach((element) => {
+    const svg = icon(element.getAttribute('data-icon'));
+    if (!svg) {
+      return;
+    }
+    element.innerHTML = svg;
+    element.setAttribute('aria-hidden', 'true');
+    element.removeAttribute('data-icon');
+    element.classList.add('icon');
   });
 }
 
@@ -163,10 +179,23 @@ const HOST_ICONS = [
 ];
 
 export function guessIcon(url) {
-  if (/^mailto:|^[^\s/:@]+@[^\s/:@]+$/i.test(String(url).trim())) return 'mail';
+  if (/^mailto:|^[^\s/:@]+@[^\s/:@]+$/i.test(String(url).trim())) {
+    return 'mail';
+  }
   try {
-    const host = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).hostname.toLowerCase().replace(/^www\./, '');
-    for (const [pattern, name] of HOST_ICONS) if (pattern.test(host)) return name;
+    // An address typed without its scheme is read as https.
+    let address;
+    if (/^https?:\/\//i.test(url)) {
+      address = url;
+    } else {
+      address = `https://${url}`;
+    }
+    const host = new URL(address).hostname.toLowerCase().replace(/^www\./, '');
+    for (const [pattern, name] of HOST_ICONS) {
+      if (pattern.test(host)) {
+        return name;
+      }
+    }
   } catch {
     /* not an address yet */
   }

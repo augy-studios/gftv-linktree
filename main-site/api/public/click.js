@@ -4,17 +4,29 @@
 // sits between a visitor and where they are going.
 
 import { route, guard, readJson, ok, fail } from '../_lib/http.js';
-import { db } from '../_lib/supabase.js';
+import { database } from '../_lib/supabase.js';
 import { isUuid } from '../_lib/validate.js';
 import { limited } from '../_lib/guards.js';
 
-export default route('public/click', async (req, res) => {
-  if (guard(req, res, ['POST'])) return;
-  const body = await readJson(req, res);
-  if (!body) return;
-  if (!isUuid(body.id)) return fail(res, 400, 'bad_request');
-  if (await limited(req, res, 'click', [`link:${body.id}`])) return;
-  const { error } = await db().rpc('gftvonelink_link_click', { p_link_id: body.id });
-  if (error) throw error;
-  ok(res);
+// Checks the link id, applies the click rate limit, then adds one to the
+// link's count.
+export default route('public/click', async (request, response) => {
+  if (guard(request, response, ['POST'])) {
+    return;
+  }
+  const body = await readJson(request, response);
+  if (!body) {
+    return;
+  }
+  if (!isUuid(body.id)) {
+    return fail(response, 400, 'bad_request');
+  }
+  if (await limited(request, response, 'click', [`link:${body.id}`])) {
+    return;
+  }
+  const { error } = await database().rpc('gftvonelink_link_click', { p_link_id: body.id });
+  if (error) {
+    throw error;
+  }
+  ok(response);
 });

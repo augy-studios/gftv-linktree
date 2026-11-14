@@ -5,7 +5,7 @@
 // Codes: the bot sends a six digit code to that chat, for signing in without
 // the usual second factor or for resetting a forgotten password.
 
-import { db, T } from './supabase.js';
+import { database, TABLES } from './supabase.js';
 import { optionalEnv } from './env.js';
 import { randomToken, sha256 } from './crypto.js';
 
@@ -13,12 +13,19 @@ export const LINK_TOKEN_MINUTES = 10;
 export const CODE_MINUTES = 5;
 
 export function telegramConfigured() {
-  return optionalEnv('TELEGRAM_BOT_TOKEN') !== '' && optionalEnv('TELEGRAM_BOT_USERNAME') !== '';
+  if (optionalEnv('TELEGRAM_BOT_TOKEN') !== '' && optionalEnv('TELEGRAM_BOT_USERNAME') !== '') {
+    return true;
+  }
+  return false;
 }
 
+// One Bot API call. Throws when the token is missing or Telegram refuses it,
+// with the start of Telegram's answer in the message.
 async function callBot(method, payload) {
   const token = optionalEnv('TELEGRAM_BOT_TOKEN');
-  if (!token) throw new Error('TELEGRAM_BOT_TOKEN is not set');
+  if (!token) {
+    throw new Error('TELEGRAM_BOT_TOKEN is not set');
+  }
   const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -47,11 +54,17 @@ export function sendTelegram(chatId, text) {
 // ---------------------------------------------------------------------------
 
 export async function sendRichTelegram(chatId, rich) {
-  if (!rich || !rich.fallback) throw new Error('a rich message needs a plain fallback');
+  if (!rich || !rich.fallback) {
+    throw new Error('a rich message needs a plain fallback');
+  }
   try {
     await callBot('sendRichMessage', { chat_id: chatId, rich_message: { markdown: rich.markdown } });
-  } catch (err) {
-    console.warn(`[onelink] rich send failed, falling back: ${err?.message ?? err}`);
+  } catch (error) {
+    let detail = error;
+    if (error !== null && error !== undefined && error.message !== null && error.message !== undefined) {
+      detail = error.message;
+    }
+    console.warn(`[onelink] rich send failed, falling back: ${detail}`);
     await sendTelegram(chatId, rich.fallback);
   }
 }
@@ -59,10 +72,10 @@ export async function sendRichTelegram(chatId, rich) {
 // Escape data for Rich Markdown: the spec's set, plus "<", since Rich
 // Markdown also accepts HTML tags and a stray "<" in data could open one.
 // Literal markup written in the builders is not escaped.
-const MD_SPECIAL = /([\\*_~`|[\]#>=<])/g;
+const MARKDOWN_SPECIAL = /([\\*_~`|[\]#>=<])/g;
 
 export function escapeMd(text) {
-  return String(text).replace(MD_SPECIAL, '\\$1');
+  return String(text).replace(MARKDOWN_SPECIAL, '\\$1');
 }
 
 // For a table cell: also flattens newlines so the row stays one line.
@@ -77,7 +90,9 @@ export function richTable(headers, rows) {
     `| ${['', ...headers].join(' | ')} |`,
     `| ${Array(headers.length + 1).fill('---').join(' | ')} |`,
   ];
-  for (const row of rows) lines.push(`| ${row.map(escapeCell).join(' | ')} |`);
+  for (const row of rows) {
+    lines.push(`| ${row.map(escapeCell).join(' | ')} |`);
+  }
   return lines.join('\n');
 }
 
@@ -108,16 +123,25 @@ const MISSING_TABLE = new Set(['42P01', 'PGRST205']);
 // The listed targets, in order, without repeats: numeric ids as strings and
 // @names lowercased. Anything else is skipped with a warning.
 export function staffChatTargets(raw = optionalEnv('TELEGRAM_STAFF_CHAT_ID')) {
+  let list = '';
+  if (raw !== null && raw !== undefined) {
+    list = raw;
+  }
   const targets = [];
-  for (const entry of String(raw ?? '').split(/[\s,;]+/).filter(Boolean)) {
+  for (const entry of String(list).split(/[\s,;]+/).filter(Boolean)) {
     let target = null;
-    if (NUMERIC_CHAT.test(entry)) target = entry;
-    else if (NAMED_CHAT.test(entry)) target = entry.toLowerCase();
+    if (NUMERIC_CHAT.test(entry)) {
+      target = entry;
+    } else if (NAMED_CHAT.test(entry)) {
+      target = entry.toLowerCase();
+    }
     if (!target) {
       console.warn(`[onelink] TELEGRAM_STAFF_CHAT_ID: skipping "${entry.slice(0, 40)}", not a chat id or @name`);
       continue;
     }
-    if (!targets.includes(target)) targets.push(target);
+    if (!targets.includes(target)) {
+      targets.push(target);
+    }
   }
   return targets;
 }
@@ -125,25 +149,36 @@ export function staffChatTargets(raw = optionalEnv('TELEGRAM_STAFF_CHAT_ID')) {
 // { "@name": chatId } for listed people who have messaged the bot. Empty
 // before migration 013 (the settings table) is run.
 async function rememberedStaffChats() {
-  const { data, error } = await db().from(T.settings).select('value').eq('key', STAFF_CHATS_SETTING).maybeSingle();
+  const { data, error } = await database().from(TABLES.settings).select('value').eq('key', STAFF_CHATS_SETTING).maybeSingle();
   if (error) {
-    if (!MISSING_TABLE.has(error.code)) console.warn('[onelink] staff chats:', error.message);
+    if (!MISSING_TABLE.has(error.code)) {
+      console.warn('[onelink] staff chats:', error.message);
+    }
     return {};
   }
-  return data?.value && typeof data.value === 'object' ? data.value : {};
+  if (data && data.value && typeof data.value === 'object') {
+    return data.value;
+  }
+  return {};
 }
 
 // From the webhook, for every private message: when the sender's @username is
 // in TELEGRAM_STAFF_CHAT_ID, keep their chat id so alerts can reach their
 // DMs. True when it was saved or already known.
 export async function rememberStaffChat(username, chatId) {
-  if (typeof username !== 'string' || !username) return false;
+  if (typeof username !== 'string' || !username) {
+    return false;
+  }
   const name = `@${username.toLowerCase()}`;
-  if (!staffChatTargets().includes(name)) return false;
+  if (!staffChatTargets().includes(name)) {
+    return false;
+  }
   const known = await rememberedStaffChats();
-  if (known[name] === chatId) return true;
-  const { error } = await db()
-    .from(T.settings)
+  if (known[name] === chatId) {
+    return true;
+  }
+  const { error } = await database()
+    .from(TABLES.settings)
     .upsert({ key: STAFF_CHATS_SETTING, value: { ...known, [name]: chatId }, updated_at: new Date().toISOString() });
   if (error) {
     console.warn('[onelink] staff chats:', error.message);
@@ -157,30 +192,49 @@ export async function rememberStaffChat(username, chatId) {
 // never thrown, so it cannot undo the change it is about.
 export async function notifyStaff(rich) {
   const targets = staffChatTargets();
-  if (targets.length === 0 || !optionalEnv('TELEGRAM_BOT_TOKEN')) return 0;
-  const known = targets.some((t) => t.startsWith('@')) ? await rememberedStaffChats() : {};
-  const chats = [...new Set(targets.map((t) => (t.startsWith('@') && known[t] !== undefined ? String(known[t]) : t)))];
+  if (targets.length === 0 || !optionalEnv('TELEGRAM_BOT_TOKEN')) {
+    return 0;
+  }
+  let known = {};
+  if (targets.some((target) => target.startsWith('@'))) {
+    known = await rememberedStaffChats();
+  }
+  // An @name whose chat id is known goes to that chat; repeats are dropped.
+  const chats = [...new Set(targets.map((target) => {
+    if (target.startsWith('@') && known[target] !== undefined) {
+      return String(known[target]);
+    }
+    return target;
+  }))];
   const results = await Promise.all(chats.map(async (chatId) => {
     try {
       await sendRichTelegram(chatId, rich);
       return true;
     } catch (cause) {
-      console.warn(`[onelink] staff alert to ${chatId}:`, cause?.message ?? cause);
+      let detail = cause;
+      if (cause !== null && cause !== undefined && cause.message !== null && cause.message !== undefined) {
+        detail = cause.message;
+      }
+      console.warn(`[onelink] staff alert to ${chatId}:`, detail);
       return false;
     }
   }));
   return results.filter(Boolean).length;
 }
 
+// A one-time t.me deep link that links the page's Telegram, replacing any
+// unused one. { url, expiresInMinutes }.
 export async function createLinkToken(pageId) {
-  await db().from(T.telegramLinks).delete().eq('page_id', pageId).is('used_at', null);
+  await database().from(TABLES.telegramLinks).delete().eq('page_id', pageId).is('used_at', null);
   const token = randomToken(24);
-  const { error } = await db().from(T.telegramLinks).insert({
+  const { error } = await database().from(TABLES.telegramLinks).insert({
     page_id: pageId,
     token_hash: sha256(token),
     expires_at: new Date(Date.now() + LINK_TOKEN_MINUTES * 60_000).toISOString(),
   });
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
   return {
     url: `https://t.me/${optionalEnv('TELEGRAM_BOT_USERNAME')}?start=${token}`,
     expiresInMinutes: LINK_TOKEN_MINUTES,
@@ -189,14 +243,20 @@ export async function createLinkToken(pageId) {
 
 // The page a deep link token belongs to, spending the token, or null.
 export async function spendLinkToken(token) {
-  if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
-  const { data, error } = await db()
-    .from(T.telegramLinks)
+  if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) {
+    return null;
+  }
+  const { data, error } = await database()
+    .from(TABLES.telegramLinks)
     .select('id, page_id, expires_at, used_at')
     .eq('token_hash', sha256(token))
     .maybeSingle();
-  if (error) throw error;
-  if (!data || data.used_at || new Date(data.expires_at).getTime() <= Date.now()) return null;
-  await db().from(T.telegramLinks).update({ used_at: new Date().toISOString() }).eq('id', data.id);
+  if (error) {
+    throw error;
+  }
+  if (!data || data.used_at || new Date(data.expires_at).getTime() <= Date.now()) {
+    return null;
+  }
+  await database().from(TABLES.telegramLinks).update({ used_at: new Date().toISOString() }).eq('id', data.id);
   return data.page_id;
 }

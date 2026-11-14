@@ -4,7 +4,7 @@
 // A session is an HttpOnly cookie holding 32 random bytes; the table holds
 // only their SHA-256, so a leaked table is not a set of working cookies.
 
-import { db, T } from './supabase.js';
+import { database, TABLES } from './supabase.js';
 import { randomToken, sha256 } from './crypto.js';
 import { readCookie, setCookie, clearCookie, fail } from './http.js';
 
@@ -19,77 +19,94 @@ const OWNER_PAGE_COLUMNS =
 // Every owner sign-in comes through here (second factor, first setup,
 // password reset), so this is also where the dormancy clock restarts: a page
 // stays live while its owner signs in at least once a year.
-export async function createOwnerSession(res, pageId) {
+export async function createOwnerSession(response, pageId) {
   const token = randomToken(32);
   const expires = new Date(Date.now() + OWNER_SESSION_DAYS * 86400_000);
-  const { error } = await db().from(T.sessions).insert({
+  const { error } = await database().from(TABLES.sessions).insert({
     page_id: pageId,
     token_hash: sha256(token),
     expires_at: expires.toISOString(),
   });
-  if (error) throw error;
-  const { error: touchError } = await db()
-    .from(T.pages)
+  if (error) {
+    throw error;
+  }
+  const { error: touchError } = await database()
+    .from(TABLES.pages)
     .update({ last_sign_in_at: new Date().toISOString(), dormancy_warned_at: null })
     .eq('id', pageId);
-  if (touchError) throw touchError;
-  setCookie(res, OWNER_COOKIE, token, OWNER_SESSION_DAYS * 86400);
+  if (touchError) {
+    throw touchError;
+  }
+  setCookie(response, OWNER_COOKIE, token, OWNER_SESSION_DAYS * 86400);
 }
 
-// { session, page } for a live session on an active page, or null.
-export async function currentOwner(req) {
-  const token = readCookie(req, OWNER_COOKIE);
-  if (!token) return null;
+// { sessionId, page } for a live session, or null. The page's status is
+// checked by requireOwner, not here.
+export async function currentOwner(request) {
+  const token = readCookie(request, OWNER_COOKIE);
+  if (!token) {
+    return null;
+  }
 
-  const { data, error } = await db()
-    .from(T.sessions)
-    .select(`id, expires_at, last_seen_at, page:${T.pages} ( ${OWNER_PAGE_COLUMNS} )`)
+  const { data, error } = await database()
+    .from(TABLES.sessions)
+    .select(`id, expires_at, last_seen_at, page:${TABLES.pages} ( ${OWNER_PAGE_COLUMNS} )`)
     .eq('token_hash', sha256(token))
     .maybeSingle();
 
-  if (error) throw error;
-  if (!data || !data.page) return null;
+  if (error) {
+    throw error;
+  }
+  if (!data || !data.page) {
+    return null;
+  }
   if (new Date(data.expires_at).getTime() <= Date.now()) {
-    await db().from(T.sessions).delete().eq('id', data.id);
+    await database().from(TABLES.sessions).delete().eq('id', data.id);
     return null;
   }
   // Touch at most every ten minutes, to keep writes off the hot path.
   if (Date.now() - new Date(data.last_seen_at).getTime() > 600_000) {
-    await db().from(T.sessions).update({ last_seen_at: new Date().toISOString() }).eq('id', data.id);
+    await database().from(TABLES.sessions).update({ last_seen_at: new Date().toISOString() }).eq('id', data.id);
   }
   return { sessionId: data.id, page: data.page };
 }
 
 // The signed-in owner's page, or null after answering. A banned page cannot
 // be edited; the owner is told so rather than shown a sign-in form.
-export async function requireOwner(req, res) {
-  const owner = await currentOwner(req);
+export async function requireOwner(request, response) {
+  const owner = await currentOwner(request);
   if (!owner) {
-    fail(res, 401, 'signed_out');
+    fail(response, 401, 'signed_out');
     return null;
   }
   if (owner.page.status === 'banned') {
-    fail(res, 403, 'page_banned');
+    fail(response, 403, 'page_banned');
     return null;
   }
   if (owner.page.status !== 'active') {
-    fail(res, 401, 'signed_out');
+    fail(response, 401, 'signed_out');
     return null;
   }
   return owner;
 }
 
-export async function endOwnerSession(req, res) {
-  const token = readCookie(req, OWNER_COOKIE);
-  if (token) await db().from(T.sessions).delete().eq('token_hash', sha256(token));
-  clearCookie(res, OWNER_COOKIE);
+export async function endOwnerSession(request, response) {
+  const token = readCookie(request, OWNER_COOKIE);
+  if (token) {
+    await database().from(TABLES.sessions).delete().eq('token_hash', sha256(token));
+  }
+  clearCookie(response, OWNER_COOKIE);
 }
 
 export async function endAllOwnerSessions(pageId, exceptSessionId = null) {
-  let q = db().from(T.sessions).delete().eq('page_id', pageId);
-  if (exceptSessionId) q = q.neq('id', exceptSessionId);
-  const { error } = await q;
-  if (error) throw error;
+  let deletion = database().from(TABLES.sessions).delete().eq('page_id', pageId);
+  if (exceptSessionId) {
+    deletion = deletion.neq('id', exceptSessionId);
+  }
+  const { error } = await deletion;
+  if (error) {
+    throw error;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -101,10 +118,10 @@ export const CHALLENGE_ATTEMPTS = 5;
 
 export async function createChallenge({ realm, purpose, subjectId, fields = {} }) {
   // One open challenge per subject and purpose: starting again replaces it.
-  await db().from(T.challenges).delete().eq('realm', realm).eq('purpose', purpose).eq('subject_id', subjectId);
+  await database().from(TABLES.challenges).delete().eq('realm', realm).eq('purpose', purpose).eq('subject_id', subjectId);
 
   const token = randomToken(32);
-  const { error } = await db().from(T.challenges).insert({
+  const { error } = await database().from(TABLES.challenges).insert({
     ...fields,
     realm,
     purpose,
@@ -112,39 +129,49 @@ export async function createChallenge({ realm, purpose, subjectId, fields = {} }
     token_hash: sha256(token),
     expires_at: new Date(Date.now() + CHALLENGE_MINUTES[purpose] * 60_000).toISOString(),
   });
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
   return token;
 }
 
 // The live challenge row for a token, or null. Expired rows and rows out of
 // attempts are deleted on sight.
 export async function findChallenge(token, realm, purpose) {
-  if (typeof token !== 'string' || token.length < 20 || token.length > 100) return null;
-  const { data, error } = await db()
-    .from(T.challenges)
+  if (typeof token !== 'string' || token.length < 20 || token.length > 100) {
+    return null;
+  }
+  const { data, error } = await database()
+    .from(TABLES.challenges)
     .select('id, subject_id, attempts, pending_totp_secret, telegram_code_hash, telegram_code_expires_at, expires_at')
     .eq('token_hash', sha256(token))
     .eq('realm', realm)
     .eq('purpose', purpose)
     .maybeSingle();
-  if (error) throw error;
-  if (!data) return null;
+  if (error) {
+    throw error;
+  }
+  if (!data) {
+    return null;
+  }
   if (new Date(data.expires_at).getTime() <= Date.now() || data.attempts >= CHALLENGE_ATTEMPTS) {
-    await db().from(T.challenges).delete().eq('id', data.id);
+    await database().from(TABLES.challenges).delete().eq('id', data.id);
     return null;
   }
   return data;
 }
 
 export async function failChallengeAttempt(challenge) {
-  await db().from(T.challenges).update({ attempts: challenge.attempts + 1 }).eq('id', challenge.id);
+  await database().from(TABLES.challenges).update({ attempts: challenge.attempts + 1 }).eq('id', challenge.id);
 }
 
 export async function updateChallenge(challenge, fields) {
-  const { error } = await db().from(T.challenges).update(fields).eq('id', challenge.id);
-  if (error) throw error;
+  const { error } = await database().from(TABLES.challenges).update(fields).eq('id', challenge.id);
+  if (error) {
+    throw error;
+  }
 }
 
 export async function deleteChallenge(challenge) {
-  await db().from(T.challenges).delete().eq('id', challenge.id);
+  await database().from(TABLES.challenges).delete().eq('id', challenge.id);
 }

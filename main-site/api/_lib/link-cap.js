@@ -10,7 +10,7 @@
 // on every insert, with the page row locked, so two links added at the same
 // moment cannot both get under the limit.
 
-import { db, T } from './supabase.js';
+import { database, TABLES } from './supabase.js';
 import { MAX_LINKS } from './validate.js';
 
 export const DEFAULT_LINK_CAP = 20;
@@ -21,58 +21,100 @@ const SETTING = 'links_cap';
 // default rather than breaking the editor.
 const MISSING = new Set(['42P01', '42703', 'PGRST200', 'PGRST204', 'PGRST205']);
 export function missingSchema(error) {
-  return Boolean(error && MISSING.has(error.code));
+  if (error && MISSING.has(error.code)) {
+    return true;
+  }
+  return false;
 }
 
 // A whole number from 1 to MAX_LINKS, from a number or a string of digits,
 // or null.
 export function checkCap(value) {
-  let n = NaN;
-  if (typeof value === 'number') n = value;
-  else if (typeof value === 'string' && /^\s*\d{1,4}\s*$/.test(value)) n = Number(value);
-  return Number.isInteger(n) && n >= 1 && n <= MAX_LINKS ? n : null;
+  let cap = NaN;
+  if (typeof value === 'number') {
+    cap = value;
+  } else if (typeof value === 'string' && /^\s*\d{1,4}\s*$/.test(value)) {
+    cap = Number(value);
+  }
+  if (Number.isInteger(cap) && cap >= 1 && cap <= MAX_LINKS) {
+    return cap;
+  }
+  return null;
 }
 
 // The links that count towards the limit.
 export function linksUsed(links) {
-  return (links ?? []).filter((l) => !l.removed_at).length;
+  let list = [];
+  if (links !== null && links !== undefined) {
+    list = links;
+  }
+  return list.filter((link) => !link.removed_at).length;
 }
 
 export async function defaultLinkCap() {
-  const { data, error } = await db().from(T.settings).select('value').eq('key', SETTING).maybeSingle();
+  const { data, error } = await database().from(TABLES.settings).select('value').eq('key', SETTING).maybeSingle();
   if (error) {
-    if (missingSchema(error)) return DEFAULT_LINK_CAP;
+    if (missingSchema(error)) {
+      return DEFAULT_LINK_CAP;
+    }
     throw error;
   }
-  return checkCap(data?.value) ?? DEFAULT_LINK_CAP;
+  let stored;
+  if (data !== null && data !== undefined) {
+    stored = data.value;
+  }
+  const cap = checkCap(stored);
+  if (cap === null || cap === undefined) {
+    return DEFAULT_LINK_CAP;
+  }
+  return cap;
 }
 
 export async function setDefaultLinkCap(cap, staffId) {
-  const { error } = await db()
-    .from(T.settings)
+  const { error } = await database()
+    .from(TABLES.settings)
     .upsert({ key: SETTING, value: cap, updated_by: staffId, updated_at: new Date().toISOString() });
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
 }
 
 // The page's own limit, or null when it follows the default.
 async function pageOverride(pageId) {
-  const { data, error } = await db().from(T.pages).select('links_cap').eq('id', pageId).maybeSingle();
+  const { data, error } = await database().from(TABLES.pages).select('links_cap').eq('id', pageId).maybeSingle();
   if (error) {
-    if (missingSchema(error)) return null;
+    if (missingSchema(error)) {
+      return null;
+    }
     throw error;
   }
-  return checkCap(data?.links_cap);
+  let stored;
+  if (data !== null && data !== undefined) {
+    stored = data.links_cap;
+  }
+  return checkCap(stored);
 }
 
 // { limit, override, defaultCap } for one page.
 export async function linkCapFor(pageId) {
   const [override, defaultCap] = await Promise.all([pageOverride(pageId), defaultLinkCap()]);
-  return { limit: override ?? defaultCap, override, defaultCap };
+  let limit = defaultCap;
+  if (override !== null && override !== undefined) {
+    limit = override;
+  }
+  return { limit, override, defaultCap };
 }
 
 // The database trigger's refusal, as supabase-js reports it.
 export function isCapRefusal(error) {
-  return Boolean(error && /too_many_links/.test(String(error.message || '')));
+  if (!error) {
+    return false;
+  }
+  let message = '';
+  if (error.message) {
+    message = error.message;
+  }
+  return /too_many_links/.test(String(message));
 }
 
 export const REQUEST_COLUMNS = 'id, page_id, requested_cap, current_cap, reason, status, granted_cap, review_note, reviewed_at, created_at';
@@ -80,15 +122,30 @@ export const REQUEST_COLUMNS = 'id, page_id, requested_cap, current_cap, reason,
 // The page's open request if it has one, else its most recent, whatever an
 // admin decided; null if it never asked.
 export async function latestCapRequest(pageId) {
-  const { data, error } = await db()
-    .from(T.linkCapRequests)
+  const { data, error } = await database()
+    .from(TABLES.linkCapRequests)
     .select(REQUEST_COLUMNS)
     .eq('page_id', pageId)
     .order('created_at', { ascending: false })
     .limit(5);
   if (error) {
-    if (missingSchema(error)) return null;
+    if (missingSchema(error)) {
+      return null;
+    }
     throw error;
   }
-  return (data ?? []).find((r) => r.status === 'pending') ?? data?.[0] ?? null;
+  let rows = [];
+  if (data !== null && data !== undefined) {
+    rows = data;
+  }
+  const pending = rows.find((row) => row.status === 'pending');
+  if (pending !== null && pending !== undefined) {
+    return pending;
+  }
+  // Newest first, so the first row is the most recent.
+  const newest = rows[0];
+  if (newest !== null && newest !== undefined) {
+    return newest;
+  }
+  return null;
 }

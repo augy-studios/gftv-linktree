@@ -50,6 +50,9 @@ every locale.
 - **i18n** (`i18n-retrofit-spec.md`): `assets/i18n/`. `en.json` is the source of
   truth, `zh.json` is 华文. The Chinese is a draft and wants a check by a fluent
   reader before launch, as `gftv-official.md` also says of its own copy.
+  The shared scanner `assets/i18n/check-keys.js --scan` finds keys in `t(` calls. OneLink's
+  own code calls `translate(` since help desk #17's job 03, so keys used only there aren't
+  checked against `en.json` until the shared scanner also looks for `translate(`.
 
 ## API
 
@@ -223,6 +226,18 @@ Browser tests for all of this, and the Barq, VK and Weibo links, run with
 the real API handlers on the in-memory test database, with the production
 Content-Security-Policy, and fail on any console error. They need Playwright
 with Chromium installed where Node can find it; it is not a site dependency.
+With a global install (`npm i -g playwright && npx playwright install chromium`),
+point Node at it: `NODE_PATH="$(npm root -g)" npm run e2e`. Otherwise the run
+stops at once with `Cannot find module 'playwright'`.
+
+`npm test` also pins every reply's exact keys (`tests/reply-keys.test.js`), so a
+field can't be added to or dropped from an answer by accident.
+
+`npm run lint` checks Augy's code style (help desk #17, decision 8): no
+ternaries, braces always, names of at least two letters, and no `?.`, `??`, or
+`&&` / `||` used as a value. The rules are in `eslint.config.js`, with the files
+it leaves alone (the shared GFTV copies, `assets/i18n/`, the vendored
+libraries, the generated `js/icon-data.js` and the tests). Run `npm ci` first.
 
 ### Offline
 

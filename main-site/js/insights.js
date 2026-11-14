@@ -9,108 +9,154 @@
 // themes like the rest of the page.
 
 import { getLocale } from '../assets/i18n/i18n.js';
-import { el } from './ui.js';
+import { createElement } from './ui.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
-const svg = (tag, attrs = {}) => {
+const svg = (tag, attributes = {}) => {
   const node = document.createElementNS(SVG, tag);
-  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+  for (const [name, value] of Object.entries(attributes)) {
+    node.setAttribute(name, String(value));
+  }
   return node;
 };
 
 // 1, 2 or 5 times a power of ten, at least max: an axis top a person can read.
 function niceMax(max) {
-  if (max <= 4) return 4;
+  if (max <= 4) {
+    return 4;
+  }
   const power = 10 ** Math.floor(Math.log10(max));
-  for (const step of [1, 2, 5, 10]) if (step * power >= max) return step * power;
+  for (const step of [1, 2, 5, 10]) {
+    if (step * power >= max) {
+      return step * power;
+    }
+  }
   return 10 * power;
 }
 
 // A column with rounded top corners, square at the baseline.
-function columnPath(x, y, w, h, r) {
-  const rr = Math.min(r, w / 2, h);
-  return `M${x},${y + h}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + w - rr}Q${x + w},${y} ${x + w},${y + rr}V${y + h}Z`;
+function columnPath(left, top, width, height, radius) {
+  const cornerRadius = Math.min(radius, width / 2, height);
+  return `M${left},${top + height}V${top + cornerRadius}Q${left},${top} ${left + cornerRadius},${top}H${left + width - cornerRadius}Q${left + width},${top} ${left + width},${top + cornerRadius}V${top + height}Z`;
 }
 
-export function dayLabel(day, opts = { day: 'numeric', month: 'short' }) {
-  return new Intl.DateTimeFormat(getLocale(), { ...opts, timeZone: 'UTC' }).format(new Date(`${day}T12:00:00Z`));
+export function dayLabel(day, options = { day: 'numeric', month: 'short' }) {
+  return new Intl.DateTimeFormat(getLocale(), { ...options, timeZone: 'UTC' }).format(new Date(`${day}T12:00:00Z`));
 }
 
 // container: an empty, position: relative element. points: [{ day, value }].
 // describe(point) -> the tooltip text for one column.
+// Draws the SVG chart (grid, ticks, columns, hit areas), its tooltip, and the
+// hidden table, and wires pointer and keyboard to the tooltip.
 export function drawColumns(container, points, { label, describe, caption }) {
   container.replaceChildren();
-  const width = Math.max(container.clientWidth || 600, 240);
+  // An element not laid out yet has no width: draw at 600 then.
+  let availableWidth = container.clientWidth;
+  if (!availableWidth) {
+    availableWidth = 600;
+  }
+  const width = Math.max(availableWidth, 240);
   const height = 200;
-  const pad = { top: 12, right: 4, bottom: 24, left: 36 };
-  const plotW = width - pad.left - pad.right;
-  const plotH = height - pad.top - pad.bottom;
-  const top = niceMax(Math.max(0, ...points.map((p) => p.value)));
-  const slot = plotW / points.length;
-  const barW = Math.max(2, Math.min(24, slot - 2));
-  const yOf = (v) => pad.top + plotH - (v / top) * plotH;
-  const nf = new Intl.NumberFormat(getLocale());
+  const padding = { top: 12, right: 4, bottom: 24, left: 36 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const top = niceMax(Math.max(0, ...points.map((point) => point.value)));
+  const slot = plotWidth / points.length;
+  const barWidth = Math.max(2, Math.min(24, slot - 2));
+  const yForValue = (value) => padding.top + plotHeight - (value / top) * plotHeight;
+  const numberFormat = new Intl.NumberFormat(getLocale());
 
   const chart = svg('svg', { viewBox: `0 0 ${width} ${height}`, width, height, class: 'columns', role: 'img', 'aria-label': label, tabindex: 0 });
-  for (const v of [0, top / 2, top]) {
-    chart.append(svg('line', { x1: pad.left, x2: width - pad.right, y1: yOf(v), y2: yOf(v), class: v === 0 ? 'axis' : 'grid' }));
-    const text = svg('text', { x: pad.left - 6, y: yOf(v) + 4, 'text-anchor': 'end', class: 'tick' });
-    text.textContent = nf.format(v);
+  for (const value of [0, top / 2, top]) {
+    let lineClass;
+    if (value === 0) {
+      lineClass = 'axis';
+    } else {
+      lineClass = 'grid';
+    }
+    chart.append(svg('line', { x1: padding.left, x2: width - padding.right, y1: yForValue(value), y2: yForValue(value), class: lineClass }));
+    const text = svg('text', { x: padding.left - 6, y: yForValue(value) + 4, 'text-anchor': 'end', class: 'tick' });
+    text.textContent = numberFormat.format(value);
     chart.append(text);
   }
+  // Day labels under the first, middle and last columns only.
   const ticks = new Set([0, Math.floor((points.length - 1) / 2), points.length - 1]);
-  const columns = points.map((p, i) => {
-    const x = pad.left + i * slot + (slot - barW) / 2;
-    if (ticks.has(i)) {
-      const text = svg('text', { x: x + barW / 2, y: height - 6, 'text-anchor': 'middle', class: 'tick' });
-      text.textContent = dayLabel(p.day);
+  const columns = points.map((point, index) => {
+    const barLeft = padding.left + index * slot + (slot - barWidth) / 2;
+    if (ticks.has(index)) {
+      const text = svg('text', { x: barLeft + barWidth / 2, y: height - 6, 'text-anchor': 'middle', class: 'tick' });
+      text.textContent = dayLabel(point.day);
       chart.append(text);
     }
-    const h = (p.value / top) * plotH;
-    const bar = p.value > 0 ? svg('path', { d: columnPath(x, yOf(p.value), barW, h, 4), class: 'bar' }) : null;
-    if (bar) chart.append(bar);
-    return { x: pad.left + i * slot, bar, point: p };
+    const barHeight = (point.value / top) * plotHeight;
+    let bar;
+    if (point.value > 0) {
+      bar = svg('path', { d: columnPath(barLeft, yForValue(point.value), barWidth, barHeight, 4), class: 'bar' });
+    } else {
+      bar = null;
+    }
+    if (bar) {
+      chart.append(bar);
+    }
+    return { x: padding.left + index * slot, bar, point };
   });
 
   // Hit areas the full height of each slot, wider than the column itself.
-  const tip = el('div', { class: 'chart-tip', role: 'status', hidden: true });
+  const tip = createElement('div', { class: 'chart-tip', role: 'status', hidden: true });
   let active = -1;
-  const show = (i) => {
-    if (active >= 0) columns[active].bar?.classList.remove('on');
-    active = i;
-    if (i < 0) {
+  // Show the tooltip for one column, or hide it with -1. A day at zero has
+  // no bar to light up, only the tooltip.
+  const show = (index) => {
+    if (active >= 0 && columns[active].bar) {
+      columns[active].bar.classList.remove('on');
+    }
+    active = index;
+    if (index < 0) {
       tip.hidden = true;
       return;
     }
-    const c = columns[i];
-    c.bar?.classList.add('on');
-    tip.textContent = describe(c.point);
+    const column = columns[index];
+    if (column.bar) {
+      column.bar.classList.add('on');
+    }
+    tip.textContent = describe(column.point);
     tip.hidden = false;
-    const left = Math.min(Math.max(c.x + slot / 2, 60), width - 60);
+    const left = Math.min(Math.max(column.x + slot / 2, 60), width - 60);
     tip.style.setProperty('--x', `${left}px`);
   };
-  columns.forEach((c, i) => {
-    const hit = svg('rect', { x: c.x, y: pad.top, width: slot, height: plotH, class: 'hit' });
-    hit.addEventListener('pointerenter', () => show(i));
+  columns.forEach((column, index) => {
+    const hit = svg('rect', { x: column.x, y: padding.top, width: slot, height: plotHeight, class: 'hit' });
+    hit.addEventListener('pointerenter', () => show(index));
     chart.append(hit);
   });
   chart.addEventListener('pointerleave', () => show(-1));
-  chart.addEventListener('focus', () => show(active >= 0 ? active : columns.length - 1));
+  // Focus returns to the column last shown, or starts at the latest day.
+  chart.addEventListener('focus', () => {
+    if (active >= 0) {
+      show(active);
+    } else {
+      show(columns.length - 1);
+    }
+  });
   chart.addEventListener('blur', () => show(-1));
-  chart.addEventListener('keydown', (e) => {
-    const step = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+  chart.addEventListener('keydown', (event) => {
+    const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
     if (step) {
-      e.preventDefault();
+      event.preventDefault();
       show(Math.min(Math.max(active + step, 0), columns.length - 1));
-    } else if (e.key === 'Home' || e.key === 'End') {
-      e.preventDefault();
-      show(e.key === 'Home' ? 0 : columns.length - 1);
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      if (event.key === 'Home') {
+        show(0);
+      } else {
+        show(columns.length - 1);
+      }
     }
   });
 
-  const table = el('table', { class: 'visually-hidden' }, [
-    el('caption', { text: caption }),
-    el('tbody', {}, points.map((p) => el('tr', {}, [el('th', { scope: 'row', text: dayLabel(p.day, { dateStyle: 'medium' }) }), el('td', { text: nf.format(p.value) })]))),
+  const table = createElement('table', { class: 'visually-hidden' }, [
+    createElement('caption', { text: caption }),
+    createElement('tbody', {}, points.map((point) => createElement('tr', {}, [createElement('th', { scope: 'row', text: dayLabel(point.day, { dateStyle: 'medium' }) }), createElement('td', { text: numberFormat.format(point.value) })]))),
   ]);
   container.append(chart, tip, table);
 }
@@ -120,14 +166,14 @@ export function drawColumns(container, points, { label, describe, caption }) {
 export function fillBarList(list, rows, emptyText) {
   list.replaceChildren();
   if (rows.length === 0) {
-    list.append(el('li', { class: 'empty-state', text: emptyText }));
+    list.append(createElement('li', { class: 'empty-state', text: emptyText }));
     return;
   }
-  const max = Math.max(...rows.map((r) => r.value), 1);
-  const nf = new Intl.NumberFormat(getLocale());
+  const max = Math.max(...rows.map((row) => row.value), 1);
+  const numberFormat = new Intl.NumberFormat(getLocale());
   for (const row of rows) {
-    const bar = el('span', { class: 'bar', 'aria-hidden': 'true' });
+    const bar = createElement('span', { class: 'bar', 'aria-hidden': 'true' });
     bar.style.setProperty('--share', `${Math.max(2, (row.value / max) * 100)}%`);
-    list.append(el('li', {}, [el('span', { class: 'label', text: row.label }), el('span', { class: 'value', text: nf.format(row.value) }), bar]));
+    list.append(createElement('li', {}, [createElement('span', { class: 'label', text: row.label }), createElement('span', { class: 'value', text: numberFormat.format(row.value) }), bar]));
   }
 }

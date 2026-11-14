@@ -1,7 +1,7 @@
 // Second factors for page owners, shared by sign in, recovery and the
 // security settings.
 
-import { db, T } from './supabase.js';
+import { database, TABLES } from './supabase.js';
 import { decryptSecret, findMatchingCode, generateBackupCodes, hashCode, randomDigits, verifyPassword } from './crypto.js';
 import { verifyTotp } from './totp.js';
 import { countPasskeys } from './webauthn.js';
@@ -12,29 +12,46 @@ import bcrypt from 'bcryptjs';
 
 export function ownerTotpOk(page, code) {
   const secret = decryptSecret(page.totp_secret);
-  return Boolean(secret) && verifyTotp(code, secret);
+  if (!secret) {
+    return false;
+  }
+  return verifyTotp(code, secret);
 }
 
 // Spend a backup code. True if one matched.
 export async function spendBackupCode(pageId, typed) {
-  const { data, error } = await db()
-    .from(T.recoveryCodes)
+  const { data, error } = await database()
+    .from(TABLES.recoveryCodes)
     .select('id, code_hash')
     .eq('page_id', pageId)
     .eq('used', false);
-  if (error) throw error;
-  const match = await findMatchingCode(typed, data ?? []);
-  if (!match) return false;
+  if (error) {
+    throw error;
+  }
+  let rows = [];
+  if (data !== null && data !== undefined) {
+    rows = data;
+  }
+  const match = await findMatchingCode(typed, rows);
+  if (!match) {
+    return false;
+  }
   // Conditional on used = false, so two requests racing the same code cannot
   // both succeed.
-  const { data: spent, error: spendError } = await db()
-    .from(T.recoveryCodes)
+  const { data: spent, error: spendError } = await database()
+    .from(TABLES.recoveryCodes)
     .update({ used: true, used_at: new Date().toISOString() })
     .eq('id', match.id)
     .eq('used', false)
     .select('id');
-  if (spendError) throw spendError;
-  return (spent ?? []).length === 1;
+  if (spendError) {
+    throw spendError;
+  }
+  let spentRows = [];
+  if (spent !== null && spent !== undefined) {
+    spentRows = spent;
+  }
+  return spentRows.length === 1;
 }
 
 // A fresh set of ten, replacing any old set. Returns the plain codes, which
@@ -42,28 +59,41 @@ export async function spendBackupCode(pageId, typed) {
 export async function issueBackupCodes(pageId) {
   const codes = generateBackupCodes(10);
   const rows = await Promise.all(codes.map(async (code) => ({ page_id: pageId, code_hash: await hashCode(code) })));
-  const { error: deleteError } = await db().from(T.recoveryCodes).delete().eq('page_id', pageId);
-  if (deleteError) throw deleteError;
-  const { error } = await db().from(T.recoveryCodes).insert(rows);
-  if (error) throw error;
+  const { error: deleteError } = await database().from(TABLES.recoveryCodes).delete().eq('page_id', pageId);
+  if (deleteError) {
+    throw deleteError;
+  }
+  const { error } = await database().from(TABLES.recoveryCodes).insert(rows);
+  if (error) {
+    throw error;
+  }
   return codes;
 }
 
 export async function backupCodesLeft(pageId) {
-  const { count, error } = await db()
-    .from(T.recoveryCodes)
+  const { count, error } = await database()
+    .from(TABLES.recoveryCodes)
     .select('id', { count: 'exact', head: true })
     .eq('page_id', pageId)
     .eq('used', false);
-  if (error) throw error;
-  return count ?? 0;
+  if (error) {
+    throw error;
+  }
+  if (count === null || count === undefined) {
+    return 0;
+  }
+  return count;
 }
 
 // How many real second factors the page has: the authenticator app counts
 // as one, each passkey as one. Backup codes and Telegram do not count, since
 // they are ways back in rather than the lock itself.
 export async function secondFactorCount(page) {
-  return (page.totp_secret ? 1 : 0) + (await countPasskeys('owner', page.id));
+  let authenticators = 0;
+  if (page.totp_secret) {
+    authenticators = 1;
+  }
+  return authenticators + (await countPasskeys('owner', page.id));
 }
 
 // Send a fresh Telegram code for a challenge, as a rich message with a plain
@@ -78,15 +108,27 @@ export async function sendTelegramCode(challenge, page, purpose) {
 }
 
 export async function telegramCodeOk(challenge, typed) {
-  if (!challenge.telegram_code_hash || !challenge.telegram_code_expires_at) return false;
-  if (new Date(challenge.telegram_code_expires_at).getTime() <= Date.now()) return false;
-  const digits = String(typed ?? '').replace(/\D/g, '');
-  if (digits.length !== 6) return false;
+  if (!challenge.telegram_code_hash || !challenge.telegram_code_expires_at) {
+    return false;
+  }
+  if (new Date(challenge.telegram_code_expires_at).getTime() <= Date.now()) {
+    return false;
+  }
+  let given = '';
+  if (typed !== null && typed !== undefined) {
+    given = typed;
+  }
+  const digits = String(given).replace(/\D/g, '');
+  if (digits.length !== 6) {
+    return false;
+  }
   return bcrypt.compare(digits, challenge.telegram_code_hash);
 }
 
 export async function pagePasswordOk(pageId, password) {
-  const { data, error } = await db().from(T.pages).select('password_hash').eq('id', pageId).single();
-  if (error) throw error;
+  const { data, error } = await database().from(TABLES.pages).select('password_hash').eq('id', pageId).single();
+  if (error) {
+    throw error;
+  }
   return verifyPassword(password, data.password_hash);
 }

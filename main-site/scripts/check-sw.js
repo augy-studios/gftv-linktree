@@ -19,7 +19,10 @@ let problems = 0;
 // Strip comments, then cut out the message handler and look at what is left.
 const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 const handler = code.match(/self\.addEventListener\(\s*['"]message['"][\s\S]*?\n\}\);/);
-const outside = handler ? code.replace(handler[0], '') : code;
+let outside = code;
+if (handler) {
+  outside = code.replace(handler[0], '');
+}
 for (const call of ['skipWaiting(', 'clients.claim(']) {
   if (outside.includes(call)) {
     console.log(`error  ${call}) appears outside the message handler`);
@@ -31,17 +34,34 @@ if (!handler || !handler[0].includes("'skip-waiting'")) {
   problems += 1;
 }
 
+// Every path in PRECACHE must be a real file: '/' is index.html, and a clean
+// path such as /edit may be edit.html.
 const list = source.match(/const PRECACHE = \[([\s\S]*?)\];/);
-const paths = list ? [...list[1].matchAll(/'([^']+)'/g)].map((m) => m[1]) : [];
+let paths = [];
+if (list) {
+  paths = [...list[1].matchAll(/'([^']+)'/g)].map((match) => match[1]);
+}
 for (const path of paths) {
-  const clean = path === '/' ? '/index.html' : path;
-  const candidates = [clean, `${clean}.html`].map((p) => join(root, p));
+  let clean = path;
+  if (path === '/') {
+    clean = '/index.html';
+  }
+  const candidates = [clean, `${clean}.html`].map((candidate) => join(root, candidate));
   if (!candidates.some((file) => existsSync(file))) {
     console.log(`error  precached but missing: ${path}`);
     problems += 1;
   }
 }
 const version = source.match(/const VERSION = '([^']+)'/);
-console.log(`sw.js VERSION ${version ? version[1] : '(none)'}, ${paths.length} precached paths`);
-console.log(problems ? `${problems} problem(s)` : 'ok');
-process.exit(problems ? 1 : 0);
+let versionText = '(none)';
+if (version) {
+  versionText = version[1];
+}
+console.log(`sw.js VERSION ${versionText}, ${paths.length} precached paths`);
+if (problems) {
+  console.log(`${problems} problem(s)`);
+  process.exit(1);
+} else {
+  console.log('ok');
+  process.exit(0);
+}

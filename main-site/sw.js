@@ -19,7 +19,7 @@
 // visitor's saved pages. A page that has been taken down or deleted is
 // dropped from the saved copies the next time it is fetched.
 
-const VERSION = '2026-11-12.1';
+const VERSION = '2026-11-14.1';
 const PREFIX = 'gftv-onelink-';
 const CACHE = PREFIX + VERSION;
 const SAVED_PAGES = 'onelink-saved-pages-v1';
@@ -107,13 +107,17 @@ const SLUG_PATH = /^\/[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){1,31}$/;
 
 // A redirected response cannot be served to a navigation, so store a clean copy.
 async function fetchForCache(url) {
-  const res = await fetch(url, { cache: 'no-cache' });
-  if (!res.ok) throw new Error(`precache ${url}: ${res.status}`);
-  if (!res.redirected) return res;
-  const headers = new Headers(res.headers);
+  const response = await fetch(url, { cache: 'no-cache' });
+  if (!response.ok) {
+    throw new Error(`precache ${url}: ${response.status}`);
+  }
+  if (!response.redirected) {
+    return response;
+  }
+  const headers = new Headers(response.headers);
   headers.delete('content-encoding');
   headers.delete('content-length');
-  return new Response(await res.blob(), { status: 200, headers });
+  return new Response(await response.blob(), { status: 200, headers });
 }
 
 self.addEventListener('install', (event) => {
@@ -126,16 +130,34 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
+  // Delete the app shell caches of earlier versions. Only names that start
+  // with PREFIX are touched, so the saved pages and pictures stay.
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k.startsWith(PREFIX) && k !== CACHE).map((k) => caches.delete(k)))
+      Promise.all(
+        keys
+          .filter((cacheName) => {
+            if (cacheName.startsWith(PREFIX) && cacheName !== CACHE) {
+              return true;
+            }
+            return false;
+          })
+          .map((cacheName) => caches.delete(cacheName))
+      )
     )
   );
   // No clients.claim() here either; see the message handler.
 });
 
 self.addEventListener('message', (event) => {
-  const type = typeof event.data === 'string' ? event.data : event.data?.type;
+  // The page sends either a plain string or an object with a type. Data that
+  // is null or undefined has no type.
+  let type;
+  if (typeof event.data === 'string') {
+    type = event.data;
+  } else if (event.data !== null && event.data !== undefined) {
+    type = event.data.type;
+  }
 
   // The only place either of these is ever called.
   if (type === 'skip-waiting') {
@@ -149,45 +171,55 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Keep at most max entries, dropping the oldest first.
-async function trim(cacheName, max) {
+// Keep at most limit entries, dropping the oldest first.
+async function trim(cacheName, limit) {
   const cache = await caches.open(cacheName);
   const keys = await cache.keys();
-  await Promise.all(keys.slice(0, Math.max(0, keys.length - max)).map((k) => cache.delete(k)));
+  await Promise.all(keys.slice(0, Math.max(0, keys.length - limit)).map((request) => cache.delete(request)));
 }
 
 // Save a public page's response, or forget it when the page is gone.
-async function savePage(path, res) {
+async function savePage(path, response) {
   const cache = await caches.open(SAVED_PAGES);
-  if (res.ok && !res.redirected) {
+  if (response.ok && !response.redirected) {
     await cache.delete(path); // re-adding moves it to the newest end
-    await cache.put(path, res);
+    await cache.put(path, response);
     await trim(SAVED_PAGES, MAX_SAVED_PAGES);
-  } else if (res.status === 404 || res.status === 410) {
+  } else if (response.status === 404 || response.status === 410) {
     await cache.delete(path);
   }
 }
 
+// A profile picture: over https, from the public avatar bucket on Supabase.
 function isAvatar(url) {
-  return url.protocol === 'https:' && url.hostname.endsWith('.supabase.co') && url.pathname.startsWith(AVATAR_PATH);
+  if (url.protocol === 'https:' && url.hostname.endsWith('.supabase.co') && url.pathname.startsWith(AVATAR_PATH)) {
+    return true;
+  }
+  return false;
 }
 
-async function saveAvatar(request, res) {
-  if (!res.ok || res.type === 'opaque') return;
+// Save a profile picture, unless it failed or is opaque (its status can't be
+// read), then drop the oldest past MAX_AVATARS.
+async function saveAvatar(request, response) {
+  if (!response.ok || response.type === 'opaque') {
+    return;
+  }
   const cache = await caches.open(AVATARS);
-  await cache.put(request, res);
+  await cache.put(request, response);
   await trim(AVATARS, MAX_AVATARS);
 }
 
+// Save a public page that asked to be kept (see the message handler), and
+// its profile picture if that isn't saved yet.
 async function keepPage(path, avatar) {
   try {
-    const res = await fetch(path, { credentials: 'same-origin' });
-    await savePage(path, res);
+    const pageResponse = await fetch(path, { credentials: 'same-origin' });
+    await savePage(path, pageResponse);
     if (typeof avatar === 'string') {
       const url = new URL(avatar);
       if (isAvatar(url) && !(await caches.match(url.href))) {
-        const req = new Request(url.href, { mode: 'cors', credentials: 'omit' });
-        await saveAvatar(req, await fetch(req));
+        const avatarRequest = new Request(url.href, { mode: 'cors', credentials: 'omit' });
+        await saveAvatar(avatarRequest, await fetch(avatarRequest));
       }
     }
   } catch {
@@ -198,45 +230,68 @@ async function keepPage(path, avatar) {
 // /edit, /edit/ and /edit.html are the same page.
 function pageKey(url) {
   let path = url.pathname.replace(/\/index\.html$/, '/').replace(/\.html$/, '');
-  if (path.length > 1) path = path.replace(/\/$/, '');
+  if (path.length > 1) {
+    path = path.replace(/\/$/, '');
+  }
   return path;
 }
 
+// Every GET request, in this order: profile pictures (cache first); what is
+// left to the browser (other origins, /api/, the background remover's
+// files); page loads (shell pages, public pages, anything else); then every
+// other file on this origin (cache first). Anything that isn't a GET is left
+// to the browser too.
 self.addEventListener('fetch', (event) => {
-  const req = event.request;
-  if (req.method !== 'GET') return;
+  const request = event.request;
+  if (request.method !== 'GET') {
+    return;
+  }
 
-  const url = new URL(req.url);
+  const url = new URL(request.url);
 
   // Profile pictures: cache first, kept for offline viewing.
   if (isAvatar(url)) {
     event.respondWith(
       caches.open(AVATARS).then(async (cache) => {
-        const cached = await cache.match(req);
-        if (cached) return cached;
-        const res = await fetch(req);
-        event.waitUntil(saveAvatar(req, res.clone()));
-        return res;
+        const cached = await cache.match(request);
+        if (cached) {
+          return cached;
+        }
+        const response = await fetch(request);
+        event.waitUntil(saveAvatar(request, response.clone()));
+        return response;
       })
     );
     return;
   }
 
-  if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api/')) return;
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+  if (url.pathname.startsWith('/api/')) {
+    return;
+  }
   // The background remover's model and runtime (about 57 MB) are only for
   // people editing a picture. The worker keeps the model in its own cache, and
   // the browser's HTTP cache holds the runtime; copying them here would only
   // double the space used.
-  if (url.pathname.startsWith('/assets/models/') || url.pathname.startsWith('/assets/vendor/ort/')) return;
+  if (url.pathname.startsWith('/assets/models/') || url.pathname.startsWith('/assets/vendor/ort/')) {
+    return;
+  }
 
-  if (req.mode === 'navigate') {
+  if (request.mode === 'navigate') {
     const key = pageKey(url);
 
     // Shell pages: from the precache, so they open instantly and offline.
     if (SHELL_PAGES.has(key)) {
       event.respondWith(
-        caches.open(CACHE).then(async (cache) => (await cache.match(key)) || fetch(req))
+        caches.open(CACHE).then(async (cache) => {
+          const cached = await cache.match(key);
+          if (cached) {
+            return cached;
+          }
+          return fetch(request);
+        })
       );
       return;
     }
@@ -246,24 +301,34 @@ self.addEventListener('fetch', (event) => {
     // page needs a connection.
     if (SLUG_PATH.test(key)) {
       event.respondWith(
-        fetch(req)
-          .then((res) => {
-            event.waitUntil(savePage(key, res.clone()));
-            return res;
+        fetch(request)
+          .then((response) => {
+            event.waitUntil(savePage(key, response.clone()));
+            return response;
           })
           .catch(async () => {
             const saved = await (await caches.open(SAVED_PAGES)).match(key);
-            if (saved) return saved;
-            return (await (await caches.open(CACHE)).match('/shell/profile')) || Response.error();
+            if (saved) {
+              return saved;
+            }
+            const shell = await (await caches.open(CACHE)).match('/shell/profile');
+            if (shell) {
+              return shell;
+            }
+            return Response.error();
           })
       );
       return;
     }
 
     event.respondWith(
-      fetch(req).catch(async () => {
+      fetch(request).catch(async () => {
         const cache = await caches.open(CACHE);
-        return (await cache.match('/404.html')) || Response.error();
+        const notFoundPage = await cache.match('/404.html');
+        if (notFoundPage) {
+          return notFoundPage;
+        }
+        return Response.error();
       })
     );
     return;
@@ -273,11 +338,15 @@ self.addEventListener('fetch', (event) => {
   // copy of anything new so it is there next time.
   event.respondWith(
     caches.open(CACHE).then(async (cache) => {
-      const cached = await cache.match(req, { ignoreSearch: true });
-      if (cached) return cached;
-      const res = await fetch(req);
-      if (res.ok && !res.redirected) cache.put(req, res.clone());
-      return res;
+      const cached = await cache.match(request, { ignoreSearch: true });
+      if (cached) {
+        return cached;
+      }
+      const response = await fetch(request);
+      if (response.ok && !response.redirected) {
+        cache.put(request, response.clone());
+      }
+      return response;
     })
   );
 });
