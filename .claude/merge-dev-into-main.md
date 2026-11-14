@@ -2,9 +2,9 @@
 
 Context for whoever merges this repo's `dev` branch into `main`. Augy, give this file to Claude: "Read `.claude/merge-dev-into-main.md` and help me merge `dev` into `main`."
 
-- **What's on `dev`:** the readable-refactor chain for help desk #17, one squash commit per job. 3 of 10 jobs have landed so far.
+- **What's on `dev`:** the readable-refactor chain for help desk #17, one squash commit per job. 8 of 10 jobs have landed so far.
 - **What merging does:** Merging into `main` deploys `main-site/` (pages and API) on Vercel.
-- **Kept up to date:** the coordinator (Thomas's workspace) updates this file each time a job lands, and once more just before opening the pull request. Last updated 14 Nov, 02:01 SGT.
+- **Kept up to date:** the coordinator (Thomas's workspace) updates this file each time a job lands, and once more just before opening the pull request. Last updated 14 Nov, 10:08 SGT.
 
 ## Claude: how to run the merge
 
@@ -26,12 +26,12 @@ Work through these in order, and stop to ask Augy wherever a step says so.
 | 01 | Ids and reply tests | `0c0841f` |
 | 02 | Playwright for every page | `f558bf3` |
 | 03 | Rename the shared short helpers | `c992324` |
-| 04 | Readability: api/_lib | to come |
+| 04 | Readability: api/_lib | `0e98bb5` |
 | 05 | Readability: API routes | to come |
-| 06 | Readability: the admin dashboard | to come |
-| 07 | Readability: the editor and picture editor | to come |
-| 08 | Readability: other pages and browser helpers | to come |
-| 09 | Readability: service worker, scripts and tools | to come |
+| 06 | Readability: the admin dashboard | `5a6f251` |
+| 07 | Readability: the editor and picture editor | `06a8134` |
+| 08 | Readability: other pages and browser helpers | `a1b5bd1` |
+| 09 | Readability: service worker, scripts and tools | `1b5c507` |
 | 10 | Lint config and final check | to come |
 
 Each job's commit message lists what changed and how it was reviewed. The full branch is kept at `refs/archive/<job-id>`: `git fetch origin 'refs/archive/*:refs/archive/*'` to see them.
