@@ -1,5 +1,6 @@
 # Not served: tests, local tooling and docs.
 tests/
 scripts/
+eslint.config.js
 README.md
 .env*
