@@ -43,9 +43,15 @@ async function load() {
       data = { state: 'active', page: result.page };
     } catch (error) {
       // Renamed: go to the page's name now.
-      if (error.code === 'page_moved' && error.detail.slug) return void window.location.replace(`/${error.detail.slug}`);
-      const state = { page_dormant: 'dormant', page_in_review: 'review', page_unavailable: 'banned', offline: 'offline' }[error.code];
-      data = { state: state || 'missing', slug: slugFromPath() };
+      if (error.code === 'page_moved' && error.detail.slug) {
+        window.location.replace(`/${error.detail.slug}`);
+        return;
+      }
+      let state = { page_dormant: 'dormant', page_in_review: 'review', page_unavailable: 'banned', offline: 'offline' }[error.code];
+      if (!state) {
+        state = 'missing';
+      }
+      data = { state, slug: slugFromPath() };
     }
   }
   render();
@@ -55,10 +61,17 @@ function pageUrl() {
   return `${window.location.origin}/${data.page.slug}`;
 }
 
+// Draws the page. Anything but an active page gets a card saying why it
+// cannot be shown; a redirect page gets the countdown (renderRedirect); any
+// other page gets its picture, name, bio, links, and share and report buttons.
 function render() {
   root.removeAttribute('aria-busy');
   root.replaceChildren();
-  footerTeamNote(data.state === 'active' ? data.page.team : null);
+  let footerTeam = null;
+  if (data.state === 'active') {
+    footerTeam = data.page.team;
+  }
+  footerTeamNote(footerTeam);
 
   if (data.state !== 'active') {
     const COPY = {
@@ -68,33 +81,53 @@ function render() {
       offline: ['profile.offline-title', 'profile.offline-body'],
       missing: ['profile.missing-title', 'profile.missing-body'],
     };
-    const [title, body] = COPY[data.state] || COPY.missing;
+    let copy = COPY[data.state];
+    if (!copy) {
+      copy = COPY.missing;
+    }
+    const [title, body] = copy;
     // A dormant page comes back when its owner signs in, so offer that.
-    const signIn = data.state === 'dormant'
-      ? createElement('a', { class: 'btn', href: `/login?slug=${encodeURIComponent(data.slug || '')}`, text: translate('profile.dormant-sign-in') })
-      : null;
+    let signIn = null;
+    if (data.state === 'dormant') {
+      let slug = data.slug;
+      if (!slug) {
+        slug = '';
+      }
+      signIn = createElement('a', { class: 'btn', href: `/login?slug=${encodeURIComponent(slug)}`, text: translate('profile.dormant-sign-in') });
+    }
     root.append(createElement('div', { class: 'glass-card page-card not-found u-mx-auto' }, [
       createElement('h1', { text: translate(title) }),
       createElement('p', { text: translate(body) }),
       createElement('div', { class: 'actions' }, [createElement('a', { class: 'btn btn-primary', href: '/', text: translate('notfound.home') }), signIn]),
     ]));
-    byId('profileStatus')?.remove();
+    const profileStatus = byId('profileStatus');
+    if (profileStatus) {
+      profileStatus.remove();
+    }
     return;
   }
 
   const page = data.page;
   countVisit();
-  if (page.redirectUrl) return renderRedirect(page);
+  if (page.redirectUrl) {
+    return renderRedirect(page);
+  }
   const list = createElement('ul', { class: 'link-list' });
   for (const link of page.links) {
-    const a = createElement('a', {
+    // An email link hands over to the mail app; a new tab would stay empty.
+    let linkTarget;
+    if (link.url.startsWith('mailto:')) {
+      linkTarget = null;
+    } else {
+      linkTarget = '_blank';
+    }
+    const linkButton = createElement('a', {
       class: 'glass-card link-btn',
       href: link.url,
-      // An email link hands over to the mail app; a new tab would stay empty.
-      target: link.url.startsWith('mailto:') ? null : '_blank',
+      target: linkTarget,
       rel: 'noopener noreferrer nofollow',
     }, [iconNode(link.icon), createElement('span', { class: 'link-title', text: link.title })]);
-    a.addEventListener('click', () => {
+    linkButton.addEventListener('click', () => {
       // Counted on the side; the visitor's navigation never waits on it.
       api('/api/public/click', { method: 'POST', body: { id: link.id }, keepalive: true }).catch(() => {});
     });
@@ -106,7 +139,7 @@ function render() {
       onclick: () => openReport(link),
     });
     flag.append(iconNode('flag'));
-    list.append(createElement('li', { class: 'link-item' }, [a, flag]));
+    list.append(createElement('li', { class: 'link-item' }, [linkButton, flag]));
   }
 
   const share = createElement('button', { class: 'btn btn-small', type: 'button', onclick: openShare }, [iconNode('share'), createElement('span', { text: translate('share.share') })]);
@@ -115,15 +148,31 @@ function render() {
   const avatar = createElement('div', { class: 'avatar', 'aria-hidden': 'true' });
   fillAvatar(avatar, page.avatarUrl, page.displayName);
 
+  // Offline, the service worker serves the copy saved on an earlier visit.
+  let savedCopy = null;
+  if (navigator.onLine === false) {
+    savedCopy = createElement('p', { class: 'callout warn profile-saved', role: 'status', text: translate('profile.saved-copy') });
+  }
+  let bio = null;
+  if (page.bio) {
+    bio = createElement('p', { class: 'bio', text: page.bio });
+  }
+  let linksOrEmpty;
+  if (page.links.length > 0) {
+    linksOrEmpty = list;
+  } else {
+    linksOrEmpty = createElement('p', { class: 'profile-empty', text: translate('profile.empty') });
+  }
+
+  // The parts left out above are null, and filtered out here.
   root.append(...[
-    // Offline, the service worker serves the copy saved on an earlier visit.
-    navigator.onLine === false ? createElement('p', { class: 'callout warn profile-saved', role: 'status', text: translate('profile.saved-copy') }) : null,
+    savedCopy,
     teamAvatar(avatar, page.team),
     createElement('h1', { text: page.displayName }),
     createElement('p', { class: 'handle', text: `links.gftv.asia/${page.slug}` }),
     teamNote(page.team),
-    page.bio ? createElement('p', { class: 'bio', text: page.bio }) : null,
-    page.links.length > 0 ? list : createElement('p', { class: 'profile-empty', text: translate('profile.empty') }),
+    bio,
+    linksOrEmpty,
     createElement('div', { class: 'profile-actions' }, [share, report]),
     createElement('p', { class: 'profile-made' }, [
       createElement('span', { text: translate('profile.made-with') }),
@@ -132,7 +181,10 @@ function render() {
     ]),
   ].filter(Boolean));
   hydrateIcons(root);
-  byId('profileStatus')?.remove();
+  const profileStatus = byId('profileStatus');
+  if (profileStatus) {
+    profileStatus.remove();
+  }
   keepForOffline();
 }
 
@@ -145,17 +197,28 @@ function render() {
 // the team.
 
 function teamLabel(team) {
-  return team.role ? translate('team.label-role', { role: team.role }) : translate('team.label');
+  if (team.role) {
+    return translate('team.label-role', { role: team.role });
+  }
+  return translate('team.label');
 }
 
 function teamAvatar(avatar, team, small = false) {
-  if (!team) return avatar;
+  if (!team) {
+    return avatar;
+  }
   const tick = createElement('span', { class: 'team-tick', 'aria-hidden': 'true' }, [iconNode('check')]);
-  return createElement('div', { class: `avatar-wrap team${small ? ' small' : ''}`, title: translate('team.label') }, [avatar, tick]);
+  let sizeClass = '';
+  if (small) {
+    sizeClass = ' small';
+  }
+  return createElement('div', { class: `avatar-wrap team${sizeClass}`, title: translate('team.label') }, [avatar, tick]);
 }
 
 function teamNote(team) {
-  if (!team) return null;
+  if (!team) {
+    return null;
+  }
   return createElement('p', { class: 'team-note' }, [
     createElement('a', { class: 'team-pill', href: '#teamNote', onclick: jumpToTeamNote }, [iconNode('check'), createElement('span', { text: teamLabel(team) })]),
   ]);
@@ -165,19 +228,37 @@ function teamNote(team) {
 // focus it so a screen reader reads it next.
 function jumpToTeamNote(event) {
   const note = document.getElementById('teamNote');
-  if (!note) return;
+  if (!note) {
+    return;
+  }
   event.preventDefault();
   const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  note.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'center' });
+  let scrollBehavior;
+  if (still) {
+    scrollBehavior = 'auto';
+  } else {
+    scrollBehavior = 'smooth';
+  }
+  note.scrollIntoView({ behavior: scrollBehavior, block: 'center' });
   note.focus({ preventScroll: true });
 }
 
 // The explanation, at the top of the footer. Replaced on every render (a
 // language change redraws the page) and removed when there is no mark.
 function footerTeamNote(team) {
-  document.getElementById('teamNote')?.remove();
-  if (!team) return;
-  const when = new Intl.DateTimeFormat(document.documentElement.lang || undefined, { dateStyle: 'long' }).format(new Date(team.verifiedAt));
+  const oldNote = document.getElementById('teamNote');
+  if (oldNote) {
+    oldNote.remove();
+  }
+  if (!team) {
+    return;
+  }
+  // No page language means the browser's own.
+  let locale = document.documentElement.lang;
+  if (!locale) {
+    locale = undefined;
+  }
+  const when = new Intl.DateTimeFormat(locale, { dateStyle: 'long' }).format(new Date(team.verifiedAt));
   const note = createElement('p', { class: 'footer-team-note', id: 'teamNote', tabindex: '-1' }, [
     createElement('span', { class: 'footer-team-mark', 'aria-hidden': 'true' }, [iconNode('check')]),
     ' ',
@@ -185,14 +266,19 @@ function footerTeamNote(team) {
     ' ',
     createElement('a', { href: '/team', text: translate('team.see-all') }),
   ]);
-  document.querySelector('.site-footer')?.prepend(note);
+  const footer = document.querySelector('.site-footer');
+  if (footer) {
+    footer.prepend(note);
+  }
 }
 
 // One visit per page load for the owner's insights, sent alongside so it
 // never holds the page up. The server keeps daily totals only.
 let visitCounted = false;
 function countVisit() {
-  if (visitCounted || navigator.onLine === false) return;
+  if (visitCounted || navigator.onLine === false) {
+    return;
+  }
   visitCounted = true;
   api('/api/public/visit', { method: 'POST', body: { slug: data.page.slug, referrer: document.referrer }, keepalive: true }).catch(() => {});
 }
@@ -201,6 +287,11 @@ function countVisit() {
 
 let countdown = null;
 
+// Draws a redirect page (where it goes, a ring counting down, go now, pause
+// and report) and runs the countdown on animation frames. The countdown's
+// state lives in `countdown`, outside the render, so a language switch redraws
+// without restarting it; hold() pauses it while the tab is hidden or the
+// report dialog is open.
 function renderRedirect(page) {
   const target = new URL(page.redirectUrl);
   const avatar = createElement('div', { class: 'avatar small', 'aria-hidden': 'true' });
@@ -216,11 +307,15 @@ function renderRedirect(page) {
   const pause = createElement('button', { class: 'btn', type: 'button' });
   const report = createElement('button', { class: 'btn btn-quiet', type: 'button', onclick: () => openReport(null) }, [iconNode('flag'), createElement('span', { text: translate('report.page') })]);
 
+  let teamLine = null;
+  if (page.team) {
+    teamLine = createElement('div', { class: 'team-inline' }, [iconNode('check'), createElement('span', { text: teamLabel(page.team) })]);
+  }
   root.append(createElement('div', { class: 'glass-card redirect-card u-mx-auto' }, [
     createElement('div', { class: 'redirect-from' }, [teamAvatar(avatar, page.team, true), createElement('div', {}, [
       createElement('div', { class: 'name', text: page.displayName }),
       createElement('div', { class: 'handle', text: `links.gftv.asia/${page.slug}` }),
-      page.team ? createElement('div', { class: 'team-inline' }, [iconNode('check'), createElement('span', { text: teamLabel(page.team) })]) : null,
+      teamLine,
     ])]),
     createElement('h1', { text: translate('redirect.heading') }),
     createElement('p', { class: 'redirect-host', text: target.hostname.replace(/^www\./, '') }),
@@ -231,25 +326,55 @@ function renderRedirect(page) {
     createElement('p', { class: 'muted small', text: translate('redirect.check-address') }),
   ]));
   hydrateIcons(root);
-  byId('profileStatus')?.remove();
+  const profileStatus = byId('profileStatus');
+  if (profileStatus) {
+    profileStatus.remove();
+  }
   keepForOffline();
 
   // Elapsed time adds up only while running, so a pause holds the place.
-  const state = countdown ?? { elapsed: 0, last: null, paused: false, held: new Set(), done: false };
-  countdown = state;
+  if (countdown === null || countdown === undefined) {
+    countdown = { elapsed: 0, last: null, paused: false, held: new Set(), done: false };
+  }
+  const state = countdown;
   const total = REDIRECT_SECONDS * 1000;
-  const running = () => !state.paused && state.held.size === 0 && !state.done;
+  // Running unless paused, held (tab hidden or report open) or already gone.
+  const running = () => {
+    if (!state.paused && state.held.size === 0 && !state.done) {
+      return true;
+    }
+    return false;
+  };
   const paint = () => {
     const left = Math.max(0, Math.ceil((total - state.elapsed) / 1000));
     seconds.textContent = String(left);
     ring.style.setProperty('--progress', String(Math.min(100, (state.elapsed / total) * 100)));
-    pause.replaceChildren(iconNode(state.paused ? 'play' : 'pause'), createElement('span', { text: translate(state.paused ? 'redirect.resume' : 'redirect.pause') }));
-    status.textContent = running() ? translate('redirect.in', { count: left, n: left }) : translate('redirect.paused');
-  };
-  const tick = (now) => {
-    if (state.done) return;
+    let pauseIcon;
+    let pauseLabel;
+    if (state.paused) {
+      pauseIcon = 'play';
+      pauseLabel = 'redirect.resume';
+    } else {
+      pauseIcon = 'pause';
+      pauseLabel = 'redirect.pause';
+    }
+    pause.replaceChildren(iconNode(pauseIcon), createElement('span', { text: translate(pauseLabel) }));
     if (running()) {
-      if (state.last !== null) state.elapsed += now - state.last;
+      status.textContent = translate('redirect.in', { count: left, n: left });
+    } else {
+      status.textContent = translate('redirect.paused');
+    }
+  };
+  // One animation frame: add the time since the last frame while running,
+  // and go once the full time has passed.
+  const tick = (now) => {
+    if (state.done) {
+      return;
+    }
+    if (running()) {
+      if (state.last !== null) {
+        state.elapsed += now - state.last;
+      }
       state.last = now;
       if (state.elapsed >= total) {
         state.done = true;
@@ -267,9 +392,14 @@ function renderRedirect(page) {
     state.paused = !state.paused;
     paint();
   });
+  // Each reason to wait (the tab hidden, the report dialog open) is added or
+  // taken away on its own; the countdown runs only when none is left.
   state.hold = (reason, on) => {
-    if (on) state.held.add(reason);
-    else state.held.delete(reason);
+    if (on) {
+      state.held.add(reason);
+    } else {
+      state.held.delete(reason);
+    }
   };
   if (!state.started) {
     state.started = true;
@@ -277,7 +407,9 @@ function renderRedirect(page) {
     state.hold('hidden', document.hidden);
   }
   // A re-render (a language switch) takes over from the previous loop.
-  if (state.frame) cancelAnimationFrame(state.frame);
+  if (state.frame) {
+    cancelAnimationFrame(state.frame);
+  }
   state.last = null;
   paint();
   state.frame = requestAnimationFrame(tick);
@@ -288,10 +420,27 @@ function renderRedirect(page) {
 // happened before the worker was installed.
 let keptForOffline = false;
 function keepForOffline() {
-  if (keptForOffline || !('serviceWorker' in navigator) || navigator.onLine === false) return;
+  if (keptForOffline || !('serviceWorker' in navigator) || navigator.onLine === false) {
+    return;
+  }
   keptForOffline = true;
   navigator.serviceWorker.ready
-    .then((reg) => reg.active?.postMessage({ type: 'keep-page', path: window.location.pathname, avatar: data.page?.avatarUrl || null }))
+    .then((registration) => {
+      const worker = registration.active;
+      if (worker === null || worker === undefined) {
+        return;
+      }
+      // The picture too, when the page has one.
+      const page = data.page;
+      let avatarUrl;
+      if (page !== null && page !== undefined) {
+        avatarUrl = page.avatarUrl;
+      }
+      if (!avatarUrl) {
+        avatarUrl = null;
+      }
+      worker.postMessage({ type: 'keep-page', path: window.location.pathname, avatar: avatarUrl });
+    })
     .catch(() => {});
 }
 
@@ -313,25 +462,53 @@ byId('shareNative').addEventListener('click', () => {
 
 function openReport(link) {
   reportTarget = link;
-  byId('reportWhat').textContent = link
-    ? translate('report.about-link', { title: link.title })
-    : translate(data.page.redirectUrl ? 'report.about-redirect' : 'report.about-page', { slug: data.page.slug, url: data.page.redirectUrl });
+  // What is being reported: one link, or the whole page (a redirect names
+  // where it goes).
+  let about;
+  if (link) {
+    about = translate('report.about-link', { title: link.title });
+  } else {
+    let aboutKey;
+    if (data.page.redirectUrl) {
+      aboutKey = 'report.about-redirect';
+    } else {
+      aboutKey = 'report.about-page';
+    }
+    about = translate(aboutKey, { slug: data.page.slug, url: data.page.redirectUrl });
+  }
+  byId('reportWhat').textContent = about;
   byId('reportDetails').value = '';
   byId('reportError').textContent = '';
   // A redirect waits while the visitor is reporting it.
-  countdown?.hold('report', true);
-  openModal('reportModal', { initialFocus: byId('reportReason'), onClose: () => countdown?.hold('report', false) });
-  reportCheck ??= humanCheck(byId('reportCheck'));
+  if (countdown !== null && countdown !== undefined) {
+    countdown.hold('report', true);
+  }
+  openModal('reportModal', {
+    initialFocus: byId('reportReason'),
+    onClose: () => {
+      if (countdown !== null && countdown !== undefined) {
+        countdown.hold('report', false);
+      }
+    },
+  });
+  if (reportCheck === null || reportCheck === undefined) {
+    reportCheck = humanCheck(byId('reportCheck'));
+  }
 }
 
-byId('reportForm').addEventListener('submit', (e) => {
-  e.preventDefault();
+byId('reportForm').addEventListener('submit', (event) => {
+  event.preventDefault();
   withBusy(byId('reportSubmit'), byId('reportError'), async () => {
     const token = await reportCheck.token();
     try {
+      // The link being reported, or null for the whole page.
+      let linkId = null;
+      if (reportTarget) {
+        linkId = reportTarget.id;
+      }
       await post('/api/public/report', {
         slug: data.page.slug,
-        linkId: reportTarget ? reportTarget.id : null,
+        linkId,
         reason: byId('reportReason').value,
         details: byId('reportDetails').value,
         'cf-turnstile-response': token,
@@ -344,5 +521,9 @@ byId('reportForm').addEventListener('submit', (e) => {
   });
 });
 
-onChange(() => { if (data) render(); });
+onChange(() => {
+  if (data) {
+    render();
+  }
+});
 load();

@@ -16,12 +16,24 @@ const byId = (id) => document.getElementById(id);
 // The enrolment challenge survives a reload of this tab, and nothing else.
 const STORE = 'gftv-onelink.enrol';
 let enrol = null;
-try { enrol = JSON.parse(sessionStorage.getItem(STORE) || 'null'); } catch { enrol = null; }
+try {
+  // Nothing saved reads as null.
+  let saved = sessionStorage.getItem(STORE);
+  if (!saved) {
+    saved = 'null';
+  }
+  enrol = JSON.parse(saved);
+} catch {
+  enrol = null;
+}
 function remember(value) {
   enrol = value;
   try {
-    if (value) sessionStorage.setItem(STORE, JSON.stringify(value));
-    else sessionStorage.removeItem(STORE);
+    if (value) {
+      sessionStorage.setItem(STORE, JSON.stringify(value));
+    } else {
+      sessionStorage.removeItem(STORE);
+    }
   } catch { /* not remembered */ }
 }
 
@@ -30,13 +42,15 @@ let check = null;
 
 // Focus moves to the new step's heading when the step changes, so a screen
 // reader hears where it is; not on first load, where it starts at the top.
-function step(n, { focus = true } = {}) {
-  if (n === 1) check ??= humanCheck(byId('humanCheck'));
-  byId('stepAccount').hidden = n !== 1;
-  byId('stepFactor').hidden = n !== 2;
-  byId('stepCodes').hidden = n !== 3;
-  ['step1', 'step2', 'step3'].forEach((id, i) => byId(id).classList.toggle('done', i < n));
-  const heading = document.querySelector(`#${['stepAccount', 'stepFactor', 'stepCodes'][n - 1]} h1`);
+function step(stepNumber, { focus = true } = {}) {
+  if (stepNumber === 1 && (check === null || check === undefined)) {
+    check = humanCheck(byId('humanCheck'));
+  }
+  byId('stepAccount').hidden = stepNumber !== 1;
+  byId('stepFactor').hidden = stepNumber !== 2;
+  byId('stepCodes').hidden = stepNumber !== 3;
+  ['step1', 'step2', 'step3'].forEach((id, index) => byId(id).classList.toggle('done', index < stepNumber));
+  const heading = document.querySelector(`#${['stepAccount', 'stepFactor', 'stepCodes'][stepNumber - 1]} h1`);
   if (heading && focus) {
     heading.tabIndex = -1;
     heading.focus();
@@ -47,22 +61,26 @@ function step(n, { focus = true } = {}) {
 
 const slugInput = byId('slug');
 const prefill = normaliseSlugInput(new URLSearchParams(window.location.search).get('slug'));
-if (prefill) slugInput.value = prefill;
+if (prefill) {
+  slugInput.value = prefill;
+}
 wireSlugCheck(slugInput, byId('slugStatus'));
 
-byId('accountForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const error = byId('accountError');
+// The password is checked here first (length and the repeat), then the name
+// and password go to the server with the Turnstile token.
+byId('accountForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const errorMessage = byId('accountError');
   const password = byId('password').value;
   if ([...password].length < 10) {
-    error.textContent = translate('error.password_too_short');
+    errorMessage.textContent = translate('error.password_too_short');
     return;
   }
   if (password !== byId('passwordConfirm').value) {
-    error.textContent = translate('error.password_mismatch');
+    errorMessage.textContent = translate('error.password_mismatch');
     return;
   }
-  withBusy(byId('accountSubmit'), error, async () => {
+  withBusy(byId('accountSubmit'), errorMessage, async () => {
     const token = await check.token();
     let data;
     try {
@@ -84,20 +102,24 @@ let totpStarted = false;
 
 function pickFactor(name) {
   factor = name;
-  document.querySelectorAll('#stepFactor [data-factor]').forEach((b) => {
-    b.setAttribute('aria-pressed', String(b.dataset.factor === name));
+  document.querySelectorAll('#stepFactor [data-factor]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.factor === name));
   });
   byId('totpSetup').hidden = name !== 'totp';
   byId('passkeySetup').hidden = name !== 'passkey';
-  if (name === 'totp') startTotp();
+  if (name === 'totp') {
+    startTotp();
+  }
 }
 
-document.querySelectorAll('#stepFactor [data-factor]').forEach((b) => {
-  b.addEventListener('click', () => pickFactor(b.dataset.factor));
+document.querySelectorAll('#stepFactor [data-factor]').forEach((button) => {
+  button.addEventListener('click', () => pickFactor(button.dataset.factor));
 });
 
 async function startTotp() {
-  if (totpStarted) return;
+  if (totpStarted) {
+    return;
+  }
   totpStarted = true;
   const qr = byId('totpQr');
   try {
@@ -110,7 +132,9 @@ async function startTotp() {
     qr.removeAttribute('aria-busy');
     qr.replaceChildren();
     byId('totpError').textContent = errorText(error);
-    if (error.code === 'challenge_expired') expired();
+    if (error.code === 'challenge_expired') {
+      expired();
+    }
   }
 }
 
@@ -130,23 +154,25 @@ function expired() {
   step(1);
 }
 
-byId('totpForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const error = byId('totpError');
-  withBusy(byId('totpSubmit'), error, async () => {
+byId('totpForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const errorMessage = byId('totpError');
+  withBusy(byId('totpSubmit'), errorMessage, async () => {
     try {
       const data = await post('/api/auth/enrol', { challenge: enrol.challenge, action: 'totp-finish', code: byId('totpCode').value });
       finished(data);
-    } catch (err) {
-      if (err.code === 'challenge_expired') expired();
-      throw err;
+    } catch (error) {
+      if (error.code === 'challenge_expired') {
+        expired();
+      }
+      throw error;
     }
   });
 });
 
 byId('passkeyCreate').addEventListener('click', () => {
-  const error = byId('passkeyError');
-  withBusy(byId('passkeyCreate'), error, async () => {
+  const errorMessage = byId('passkeyError');
+  withBusy(byId('passkeyCreate'), errorMessage, async () => {
     try {
       const { options } = await post('/api/auth/enrol', { challenge: enrol.challenge, action: 'passkey-options' });
       let response;
@@ -157,9 +183,11 @@ byId('passkeyCreate').addEventListener('click', () => {
       }
       const data = await post('/api/auth/enrol', { challenge: enrol.challenge, action: 'passkey-finish', response });
       finished(data);
-    } catch (err) {
-      if (err.code === 'challenge_expired') expired();
-      throw err;
+    } catch (error) {
+      if (error.code === 'challenge_expired') {
+        expired();
+      }
+      throw error;
     }
   });
 });
@@ -177,12 +205,12 @@ function finished(data) {
 }
 
 const done = byId('codesDone');
-byId('codesSaved').addEventListener('change', (e) => {
-  done.setAttribute('aria-disabled', String(!e.target.checked));
+byId('codesSaved').addEventListener('change', (event) => {
+  done.setAttribute('aria-disabled', String(!event.target.checked));
 });
-done.addEventListener('click', (e) => {
+done.addEventListener('click', (event) => {
   if (done.getAttribute('aria-disabled') === 'true') {
-    e.preventDefault();
+    event.preventDefault();
     byId('codesSaved').focus();
   }
 });

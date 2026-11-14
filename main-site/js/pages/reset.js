@@ -18,14 +18,14 @@ const check = humanCheck(byId('humanCheck'));
 byId('stepReset').querySelector('[data-factor="passkey"]').hidden = !passkeysSupported();
 
 function show(id) {
-  ['stepFind', 'stepNoTelegram', 'stepReset'].forEach((s) => { byId(s).hidden = s !== id; });
+  ['stepFind', 'stepNoTelegram', 'stepReset'].forEach((stepId) => { byId(stepId).hidden = stepId !== id; });
   const heading = document.querySelector(`#${id} h1`);
   heading.tabIndex = -1;
   heading.focus();
 }
 
-byId('findForm').addEventListener('submit', (e) => {
-  e.preventDefault();
+byId('findForm').addEventListener('submit', (event) => {
+  event.preventDefault();
   withBusy(byId('findSubmit'), byId('findError'), async () => {
     const token = await check.token();
     let data;
@@ -34,7 +34,9 @@ byId('findForm').addEventListener('submit', (e) => {
     } finally {
       check.reset();
     }
-    if (!data.telegram) return show('stepNoTelegram');
+    if (!data.telegram) {
+      return show('stepNoTelegram');
+    }
     challenge = data.challenge;
     show('stepReset');
   });
@@ -50,14 +52,29 @@ byId('telegramSend').addEventListener('click', () => {
 
 function pickFactor(name) {
   factor = name;
-  document.querySelectorAll('#stepReset [data-factor]').forEach((b) => {
-    b.setAttribute('aria-pressed', String(b.dataset.factor === name));
+  document.querySelectorAll('#stepReset [data-factor]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.factor === name));
   });
   const input = byId('factorCode');
   input.value = '';
-  input.inputMode = name === 'totp' ? 'numeric' : 'text';
-  input.maxLength = name === 'totp' ? 6 : 16;
-  byId('factorLabel').textContent = translate(name === 'totp' ? 'field.code' : 'field.backup-code');
+  // Six digits for the authenticator app; a backup code is longer.
+  if (name === 'totp') {
+    input.inputMode = 'numeric';
+  } else {
+    input.inputMode = 'text';
+  }
+  if (name === 'totp') {
+    input.maxLength = 6;
+  } else {
+    input.maxLength = 16;
+  }
+  let labelKey;
+  if (name === 'totp') {
+    labelKey = 'field.code';
+  } else {
+    labelKey = 'field.backup-code';
+  }
+  byId('factorLabel').textContent = translate(labelKey);
   byId('factorField').hidden = name === 'passkey';
   byId('passkeyHint').hidden = name !== 'passkey';
 }
@@ -72,33 +89,41 @@ async function passkeyResponse(telegramCode) {
     throw Object.assign(new Error('passkey'), { code: passkeyErrorCode(cause) });
   }
 }
-document.querySelectorAll('#stepReset [data-factor]').forEach((b) => b.addEventListener('click', () => pickFactor(b.dataset.factor)));
+document.querySelectorAll('#stepReset [data-factor]').forEach((button) => button.addEventListener('click', () => pickFactor(button.dataset.factor)));
 onChange(() => pickFactor(factor));
 
-byId('resetForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const error = byId('resetError');
+// The last step: the new password is checked here first (length and the
+// repeat), then sent with the Telegram code and the second factor. An expired
+// challenge sends the owner back to the first step.
+byId('resetForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const errorMessage = byId('resetError');
   const newPassword = byId('newPassword').value;
   if ([...newPassword].length < 10) {
-    error.textContent = translate('error.password_too_short');
+    errorMessage.textContent = translate('error.password_too_short');
     return;
   }
   if (newPassword !== byId('newPasswordConfirm').value) {
-    error.textContent = translate('error.password_mismatch');
+    errorMessage.textContent = translate('error.password_mismatch');
     return;
   }
-  withBusy(byId('resetSubmit'), error, async () => {
+  withBusy(byId('resetSubmit'), errorMessage, async () => {
     try {
       const telegramCode = byId('telegramCode').value;
-      const proof = factor === 'passkey' ? { response: await passkeyResponse(telegramCode) } : { code: byId('factorCode').value };
+      let proof;
+      if (factor === 'passkey') {
+        proof = { response: await passkeyResponse(telegramCode) };
+      } else {
+        proof = { code: byId('factorCode').value };
+      }
       await post('/api/auth/recover', { action: 'finish', challenge, telegramCode, factor, ...proof, newPassword });
       window.location.replace('/edit');
-    } catch (err) {
-      if (err.code === 'challenge_expired') {
+    } catch (error) {
+      if (error.code === 'challenge_expired') {
         show('stepFind');
         byId('findError').textContent = translate('error.challenge_expired');
       }
-      throw err;
+      throw error;
     }
   });
 });

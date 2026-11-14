@@ -12,18 +12,29 @@ export function fillAvatar(container, url, name) {
   container.replaceChildren();
   const letter = () => {
     container.classList.remove('has-image');
-    container.textContent = [...String(name || '').trim()][0] || '?';
+    let fullName = '';
+    if (name) {
+      fullName = name;
+    }
+    // Spread by code point, so a first letter outside the BMP (an emoji) stays whole.
+    let firstLetter = [...String(fullName).trim()][0];
+    if (!firstLetter) {
+      firstLetter = '?';
+    }
+    container.textContent = firstLetter;
   };
-  if (!url) return letter();
-  const img = document.createElement('img');
-  img.alt = '';
-  img.width = 256;
-  img.height = 256;
-  img.decoding = 'async';
-  img.crossOrigin = 'anonymous';
-  img.referrerPolicy = 'no-referrer';
-  img.addEventListener('error', letter, { once: true });
-  setBlobSrc(img, url);
+  if (!url) {
+    return letter();
+  }
+  const image = document.createElement('img');
+  image.alt = '';
+  image.width = 256;
+  image.height = 256;
+  image.decoding = 'async';
+  image.crossOrigin = 'anonymous';
+  image.referrerPolicy = 'no-referrer';
+  image.addEventListener('error', letter, { once: true });
+  setBlobSrc(image, url);
   container.classList.add('has-image');
-  container.appendChild(img);
+  container.appendChild(image);
 }
