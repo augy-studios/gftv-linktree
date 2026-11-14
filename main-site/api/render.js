@@ -25,12 +25,12 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-// JSON that is safe inside a <script> element: nothing in it can close the
-// element or open a comment, whatever an owner typed into their bio.
 // U+2028 and U+2029 end a line inside a script in older engines.
 const LINE_SEPARATOR = String.fromCharCode(0x2028);
 const LINE_SEPARATORS = new RegExp(`[${LINE_SEPARATOR}${String.fromCharCode(0x2029)}]`, 'g');
 
+// JSON that is safe inside a <script> element: nothing in it can close the
+// element or open a comment, whatever an owner typed into their bio.
 export function inlineJson(value) {
   return JSON.stringify(value)
     .replace(/</g, '\\u003c')
