@@ -4,7 +4,7 @@ Context for whoever merges this repo's `dev` branch into `main`. Augy, give this
 
 - **What's on `dev`:** the readable-refactor chain for help desk #17, one squash commit per job. All 10 jobs have landed.
 - **What merging does:** Merging into `main` deploys `main-site/` (pages and API) on Vercel.
-- **Kept up to date:** the coordinator (Thomas's workspace) updates this file each time a job lands, and once more just before opening the pull request. Last updated 14 Nov, 21:45 SGT.
+- **Kept up to date:** the coordinator (Thomas's workspace) updates this file each time a job lands, and once more just before opening the pull request. Last updated 14 Nov, 22:15 SGT.
 
 ## Claude: how to run the merge
 
