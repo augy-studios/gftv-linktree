@@ -144,6 +144,9 @@ tabs.forEach((tab, index) => {
 
 let redirectOpen = false;
 
+// Draws the redirect section from page.redirectUrl: the switch, the address
+// field (shown when a redirect is on or the switch was just opened), the state
+// line, the save button's label and the note that links are hidden.
 function renderRedirect() {
   const on = Boolean(page.redirectUrl);
   const form = byId('redirectForm');
@@ -331,6 +334,9 @@ async function saveLink(body, method) {
   }
 }
 
+// Moves a link up (delta -1) or down (delta 1) among the links that aren't
+// removed, saves the new order (removed links keep their place at the end),
+// and keeps keyboard focus on the moved link's arrow.
 async function move(link, delta) {
   const movable = page.links.filter((other) => !other.removed);
   const from = movable.indexOf(link);
